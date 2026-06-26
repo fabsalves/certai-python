@@ -1,0 +1,313 @@
+/* --- Percurso estilo trilha (Duolingo-like, identidade CertAI) --- */
+
+.track-path {
+  position: relative;
+  width: 100%;
+  max-width: 360px;
+  margin: 0 auto;
+}
+
+.track-path--empty {
+  padding: 32px 16px;
+  text-align: center;
+}
+
+.track-path__svg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.track-path__curve {
+  stroke: url(#path-gradient);
+  stroke-width: 5;
+  stroke-linecap: round;
+  opacity: 0.95;
+}
+
+.track-path__curve--muted {
+  stroke: var(--border-strong);
+  stroke-dasharray: 6 8;
+  opacity: 0.7;
+}
+
+.track-path__layer {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+}
+
+.track-path__slot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 108px;
+}
+
+.track-path__module {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 4px;
+  z-index: 1;
+}
+
+.track-path__module-line {
+  flex: 1;
+  min-width: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border-strong), transparent);
+}
+
+.track-path__module-head {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  max-width: min(220px, 72%);
+}
+
+.track-path__module-pill {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+
+.track-path__module-pill-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.track-path__module-level {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+  margin-top: 2px;
+}
+
+.track-path__node {
+  position: absolute;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 46%;
+}
+
+.track-path__node--left {
+  left: 0;
+  align-items: flex-start;
+  padding-left: 8px;
+}
+
+.track-path__node--right {
+  right: 0;
+  align-items: flex-end;
+  padding-right: 8px;
+}
+
+.track-path__bubble {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.track-path__bubble:disabled {
+  cursor: not-allowed;
+}
+
+.track-path__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid var(--brand);
+  background: var(--surface);
+  box-shadow:
+    0 2px 0 rgba(11, 57, 55, 0.15),
+    0 6px 16px rgba(20, 32, 43, 0.08);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.track-path__bubble-face {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+.track-path__num {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--brand);
+  line-height: 1;
+}
+
+.track-path__check {
+  width: 22px;
+  height: 22px;
+  color: var(--brand);
+}
+
+.track-path__dot {
+  font-size: 22px;
+  line-height: 1;
+  color: var(--text-subtle);
+}
+
+.track-path__bubble:hover:not(:disabled) .track-path__ring {
+  transform: translateY(-2px);
+  box-shadow:
+    0 3px 0 rgba(11, 57, 55, 0.12),
+    0 10px 20px rgba(20, 32, 43, 0.1);
+}
+
+.track-path__bubble--selected .track-path__ring,
+.track-path__bubble--current .track-path__ring {
+  border-color: var(--accent);
+  background: var(--accent-50);
+  box-shadow:
+    0 0 0 4px rgba(176, 125, 43, 0.18),
+    0 4px 0 rgba(120, 85, 24, 0.2),
+    0 8px 20px rgba(20, 32, 43, 0.1);
+}
+
+.track-path__bubble--selected .track-path__num,
+.track-path__bubble--current .track-path__num {
+  color: #8a5f1a;
+}
+
+.track-path__bubble--done .track-path__ring {
+  border-color: var(--brand);
+  background: var(--brand-50);
+}
+
+.track-path__bubble--locked .track-path__ring,
+.track-path__bubble--inactive .track-path__ring {
+  border-color: var(--border-strong);
+  background: var(--surface-sunken);
+  box-shadow: none;
+}
+
+.track-path__bubble--locked .track-path__dot,
+.track-path__bubble--inactive .track-path__dot {
+  color: var(--text-subtle);
+}
+
+.track-path__label {
+  position: relative;
+  z-index: 2;
+  margin-top: 10px;
+  max-width: 140px;
+  text-align: center;
+}
+
+.track-path__label--left {
+  text-align: left;
+}
+
+.track-path__label--right {
+  text-align: right;
+}
+
+.track-path__label-text {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--ink);
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--surface);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.track-path__label--muted .track-path__label-text {
+  color: var(--text-muted);
+}
+
+.track-path__label-badge {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-50);
+  color: #8a5f1a;
+  border: 1px solid rgba(176, 125, 43, 0.25);
+}
+
+.track-path__label-badge--muted {
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  border-color: var(--border);
+}
+
+.learn-path-panel {
+  padding: 20px 12px 28px;
+  overflow: hidden;
+}
+
+.path-preview__body {
+  padding: 8px 12px 24px;
+  max-height: calc(100vh - var(--topbar-height) - 140px);
+  overflow-y: auto;
+}
+
+.path-preview__head {
+  padding: 20px 22px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.path-preview--track-inactive {
+  border-color: var(--border-strong);
+}
+
+.path-preview__notice {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-muted);
+  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+@media (min-width: 900px) {
+  .learn-layout {
+    grid-template-columns: minmax(280px, 400px) minmax(0, 1fr);
+  }
+}

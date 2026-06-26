@@ -1,0 +1,34 @@
+"""Humanizer -- final pass.
+
+The engine produces the smart answer. The humanizer rewrites it to sound human.
+It is the one that "doesn't slip" on tone, freeing the engine to focus on
+intelligence without a thousand constraints. Guarantees: no em dash, no repeating
+the person's name, no AI tone, simple explanations, a light companion touch
+(always on topic).
+
+The system prompt is intentionally in pt-BR: it produces the text the user reads.
+"""
+
+from app.ai.client import get_anthropic
+from app.core.config import settings
+
+SYSTEM = (
+    "Reescreva a mensagem para soar como uma pessoa real, calorosa e direta. "
+    "Não use travessão. Não repita o nome de quem recebe. Nada de jargão ou tom "
+    "robótico. Mantenha explicações simples e um toque leve de companheirismo, "
+    "sempre dentro do tema. Preserve integralmente o conteúdo e as orientações; "
+    "mude só a forma. Responda apenas com o texto reescrito."
+)
+
+
+async def humanize(text: str) -> str:
+    if not text.strip():
+        return text
+    client = get_anthropic()
+    resp = await client.messages.create(
+        model=settings.HUMANIZER_MODEL,
+        max_tokens=1024,
+        system=SYSTEM,
+        messages=[{"role": "user", "content": text}],
+    )
+    return "".join(b.text for b in resp.content if b.type == "text") or text

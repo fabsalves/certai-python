@@ -1,0 +1,46 @@
+#!/usr/bin/env sh
+set -eu
+
+ROOT="$(CDPATH= cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
+if ! command -v foreman >/dev/null 2>&1 && ! gem list foreman -i --silent 2>/dev/null; then
+  printf 'Instalando foreman...\n'
+  gem install foreman
+fi
+
+pick_port() {
+  port="$1"
+  while lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; do
+    port=$((port + 1))
+  done
+  printf '%s' "$port"
+}
+
+# Mata restos de um bin/dev anterior (SIGTERM do foreman nem sempre limpa tudo).
+stop_stale_certai_procs() {
+  for pattern in \
+    "$ROOT/backend/.venv/bin/uvicorn" \
+    "$ROOT/backend/.venv/bin/celery" \
+    "$ROOT/frontend/node_modules/.bin/vite"
+  do
+    pkill -f "$pattern" 2>/dev/null || true
+  done
+  sleep 0.4
+}
+
+stop_stale_certai_procs
+
+API_PORT="$(pick_port "${API_PORT:-8000}")"
+FLOWER_PORT="$(pick_port "${FLOWER_PORT:-5555}")"
+FRONTEND_PORT="$(pick_port "${FRONTEND_PORT:-5173}")"
+
+export API_PORT FLOWER_PORT FRONTEND_PORT
+
+printf 'Dev stack:\n'
+printf '  Frontend  http://localhost:%s\n' "$FRONTEND_PORT"
+printf '  API       http://localhost:%s\n' "$API_PORT"
+printf '  Flower    http://localhost:%s\n' "$FLOWER_PORT"
+printf '\n'
+
+exec foreman start -f Procfile.dev "$@"

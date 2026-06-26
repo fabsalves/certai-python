@@ -1,0 +1,147 @@
+/* CertAI — sistema visual
+   Identidade: credencial institucional moderna. Petróleo + latão, neutros frios.
+   Longe da "cara de IA" (sem roxo, sem gradiente decorativo, sem cream-serif). */
+
+:root {
+  /* superfícies */
+  --bg: #f5f6f7;
+  --surface: #ffffff;
+  --surface-sunken: #eef0f1;
+
+  /* marca */
+  --ink: #14202b;          /* texto forte / superfícies escuras */
+  --brand: #0f4c4a;        /* petróleo — ações primárias, marca */
+  --brand-700: #0b3937;
+  --brand-50: #e6efee;
+  --accent: #b07d2b;       /* latão — só credencial/verificado */
+  --accent-50: #f5ecdc;
+
+  /* texto */
+  --text: #14202b;
+  --text-muted: #5c6770;
+  --text-subtle: #8a939b;
+  --on-brand: #f3f7f6;
+
+  /* bordas / estado */
+  --border: #e2e5e8;
+  --border-strong: #cdd2d6;
+  --success: #2f7a4d;
+  --danger: #b23b3b;
+  --danger-50: #f7e9e9;
+
+  /* tipografia */
+  --font-display: "Fraunces", Georgia, serif;
+  --font-sans: "Inter", system-ui, sans-serif;
+
+  /* forma */
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow: 0 1px 2px rgba(20, 32, 43, 0.04), 0 4px 16px rgba(20, 32, 43, 0.06);
+  --ring: 0 0 0 3px rgba(15, 76, 74, 0.18);
+
+  /* layout */
+  --sidebar-width: 260px;
+  --topbar-height: 56px;
+  --content-max-width: 1440px;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 { font-family: var(--font-display); font-weight: 500; color: var(--ink); margin: 0; letter-spacing: -0.01em; }
+h1 { font-size: 30px; }
+h2 { font-size: 22px; }
+h3 { font-size: 17px; font-family: var(--font-sans); font-weight: 600; }
+
+a { color: var(--brand); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+:focus-visible { outline: none; box-shadow: var(--ring); border-radius: var(--radius-sm); }
+
+/* --- botões --- */
+.btn {
+  font: inherit; font-weight: 500; cursor: pointer;
+  border-radius: var(--radius-sm); border: 1px solid transparent;
+  padding: 9px 16px; transition: background .15s, border-color .15s, color .15s;
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.btn-primary { background: var(--brand); color: var(--on-brand); }
+.btn-primary:hover { background: var(--brand-700); }
+.btn-ghost { background: transparent; color: var(--text); border-color: var(--border-strong); }
+.btn-ghost:hover { background: var(--surface-sunken); }
+.btn:disabled { opacity: .55; cursor: not-allowed; }
+
+/* --- inputs --- */
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label { font-size: 13px; font-weight: 500; color: var(--text-muted); }
+.input {
+  font: inherit; padding: 10px 12px; border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); background: var(--surface); color: var(--text);
+}
+.input:focus { border-color: var(--brand); }
+
+textarea.input {
+  resize: vertical;
+  min-height: 88px;
+  line-height: 1.5;
+}
+
+/* --- cartões --- */
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+}
+
+/* --- rótulo de seção --- */
+.eyebrow {
+  display: block;
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--text-muted);
+}
+.eyebrow--on-dark { color: rgba(243, 247, 246, 0.65); }
+
+/* --- status / metadado --- */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--text-muted);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+.tag--brand {
+  color: var(--brand);
+  background: var(--brand-50);
+  border-color: color-mix(in srgb, var(--brand) 22%, transparent);
+}
+
+.tag--inactive {
+  color: var(--text-muted);
+  background: var(--surface-sunken);
+  border-color: var(--border-strong);
+}
+
+.muted { color: var(--text-muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
