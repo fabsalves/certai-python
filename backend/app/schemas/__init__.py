@@ -1,10 +1,30 @@
 import uuid
 from datetime import datetime
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field
 
+from app.core.email import normalize_email
 from app.models.track import ModuleLevel
 from app.models.user import Role
+
+
+def _require_non_empty(value: str) -> str:
+    value = value.strip()
+    if not value:
+        raise ValueError("Não pode ficar vazio")
+    return value
+
+
+def _optional_non_empty(value: str | None) -> str | None:
+    if value is None:
+        return None
+    return _require_non_empty(value)
+
+
+NameStr = Annotated[str, AfterValidator(_require_non_empty), Field(max_length=255)]
+OptionalNameStr = Annotated[str | None, AfterValidator(_optional_non_empty)]
+NormalizedEmailStr = Annotated[EmailStr, AfterValidator(normalize_email)]
 
 
 # --- Auth ---
@@ -20,8 +40,8 @@ class RefreshRequest(BaseModel):
 
 # --- User ---
 class UserBase(BaseModel):
-    email: EmailStr
-    name: str = Field(min_length=1, max_length=255)
+    email: NormalizedEmailStr
+    name: NameStr
 
 
 class UserCreate(UserBase):
@@ -38,13 +58,13 @@ class UserOut(UserBase):
 
 # --- Track / Module / Lesson ---
 class LessonCreate(BaseModel):
-    title: str
+    title: NameStr
     content: str = ""
     position: int
 
 
 class LessonUpdate(BaseModel):
-    title: str | None = None
+    title: OptionalNameStr = None
     content: str | None = None
     position: int | None = None
     is_active: bool | None = None
@@ -57,13 +77,13 @@ class LessonOut(LessonCreate):
 
 
 class ModuleCreate(BaseModel):
-    title: str
+    title: NameStr
     level: ModuleLevel = ModuleLevel.BEGINNER
     position: int
 
 
 class ModuleUpdate(BaseModel):
-    title: str | None = None
+    title: OptionalNameStr = None
     level: ModuleLevel | None = None
     position: int | None = None
     is_active: bool | None = None
@@ -77,13 +97,13 @@ class ModuleOut(ModuleCreate):
 
 
 class TrackCreate(BaseModel):
-    title: str
+    title: NameStr
     description: str = ""
     competency: str = ""
 
 
 class TrackUpdate(BaseModel):
-    title: str | None = None
+    title: OptionalNameStr = None
     description: str | None = None
     competency: str | None = None
     published: bool | None = None
@@ -110,13 +130,13 @@ class ModuleProfessorOut(ModuleProfessorIn):
 
 
 class CohortCreate(BaseModel):
-    name: str
+    name: NameStr
     track_id: uuid.UUID
     module_professors: list[ModuleProfessorIn]
 
 
 class CohortUpdate(BaseModel):
-    name: str | None = None
+    name: OptionalNameStr = None
     module_professors: list[ModuleProfessorIn] | None = None
 
 
@@ -139,6 +159,15 @@ class CohortDetailOut(CohortListOut):
 
 class EnrollmentCreate(BaseModel):
     student_id: uuid.UUID
+
+
+class EnrollmentBulkCreate(BaseModel):
+    student_ids: list[uuid.UUID]
+
+
+class EnrollmentBulkOut(BaseModel):
+    enrolled_count: int
+    skipped_count: int = 0
 
 
 class EnrollmentOut(BaseModel):

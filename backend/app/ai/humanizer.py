@@ -9,7 +9,7 @@ the person's name, no AI tone, simple explanations, a light companion touch
 The system prompt is intentionally in pt-BR: it produces the text the user reads.
 """
 
-from app.ai.client import get_anthropic
+from app.ai.client import get_openai
 from app.core.config import settings
 
 SYSTEM = (
@@ -24,11 +24,13 @@ SYSTEM = (
 async def humanize(text: str) -> str:
     if not text.strip():
         return text
-    client = get_anthropic()
-    resp = await client.messages.create(
+    client = get_openai()
+    resp = await client.chat.completions.create(
         model=settings.HUMANIZER_MODEL,
         max_tokens=1024,
-        system=SYSTEM,
-        messages=[{"role": "user", "content": text}],
+        messages=[
+            {"role": "system", "content": SYSTEM},
+            {"role": "user", "content": text},
+        ],
     )
-    return "".join(b.text for b in resp.content if b.type == "text") or text
+    return (resp.choices[0].message.content or "").strip() or text

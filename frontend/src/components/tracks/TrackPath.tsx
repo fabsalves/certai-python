@@ -120,11 +120,11 @@ export function TrackPath({ nodes, selectedId }: Props) {
               <div className={`track-path__node track-path__node--${node.side}`}>
                 <button
                   type="button"
-                  className={`track-path__bubble track-path__bubble--${stateClass}`}
+                  className={`track-path__bubble track-path__bubble--${stateClass}${node.emptyModule ? " track-path__bubble--empty" : ""}`}
                   onClick={node.onClick}
                   disabled={!node.onClick || node.state === "locked"}
                   aria-current={isSelected ? "step" : undefined}
-                  aria-label={node.title}
+                  aria-label={node.emptyModule ? `${node.moduleLabel ?? node.title}, sem aulas` : node.title}
                 >
                   <span className="track-path__ring" aria-hidden />
                   <span className="track-path__bubble-face">
@@ -148,13 +148,15 @@ export function TrackPath({ nodes, selectedId }: Props) {
                 </button>
 
                 <div
-                  className={`track-path__label track-path__label--${node.side}${node.state === "inactive" ? " track-path__label--muted" : ""}`}
+                  className={`track-path__label track-path__label--${node.side}${node.state === "inactive" || node.emptyModule ? " track-path__label--muted" : ""}`}
                 >
-                  <span className="track-path__label-text">{node.title}</span>
+                  <span className="track-path__label-text">
+                    {node.emptyModule ? "Sem aulas" : node.title}
+                  </span>
                   {node.state === "current" && (
                     <span className="track-path__label-badge">Aula atual</span>
                   )}
-                  {node.state === "inactive" && (
+                  {node.state === "inactive" && !node.emptyModule && (
                     <span className="track-path__label-badge track-path__label-badge--muted">Desativada</span>
                   )}
                 </div>

@@ -35,8 +35,8 @@ O encerramento de aula pelo professor **avança a turma e libera o contexto** no
 - **Backend:** Python · FastAPI (async) · SQLAlchemy 2 · PostgreSQL · Redis
 - **Async:** Celery (worker) + Celery Beat (agendados) + Flower (listagem/monitoramento)
 - **Frontend:** React 19 · Vite 6 · TypeScript (em `frontend/`)
-- **IA:** Anthropic (motor, humanizador, avaliador) · Groq/Whisper (transcrição)
-- **Segurança:** JWT access/refresh, bcrypt, RBAC por papel, rotas públicas/privadas,
+- **IA:** OpenAI (motor, humanizador, avaliador — mesmo provedor do Realtime com alunos) · Groq/Whisper (transcrição)
+- **Segurança:** JWT access/refresh, bcrypt, RBAC por papel, e-mail único (sempre em minúsculas), rotas públicas/privadas,
   CORS restrito, security headers, rate limiting, segregação por `turma_id`.
 
 ---
@@ -66,6 +66,9 @@ ContextBuilder ──► monta o bundle por escopo (aula/módulo/trilha),
 Avaliação: micro-scores qualitativos (muito baixo → alto), nunca nota numérica. Uma IA
 externa (job em batch) lê os scores e aponta lacunas, sem média única.
 
+Conversas com alunos usam a **OpenAI** (Chat Completions hoje; Realtime em breve), para
+manter o mesmo ecossistema de modelos e voz ao longo do fluxo.
+
 ---
 
 ## Dev local
@@ -85,7 +88,7 @@ cp frontend/.env.example frontend/.env
 ln -sf ../.env backend/.env
 ```
 
-Ajuste no `.env`: `SECRET_KEY`, credenciais do Postgres e chaves de IA (`ANTHROPIC_API_KEY`, `GROQ_API_KEY`).
+Ajuste no `.env`: `SECRET_KEY`, credenciais do Postgres e chaves de IA (`OPENAI_API_KEY`, `GROQ_API_KEY`).
 
 ### 2. Infra local
 
@@ -122,6 +125,16 @@ alembic upgrade head
 python -m app.seed
 ```
 
+Na raiz do projeto também dá para usar:
+
+```bash
+bin/db-seed          # seed se o banco estiver vazio
+bin/db-seed --force  # apaga dados de dev e re-semeia
+bin/db-reset         # atalho para --force
+```
+
+O seed traz trilha com **6 aulas** de conteúdo real, **2 professores**, **8 alunos** (2 já matriculados na turma) e o restante disponível para testar matrícula em lote.
+
 ### 4. Frontend
 
 ```bash
@@ -143,6 +156,7 @@ O Foreman sobe API, worker, beat, flower e frontend de uma vez (`Procfile.dev`).
 |---|---|
 | Frontend | http://localhost:5173 |
 | API (docs) | http://localhost:8000/api/v1/openapi.json |
+| Playground (admin) | http://localhost:5173/admin/playground |
 | Flower (jobs) | http://localhost:5555 |
 
 Logins de teste (após o seed):
@@ -151,8 +165,12 @@ Logins de teste (após o seed):
 |---|---|---|
 | Admin | admin@certai.app | admin12345 |
 | Designer | designer@certai.app | design12345 |
-| Professor | prof@certai.app | prof12345 |
-| Aluno | aluno@certai.app | aluno12345 |
+| Professor (Fundamentos) | prof@certai.app | prof12345 |
+| Professor (Prática) | marcos.ferreira@certai.app | prof12345 |
+| Aluno (matriculado) | aluno@certai.app | aluno12345 |
+| Aluno (matriculado) | rafael.souza@certai.app | aluno12345 |
+
+Demais alunos do seed: senha `aluno12345` (úteis para matrícula em lote).
 
 ## Docker (opcional)
 
@@ -182,10 +200,12 @@ certai/
 │   └── Dockerfile
 ├── frontend/            React + Vite (design institucional)
 │   └── src/
-│       ├── lib/         api (refresh automático), auth (RBAC no client)
-│       ├── components/  AppShell, ProtectedRoute
-│       └── pages/       Login, Dashboard, Tracks, Learn (Duolingo-style track)
+│       ├── lib/         api, auth, confirm, feedback, validation, useApiAction
+│       ├── components/  AppShell, ProtectedRoute, UI (Select, ConfirmDialog)
+│       └── pages/       Login, Dashboard, Tracks, Cohorts, Learn, Playground
 ├── bin/dev              foreman — sobe API, workers e frontend
+├── bin/db-seed          seed do banco (aceita --force)
+├── bin/db-reset         re-semeia o banco de dev
 ├── Procfile.dev
 ├── docker-compose.yml
 └── .env.example

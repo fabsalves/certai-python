@@ -2,6 +2,9 @@ import { type FormEvent, useState } from "react";
 import { Modal } from "../ui/Modal";
 import { api } from "../../lib/api";
 import type { UserOption, UserCreateInput } from "../../lib/users";
+import { useFeedback } from "../../lib/feedback";
+import { useApiAction } from "../../lib/useApiAction";
+import { isNonEmpty, normalizedEmail, trimmed } from "../../lib/validation";
 
 interface Props {
   open: boolean;
@@ -10,34 +13,41 @@ interface Props {
 }
 
 export function ProfessorCreateModal({ open, onClose, onCreated }: Props) {
+  const runAction = useApiAction();
+  const feedback = useFeedback();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
 
   function resetAndClose() {
     setName("");
     setEmail("");
     setPassword("");
-    setError("");
     onClose();
   }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    setError("");
-    setSaving(true);
-    try {
-      const body: UserCreateInput = { email, name, password, role: "professor" };
-      const { data } = await api.post<UserOption>("/users", body);
-      onCreated(data);
-      resetAndClose();
-    } catch {
-      setError("Não foi possível cadastrar. Verifique se o e-mail já existe.");
-    } finally {
-      setSaving(false);
+    const nextName = trimmed(name);
+    if (!nextName) {
+      feedback.error("Informe o nome do professor.");
+      return;
     }
+    setSaving(true);
+    await runAction({
+      run: () => {
+        const body: UserCreateInput = { email: normalizedEmail(email), name: nextName, password, role: "professor" };
+        return api.post<UserOption>("/users", body);
+      },
+      successMessage: `${nextName} cadastrado(a) como professor.`,
+      errorMessage: "Não foi possível cadastrar. Verifique se o e-mail já existe.",
+      onSuccess: ({ data }) => {
+        onCreated(data);
+        resetAndClose();
+      },
+    });
+    setSaving(false);
   }
 
   return (
@@ -79,12 +89,11 @@ export function ProfessorCreateModal({ open, onClose, onCreated }: Props) {
             required
           />
         </div>
-        {error && <div className="form-error">{error}</div>}
         <div className="modal-form__actions">
           <button type="button" className="btn btn-ghost" onClick={resetAndClose}>
             Cancelar
           </button>
-          <button type="submit" className="btn btn-primary" disabled={saving}>
+          <button type="submit" className="btn btn-primary" disabled={saving || !isNonEmpty(name)}>
             {saving ? "Cadastrando…" : "Cadastrar"}
           </button>
         </div>

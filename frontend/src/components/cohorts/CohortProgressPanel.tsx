@@ -84,12 +84,6 @@ export function CohortProgressPanel({
           onCompleted={onCompleted}
         />
       )}
-
-      {isCurrent && !canComplete && (
-        <p className="muted" style={{ margin: 0, fontSize: 14 }}>
-          Só {professorName ? `o professor ${professorName}` : "o professor deste módulo"} pode encerrar esta aula.
-        </p>
-      )}
     </section>
   );
 }

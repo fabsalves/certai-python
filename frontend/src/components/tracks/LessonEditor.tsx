@@ -2,19 +2,30 @@ import { useEffect, useState } from "react";
 import type { SortableRenderProps } from "../ui/SortableList";
 import { DragHandle } from "../ui/DragHandle";
 import type { Lesson } from "../../lib/tracks";
+import { isDuplicateName, isNonEmpty } from "../../lib/validation";
 
 interface Props {
   lesson: Lesson;
   busy: boolean;
+  siblingLessonTitles?: string[];
   onSave: (draft: { title: string; content: string }) => void;
   onToggleActive: () => void;
   onRemove: () => void;
 }
 
-export function LessonEditorPanel({ lesson, busy, onSave, onToggleActive, onRemove }: Props) {
+export function LessonEditorPanel({
+  lesson,
+  busy,
+  siblingLessonTitles = [],
+  onSave,
+  onToggleActive,
+  onRemove,
+}: Props) {
   const [title, setTitle] = useState(lesson.title);
   const [content, setContent] = useState(lesson.content);
   const dirty = title !== lesson.title || content !== lesson.content;
+  const titleValid =
+    isNonEmpty(title) && !isDuplicateName(title, siblingLessonTitles, lesson.title);
 
   useEffect(() => {
     setTitle(lesson.title);
@@ -48,6 +59,7 @@ export function LessonEditorPanel({ lesson, busy, onSave, onToggleActive, onRemo
             className="input"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
+            required
           />
         </div>
         <div className="field">
@@ -67,7 +79,7 @@ export function LessonEditorPanel({ lesson, busy, onSave, onToggleActive, onRemo
         <button
           type="button"
           className="btn btn-primary btn-sm"
-          disabled={busy}
+          disabled={busy || !titleValid}
           onClick={() => onSave({ title, content })}
         >
           {busy ? "Salvando…" : "Salvar aula"}

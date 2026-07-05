@@ -1,13 +1,13 @@
-from anthropic import AsyncAnthropic
+from openai import AsyncOpenAI
 
 from app.core.config import settings
 
-_client: AsyncAnthropic | None = None
+_client: AsyncOpenAI | None = None
 
 
-def get_anthropic() -> AsyncAnthropic:
-    """Cliente Anthropic compartilhado (singleton preguiçoso)."""
+def get_openai() -> AsyncOpenAI:
+    """Cliente OpenAI compartilhado (singleton preguiçoso)."""
     global _client
     if _client is None:
-        _client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+        _client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
     return _client

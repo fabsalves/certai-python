@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
+import { useConfirm } from "../../lib/confirm";
+import { useFeedback } from "../../lib/feedback";
+import { useApiAction } from "../../lib/useApiAction";
+import { isDuplicateName, isNonEmpty, trimmed } from "../../lib/validation";
 import { persistSequentialPositions } from "../../lib/reorder";
 import { DragHandle } from "../ui/DragHandle";
 import { SortableList, type SortableRenderProps } from "../ui/SortableList";
@@ -20,7 +24,9 @@ interface Props {
   onToggle: () => void;
   selectedLessonId: string | null;
   onSelectLesson: (lessonId: string | null) => void;
-  onChanged: () => void;
+  onChanged: () => void | Promise<void>;
+  onRemoved?: () => void;
+  siblingModuleTitles?: string[];
   sortable?: SortableRenderProps;
 }
 
@@ -31,8 +37,13 @@ export function ModuleEditor({
   selectedLessonId,
   onSelectLesson,
   onChanged,
+  onRemoved,
+  siblingModuleTitles = [],
   sortable,
 }: Props) {
+  const confirm = useConfirm();
+  const feedback = useFeedback();
+  const runAction = useApiAction();
   const lessons = sortedLessons(module);
   const selectedLesson = lessons.find((l) => l.id === selectedLessonId) ?? null;
   const [title, setTitle] = useState(module.title);
@@ -42,6 +53,9 @@ export function ModuleEditor({
   const [reorderingLessons, setReorderingLessons] = useState(false);
 
   const moduleDirty = title !== module.title || level !== module.level;
+  const moduleTitleValid =
+    isNonEmpty(title) && !isDuplicateName(title, siblingModuleTitles, module.title);
+  const lessonTitles = lessons.map((lesson) => lesson.title);
 
   useEffect(() => {
     setTitle(module.title);
@@ -49,56 +63,91 @@ export function ModuleEditor({
   }, [module.id, module.title, module.level]);
 
   async function saveModule() {
-    setSavingModule(true);
-    try {
-      await api.patch(`/tracks/modules/${module.id}`, { title, level });
-      onChanged();
-    } finally {
-      setSavingModule(false);
+    const nextTitle = trimmed(title);
+    if (!nextTitle) {
+      feedback.error("Informe o nome do módulo.");
+      return;
     }
+    if (isDuplicateName(nextTitle, siblingModuleTitles, module.title)) {
+      feedback.error("Já existe um módulo com este nome nesta trilha.");
+      return;
+    }
+    setSavingModule(true);
+    await runAction({
+      run: () => api.patch(`/tracks/modules/${module.id}`, { title: nextTitle, level }),
+      successMessage: "Módulo salvo.",
+      errorMessage: "Não foi possível salvar o módulo.",
+      onSuccess: () => onChanged(),
+    });
+    setSavingModule(false);
   }
 
   async function toggleModuleActive() {
     setSavingModule(true);
-    try {
-      await api.patch(`/tracks/modules/${module.id}`, { is_active: !module.is_active });
-      onChanged();
-    } finally {
-      setSavingModule(false);
-    }
+    await runAction({
+      run: () =>
+        api.patch(`/tracks/modules/${module.id}`, { is_active: !module.is_active }),
+      successMessage: module.is_active ? "Módulo desativado." : "Módulo reativado.",
+      errorMessage: "Não foi possível alterar o módulo.",
+      onSuccess: () => onChanged(),
+    });
+    setSavingModule(false);
   }
 
   async function removeModule() {
-    if (!confirm(`Excluir o módulo "${module.title}" e todas as aulas?`)) return;
-    await api.delete(`/tracks/modules/${module.id}`);
-    onChanged();
+    const ok = await confirm({
+      title: "Excluir módulo",
+      message: `Excluir o módulo "${module.title}" e todas as aulas?`,
+      confirmLabel: "Excluir",
+      tone: "danger",
+    });
+    if (!ok) return;
+    setSavingModule(true);
+    await runAction({
+      run: () => api.delete(`/tracks/modules/${module.id}`),
+      successMessage: `Módulo "${module.title}" excluído.`,
+      errorMessage: "Não foi possível excluir o módulo.",
+      onSuccess: async () => {
+        onRemoved?.();
+        onSelectLesson(null);
+        await onChanged();
+      },
+    });
+    setSavingModule(false);
   }
 
   async function addLesson() {
     setBusyLessonId("new");
-    try {
-      const { data } = await api.post<Lesson>(`/tracks/modules/${module.id}/lessons`, {
-        title: `Aula ${nextLessonPosition(module)}`,
-        content: "",
-        position: nextLessonPosition(module),
-      });
-      onChanged();
-      onSelectLesson(data.id);
-    } finally {
-      setBusyLessonId(null);
-    }
+    await runAction({
+      run: () =>
+        api.post<Lesson>(`/tracks/modules/${module.id}/lessons`, {
+          title: `Aula ${nextLessonPosition(module)}`,
+          content: "",
+          position: nextLessonPosition(module),
+        }),
+      successMessage: "Aula adicionada.",
+      errorMessage: "Não foi possível adicionar a aula.",
+      onSuccess: ({ data }) => {
+        onChanged();
+        onSelectLesson(data.id);
+      },
+    });
+    setBusyLessonId(null);
   }
 
   async function reorderLessons(ordered: Lesson[]) {
     setReorderingLessons(true);
-    try {
-      await persistSequentialPositions(ordered, (id, position) =>
-        api.patch(`/tracks/lessons/${id}`, { position }),
-      );
-      onChanged();
-    } finally {
-      setReorderingLessons(false);
-    }
+    await runAction({
+      run: async () => {
+        await persistSequentialPositions(ordered, (id, position) =>
+          api.patch(`/tracks/lessons/${id}`, { position }),
+        );
+      },
+      successMessage: "Ordem das aulas atualizada.",
+      errorMessage: "Não foi possível reordenar as aulas.",
+      onSuccess: () => onChanged(),
+    });
+    setReorderingLessons(false);
   }
 
   return (
@@ -136,8 +185,8 @@ export function ModuleEditor({
           <button type="button" className="btn btn-ghost btn-sm" disabled={savingModule} onClick={toggleModuleActive}>
             {module.is_active ? "Desativar" : "Reativar"}
           </button>
-          <button type="button" className="btn btn-ghost btn-sm structure-module__danger" onClick={removeModule}>
-            Excluir
+          <button type="button" className="btn btn-ghost btn-sm structure-module__danger" disabled={savingModule} onClick={removeModule}>
+            {savingModule ? "Excluindo…" : "Excluir"}
           </button>
         </div>
       </header>
@@ -152,6 +201,7 @@ export function ModuleEditor({
                 className="input"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
+                required
               />
             </div>
             <div className="field">
@@ -170,7 +220,12 @@ export function ModuleEditor({
               </div>
             </div>
             {moduleDirty && (
-              <button type="button" className="btn btn-primary btn-sm" disabled={savingModule} onClick={saveModule}>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                disabled={savingModule || !moduleTitleValid}
+                onClick={saveModule}
+              >
                 {savingModule ? "Salvando…" : "Salvar módulo"}
               </button>
             )}
@@ -215,37 +270,67 @@ export function ModuleEditor({
                     <LessonEditorPanel
                       key={selectedLesson.id}
                       lesson={selectedLesson}
+                      siblingLessonTitles={lessons
+                        .filter((lesson) => lesson.id !== selectedLesson.id)
+                        .map((lesson) => lesson.title)}
                       busy={busyLessonId === selectedLesson.id}
                       onSave={async (draft) => {
-                        setBusyLessonId(selectedLesson.id);
-                        try {
-                          await api.patch(`/tracks/lessons/${selectedLesson.id}`, draft);
-                          onChanged();
-                        } finally {
-                          setBusyLessonId(null);
+                        const nextTitle = trimmed(draft.title);
+                        if (!nextTitle) {
+                          feedback.error("Informe o título da aula.");
+                          return;
                         }
+                        if (isDuplicateName(nextTitle, lessonTitles, selectedLesson.title)) {
+                          feedback.error("Já existe uma aula com este título neste módulo.");
+                          return;
+                        }
+                        setBusyLessonId(selectedLesson.id);
+                        await runAction({
+                          run: () =>
+                            api.patch(`/tracks/lessons/${selectedLesson.id}`, {
+                              ...draft,
+                              title: nextTitle,
+                            }),
+                          successMessage: "Aula salva.",
+                          errorMessage: "Não foi possível salvar a aula.",
+                          onSuccess: () => onChanged(),
+                        });
+                        setBusyLessonId(null);
                       }}
                       onToggleActive={async () => {
                         setBusyLessonId(selectedLesson.id);
-                        try {
-                          await api.patch(`/tracks/lessons/${selectedLesson.id}`, {
-                            is_active: !selectedLesson.is_active,
-                          });
-                          onChanged();
-                        } finally {
-                          setBusyLessonId(null);
-                        }
+                        await runAction({
+                          run: () =>
+                            api.patch(`/tracks/lessons/${selectedLesson.id}`, {
+                              is_active: !selectedLesson.is_active,
+                            }),
+                          successMessage: selectedLesson.is_active
+                            ? "Aula desativada."
+                            : "Aula reativada.",
+                          errorMessage: "Não foi possível alterar a aula.",
+                          onSuccess: () => onChanged(),
+                        });
+                        setBusyLessonId(null);
                       }}
                       onRemove={async () => {
-                        if (!confirm(`Excluir a aula "${selectedLesson.title}"?`)) return;
+                        const ok = await confirm({
+                          title: "Excluir aula",
+                          message: `Excluir a aula "${selectedLesson.title}"?`,
+                          confirmLabel: "Excluir",
+                          tone: "danger",
+                        });
+                        if (!ok) return;
                         setBusyLessonId(selectedLesson.id);
-                        try {
-                          await api.delete(`/tracks/lessons/${selectedLesson.id}`);
-                          onSelectLesson(null);
-                          onChanged();
-                        } finally {
-                          setBusyLessonId(null);
-                        }
+                        await runAction({
+                          run: () => api.delete(`/tracks/lessons/${selectedLesson.id}`),
+                          successMessage: `Aula "${selectedLesson.title}" excluída.`,
+                          errorMessage: "Não foi possível excluir a aula.",
+                          onSuccess: async () => {
+                            onSelectLesson(null);
+                            await onChanged();
+                          },
+                        });
+                        setBusyLessonId(null);
                       }}
                     />
                   ) : (

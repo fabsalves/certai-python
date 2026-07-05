@@ -74,7 +74,7 @@ async def _plan_dispatch(cohort_id: UUID, lesson_id: UUID) -> dict:
 async def _evaluate_gaps(cohort_id: UUID) -> dict:
     from sqlalchemy import select
 
-    from app.ai.client import get_anthropic
+    from app.ai.client import get_openai
     from app.core.config import settings
     from app.core.database import SessionLocal
     from app.models.assessment import MicroScore
@@ -88,18 +88,23 @@ async def _evaluate_gaps(cohort_id: UUID) -> dict:
         {"competency": r.competency, "level": r.level.value, "student": str(r.student_id)}
         for r in rows
     ]
-    client = get_anthropic()
-    resp = await client.messages.create(
+    client = get_openai()
+    resp = await client.chat.completions.create(
         model=settings.EVALUATOR_MODEL,
         max_tokens=1024,
-        system=(
-            "You are the external evaluator. From the micro-scores, point out "
-            "knowledge gaps per competency and per student. Do not compute a single "
-            "average. Write the report in Brazilian Portuguese."
-        ),
-        messages=[{"role": "user", "content": str(data)}],
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are the external evaluator. From the micro-scores, point out "
+                    "knowledge gaps per competency and per student. Do not compute a single "
+                    "average. Write the report in Brazilian Portuguese."
+                ),
+            },
+            {"role": "user", "content": str(data)},
+        ],
     )
-    report = "".join(b.text for b in resp.content if b.type == "text")
+    report = resp.choices[0].message.content or ""
     return {"cohort_id": str(cohort_id), "report": report}
 
 

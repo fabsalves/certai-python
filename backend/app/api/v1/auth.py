@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.email import normalize_email
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -24,7 +25,8 @@ async def login(
     form: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    user = await db.scalar(select(User).where(User.email == form.username))
+    email = normalize_email(form.username)
+    user = await db.scalar(select(User).where(User.email == email))
     if user is None or not verify_password(form.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
+import { normalizedEmail } from "../lib/validation";
 
 export function Login() {
   const { login } = useAuth();
@@ -15,7 +16,7 @@ export function Login() {
     setError("");
     setBusy(true);
     try {
-      await login(email, password);
+      await login(normalizedEmail(email), password);
       navigate("/");
     } catch {
       setError("E-mail ou senha incorretos. Tente novamente.");

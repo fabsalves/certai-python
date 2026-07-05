@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { api } from "../../lib/api";
 import { formatDuration, useAudioRecorder } from "../../hooks/useAudioRecorder";
+import { useApiAction } from "../../lib/useApiAction";
 
 interface Props {
   cohortId: string;
@@ -21,40 +22,38 @@ export function LessonReportCapture({
   transcribePath,
   completePath,
 }: Props) {
+  const runAction = useApiAction();
   const { status, seconds, blob, error: recorderError, start, stop, reset } = useAudioRecorder();
   const [transcript, setTranscript] = useState("");
   const [transcribing, setTranscribing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
   const transcribedRef = useRef<Blob | null>(null);
 
   useEffect(() => {
     reset();
     setTranscript("");
-    setError("");
     transcribedRef.current = null;
   }, [cohortId, lessonId, reset]);
 
   async function transcribeRecording(audio: Blob) {
-    setError("");
     setTranscribing(true);
-    try {
-      const form = new FormData();
-      form.append("audio", audio, "relato-aula.webm");
-      const { data } = await api.post<{ transcript: string }>(
-        transcribePath ?? `/cohorts/${cohortId}/transcribe-report`,
-        form,
-        {
-          headers: { "Content-Type": "multipart/form-data" },
-          params: { lesson_id: lessonId },
-        },
-      );
-      setTranscript(data.transcript);
-    } catch {
-      setError("Não foi possível transcrever o áudio. Tente gravar de novo ou digite o relato.");
-    } finally {
-      setTranscribing(false);
-    }
+    await runAction({
+      run: async () => {
+        const form = new FormData();
+        form.append("audio", audio, "relato-aula.webm");
+        return api.post<{ transcript: string }>(
+          transcribePath ?? `/cohorts/${cohortId}/transcribe-report`,
+          form,
+          {
+            headers: { "Content-Type": "multipart/form-data" },
+            params: { lesson_id: lessonId },
+          },
+        );
+      },
+      errorMessage: "Não foi possível transcrever o áudio. Tente gravar de novo ou digite o relato.",
+      onSuccess: ({ data }) => setTranscript(data.transcript),
+    });
+    setTranscribing(false);
   }
 
   useEffect(() => {
@@ -65,22 +64,23 @@ export function LessonReportCapture({
 
   async function submitReport(e: FormEvent) {
     e.preventDefault();
-    setError("");
     setSubmitting(true);
-    try {
-      await api.post(completePath ?? `/cohorts/${cohortId}/complete-lesson`, {
-        lesson_id: lessonId,
-        transcript,
-      });
-      reset();
-      transcribedRef.current = null;
-      setTranscript("");
-      onCompleted();
-    } catch {
-      setError("Não foi possível encerrar a aula. Tente novamente.");
-    } finally {
-      setSubmitting(false);
-    }
+    await runAction({
+      run: () =>
+        api.post(completePath ?? `/cohorts/${cohortId}/complete-lesson`, {
+          lesson_id: lessonId,
+          transcript,
+        }),
+      successMessage: "Aula encerrada. A turma avançou na trilha.",
+      errorMessage: "Não foi possível encerrar a aula. Tente novamente.",
+      onSuccess: () => {
+        reset();
+        transcribedRef.current = null;
+        setTranscript("");
+        onCompleted();
+      },
+    });
+    setSubmitting(false);
   }
 
   if (!canComplete) {
@@ -124,8 +124,8 @@ export function LessonReportCapture({
             )}
           </div>
         )}
-        {(recorderError || error) && (
-          <div className="form-error" style={{ marginTop: 10 }}>{recorderError || error}</div>
+        {recorderError && (
+          <div className="form-error" style={{ marginTop: 10 }}>{recorderError}</div>
         )}
       </div>
 

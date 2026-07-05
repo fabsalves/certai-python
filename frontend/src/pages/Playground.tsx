@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CohortPathPreview } from "../components/cohorts/CohortPathPreview";
 import { LessonReportCapture } from "../components/cohorts/LessonReportCapture";
-import { PageHeader } from "../components/layout/PageHeader";
 import { PlaygroundChat } from "../components/playground/PlaygroundChat";
+import { PlaygroundSessionHead } from "../components/playground/PlaygroundSessionHead";
+import { Select } from "../components/ui/Select";
 import { api } from "../lib/api";
 import type { Cohort, CohortProgress, Enrollment } from "../lib/cohorts";
 import { professorForModule } from "../lib/cohorts";
@@ -22,6 +23,16 @@ function findLessonModule(track: Track, lessonId: string) {
   return null;
 }
 
+function SettingsIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+      <circle cx="10" cy="4" r="1.5" />
+      <circle cx="10" cy="10" r="1.5" />
+      <circle cx="10" cy="16" r="1.5" />
+    </svg>
+  );
+}
+
 export function Playground() {
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [cohortId, setCohortId] = useState("");
@@ -35,6 +46,7 @@ export function Playground() {
   const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const refreshProgress = useCallback(async (id: string) => {
     const { data } = await api.get<CohortProgress>(`/cohorts/${id}/progress`);
@@ -119,6 +131,15 @@ export function Playground() {
     }
   }, [mode, lessonProfessor, selectedLessonId]);
 
+  useEffect(() => {
+    if (!settingsOpen) return;
+    function onKeyDown(ev: KeyboardEvent) {
+      if (ev.key === "Escape") setSettingsOpen(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [settingsOpen]);
+
   const completedSet = useMemo(
     () => new Set(progress?.completed_lesson_ids ?? []),
     [progress],
@@ -138,182 +159,234 @@ export function Playground() {
   const selectedStudent = enrollments.find((e) => e.student_id === studentId);
   const selectedProfessor = professors.find((p) => p.professor_id === professorId);
 
+  const cohortOptions = useMemo(
+    () =>
+      cohorts.map((item) => ({
+        value: item.id,
+        label: `${item.name} — ${item.track_title}`,
+      })),
+    [cohorts],
+  );
+
+  const studentOptions = useMemo(
+    () =>
+      [...enrollments]
+        .sort((a, b) => a.student_name.localeCompare(b.student_name, "pt-BR"))
+        .map((item) => ({
+          value: item.student_id,
+          label: `${item.student_name} (${item.student_email})`,
+        })),
+    [enrollments],
+  );
+
+  const professorOptions = useMemo(
+    () =>
+      professors.map((item) => ({
+        value: item.professor_id,
+        label: item.professor_name,
+      })),
+    [professors],
+  );
+
+  const sessionMenu = (
+    <button
+      type="button"
+      className="playground-stage__menu"
+      onClick={() => setSettingsOpen(true)}
+      aria-label="Configurações da sessão"
+    >
+      <SettingsIcon />
+    </button>
+  );
+
   if (loading) {
-    return <p className="muted">Carregando playground…</p>;
+    return (
+      <div className="playground-shell playground-shell--centered">
+        <p className="muted">Carregando playground…</p>
+      </div>
+    );
   }
 
   if (cohorts.length === 0) {
     return (
-      <>
-        <PageHeader
-          title="Playground"
-          description="Ambiente de testes da IA. Crie uma turma com alunos matriculados para começar."
-        />
-        <div className="empty-state card">
+      <div className="playground-shell playground-shell--centered">
+        <div className="empty-state">
           <p>Nenhuma turma disponível.</p>
+          <p className="muted" style={{ marginTop: 8, fontSize: 14 }}>
+            Crie uma turma com alunos matriculados para começar.
+          </p>
         </div>
-      </>
+      </div>
     );
   }
 
   return (
-    <>
-      <PageHeader
-        title="Playground"
-        description="Teste a Lira como aluno ou professor. A sessão é direcionada pelo backend com segregação por turma e papel."
-      />
-
-      {loadError && <div className="form-error" style={{ marginBottom: 16 }}>{loadError}</div>}
-
-      <div className="playground-toolbar card">
-        <div className="playground-toolbar__row">
-          <div className="field playground-toolbar__field">
-            <label htmlFor="playground-cohort">Turma</label>
-            <select
-              id="playground-cohort"
-              className="input"
-              value={cohortId}
-              onChange={(ev) => setCohortId(ev.target.value)}
-            >
-              {cohorts.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name} — {item.track_title}
-                </option>
-              ))}
-            </select>
+    <div className="playground-shell">
+      <div className="playground-stage">
+        {!selectedLesson && (
+          <div className="playground-stage__bar">
+            {loadError && <p className="form-error playground-stage__error">{loadError}</p>}
+            {sessionMenu}
           </div>
+        )}
 
-          <div className="field playground-toolbar__field">
-            <label htmlFor="playground-mode">Papel da sessão</label>
-            <select
-              id="playground-mode"
-              className="input"
-              value={mode}
-              onChange={(ev) => setMode(ev.target.value as SessionMode)}
-            >
-              <option value="student">Aluno — chat com a Lira</option>
-              <option value="professor">Professor — encerrar aula</option>
-            </select>
-          </div>
-
-          {mode === "student" ? (
-            <div className="field playground-toolbar__field">
-              <label htmlFor="playground-student">Agir como</label>
-              <select
-                id="playground-student"
-                className="input"
-                value={studentId}
-                onChange={(ev) => setStudentId(ev.target.value)}
-                disabled={enrollments.length === 0}
-              >
-                {enrollments.length === 0 ? (
-                  <option value="">Sem alunos matriculados</option>
-                ) : (
-                  enrollments.map((item) => (
-                    <option key={item.student_id} value={item.student_id}>
-                      {item.student_name} ({item.student_email})
-                    </option>
-                  ))
-                )}
-              </select>
+        <div className="playground-stage__body">
+          {loadError && selectedLesson && (
+            <p className="form-error playground-stage__inline-error">{loadError}</p>
+          )}
+          {!track || !progress || !cohort ? null : !selectedLesson ? (
+            <div className="playground-stage__empty">
+              <p className="muted">Selecione uma aula na trilha para iniciar.</p>
             </div>
+          ) : mode === "student" ? (
+            studentId && selectedStudent ? (
+              <PlaygroundChat
+                key={`${studentId}-${selectedLessonId}`}
+                cohortId={cohortId}
+                studentId={studentId}
+                studentName={selectedStudent.student_name}
+                lessonId={selectedLessonId!}
+                lessonTitle={selectedLesson.lesson.title}
+                canChat={canStudentChat}
+                headerActions={sessionMenu}
+              />
+            ) : (
+              <div className="playground-stage__empty">
+                <p className="muted">Matricule pelo menos um aluno nesta turma para testar o chat.</p>
+              </div>
+            )
           ) : (
-            <div className="field playground-toolbar__field">
-              <label htmlFor="playground-professor">Agir como</label>
-              <select
-                id="playground-professor"
-                className="input"
-                value={professorId}
-                onChange={(ev) => setProfessorId(ev.target.value)}
-                disabled={professors.length === 0}
-              >
-                {professors.map((item) => (
-                  <option key={item.professor_id} value={item.professor_id}>
-                    {item.professor_name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <section className="playground-professor">
+              <PlaygroundSessionHead
+                title={selectedLesson.lesson.title}
+                participantName={selectedProfessor?.professor_name ?? "Professor"}
+                roleLabel="Professor"
+                actions={sessionMenu}
+              />
+              <div className="playground-professor__scroll">
+                <div className="playground-professor__inner">
+                  {selectedLessonId === progress.current_lesson_id ? (
+                    <LessonReportCapture
+                      key={`${professorId}-${selectedLessonId}`}
+                      cohortId={cohortId}
+                      lessonId={selectedLessonId!}
+                      canComplete={canProfessorComplete}
+                      professorName={selectedProfessor?.professor_name}
+                      transcribePath={playgroundTranscribePath(cohortId, professorId)}
+                      completePath={playgroundCompletePath(cohortId, professorId)}
+                      onCompleted={() => refreshProgress(cohortId)}
+                    />
+                  ) : completedSet.has(selectedLessonId!) ? (
+                    <p className="muted" style={{ margin: 0 }}>
+                      Aula já encerrada. Selecione a aula atual da turma para testar o encerramento.
+                    </p>
+                  ) : (
+                    <p className="muted" style={{ margin: 0 }}>
+                      Esta aula ainda não foi liberada. Encerre as anteriores ou avance a turma pelo fluxo normal.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </section>
           )}
         </div>
-
-        <p className="muted playground-toolbar__note">
-          {mode === "student"
-            ? "As mensagens são persistidas na conversa do aluno selecionado, segregada por turma e aula."
-            : "O encerramento usa o fluxo real do professor — avança a turma e libera contexto para os alunos."}
-        </p>
       </div>
 
       {track && progress && cohort && (
-        <div className="playground-layout">
+        <aside className="playground-rail">
           <CohortPathPreview
+            embedded
+            compact
             track={track}
             progress={progress}
             selectedLessonId={selectedLessonId}
             moduleProfessors={cohort.module_professors}
             onSelectLesson={(lessonId) => setSelectedLessonId(lessonId)}
           />
+        </aside>
+      )}
 
-          <div className="playground-session">
-            {!selectedLesson ? (
-              <div className="card playground-session__empty">
-                <p className="muted">Selecione uma aula na trilha para iniciar a sessão.</p>
+      {settingsOpen && (
+        <div className="playground-drawer">
+          <button
+            type="button"
+            className="playground-drawer__scrim"
+            onClick={() => setSettingsOpen(false)}
+            aria-label="Fechar configurações"
+          />
+          <aside className="playground-drawer__panel" aria-label="Configurações da sessão">
+            <header className="playground-drawer__head">
+              <h2 className="playground-drawer__title">Sessão</h2>
+              <button
+                type="button"
+                className="playground-drawer__close"
+                onClick={() => setSettingsOpen(false)}
+                aria-label="Fechar"
+              >
+                ×
+              </button>
+            </header>
+
+            <div className="playground-drawer__body">
+              <Select
+                id="playground-cohort"
+                label="Turma"
+                variant="drawer"
+                value={cohortId}
+                options={cohortOptions}
+                onChange={setCohortId}
+              />
+
+              <div className="drawer-field">
+                <span className="drawer-field__label">Papel</span>
+                <div className="drawer-segment" role="radiogroup" aria-label="Papel da sessão">
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={mode === "student"}
+                    className={`drawer-segment__btn${mode === "student" ? " is-active" : ""}`}
+                    onClick={() => setMode("student")}
+                  >
+                    Aluno
+                  </button>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={mode === "professor"}
+                    className={`drawer-segment__btn${mode === "professor" ? " is-active" : ""}`}
+                    onClick={() => setMode("professor")}
+                  >
+                    Professor
+                  </button>
+                </div>
               </div>
-            ) : mode === "student" ? (
-              studentId && selectedStudent ? (
-                <PlaygroundChat
-                  key={`${studentId}-${selectedLessonId}`}
-                  cohortId={cohortId}
-                  studentId={studentId}
-                  studentName={selectedStudent.student_name}
-                  lessonId={selectedLessonId!}
-                  lessonTitle={selectedLesson.lesson.title}
-                  canChat={canStudentChat}
+
+              {mode === "student" ? (
+                <Select
+                  id="playground-student"
+                  label="Agir como"
+                  variant="drawer"
+                  value={studentId}
+                  options={studentOptions}
+                  disabled={enrollments.length === 0}
+                  placeholder="Sem alunos matriculados"
+                  onChange={setStudentId}
                 />
               ) : (
-                <div className="card playground-session__empty">
-                  <p className="muted">Matricule pelo menos um aluno nesta turma para testar o chat.</p>
-                </div>
-              )
-            ) : (
-              <section className="card playground-professor-panel">
-                <header className="playground-professor-panel__head">
-                  <span className="tag">Sessão de professor</span>
-                  <h2 style={{ margin: "8px 0 0" }}>{selectedLesson.lesson.title}</h2>
-                  <p className="muted" style={{ marginTop: 6, fontSize: 14 }}>
-                    Agindo como{" "}
-                    <strong>{selectedProfessor?.professor_name ?? "professor"}</strong>
-                    {lessonProfessor && professorId !== lessonProfessor.professor_id && (
-                      <> — esta aula pertence ao módulo de {lessonProfessor.professor_name}</>
-                    )}
-                  </p>
-                </header>
-
-                {selectedLessonId === progress.current_lesson_id ? (
-                  <LessonReportCapture
-                    key={`${professorId}-${selectedLessonId}`}
-                    cohortId={cohortId}
-                    lessonId={selectedLessonId!}
-                    canComplete={canProfessorComplete}
-                    professorName={selectedProfessor?.professor_name}
-                    transcribePath={playgroundTranscribePath(cohortId, professorId)}
-                    completePath={playgroundCompletePath(cohortId, professorId)}
-                    onCompleted={() => refreshProgress(cohortId)}
-                  />
-                ) : completedSet.has(selectedLessonId!) ? (
-                  <p className="muted" style={{ margin: 0 }}>
-                    Aula já encerrada. Selecione a aula atual da turma para testar o encerramento.
-                  </p>
-                ) : (
-                  <p className="muted" style={{ margin: 0 }}>
-                    Esta aula ainda não foi liberada. Encerre as anteriores ou avance a turma pelo fluxo normal.
-                  </p>
-                )}
-              </section>
-            )}
-          </div>
+                <Select
+                  id="playground-professor"
+                  label="Agir como"
+                  variant="drawer"
+                  value={professorId}
+                  options={professorOptions}
+                  disabled={professors.length === 0}
+                  onChange={setProfessorId}
+                />
+              )}
+            </div>
+          </aside>
         </div>
       )}
-    </>
+    </div>
   );
 }

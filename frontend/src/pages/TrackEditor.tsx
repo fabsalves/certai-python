@@ -6,6 +6,10 @@ import { ModuleEditor } from "../components/tracks/ModuleEditor";
 import { TrackPathPreview } from "../components/tracks/TrackPathPreview";
 import { SortableList } from "../components/ui/SortableList";
 import { api } from "../lib/api";
+import { useConfirm } from "../lib/confirm";
+import { useFeedback } from "../lib/feedback";
+import { useApiAction } from "../lib/useApiAction";
+import { isNonEmpty, trimmed } from "../lib/validation";
 import { persistSequentialPositions } from "../lib/reorder";
 import {
   nextModulePosition,
@@ -21,6 +25,9 @@ export function TrackEditor() {
   const { trackId } = useParams<{ trackId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const confirm = useConfirm();
+  const runAction = useApiAction();
+  const feedback = useFeedback();
   const isNew = trackId === "new";
 
   const [track, setTrack] = useState<Track | null>(null);
@@ -31,7 +38,6 @@ export function TrackEditor() {
   const [saving, setSaving] = useState(false);
   const [addingModule, setAddingModule] = useState(false);
   const [loadError, setLoadError] = useState("");
-  const [formError, setFormError] = useState("");
   const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
   const [expandedModuleId, setExpandedModuleId] = useState<string | null>(null);
   const [tab, setTab] = useState<EditorTab>("meta");
@@ -55,7 +61,6 @@ export function TrackEditor() {
     if (isNew) {
       setTrack(null);
       setLoadError("");
-      setFormError("");
       setLoading(false);
       return;
     }
@@ -99,73 +104,111 @@ export function TrackEditor() {
 
   async function saveMeta(e?: FormEvent) {
     e?.preventDefault();
-    setFormError("");
-    setSaving(true);
-    try {
-      if (isNew) {
-        const { data } = await api.post<Track>("/tracks", { title, competency, description });
-        navigate(`/tracks/${data.id}`, { replace: true, state: { tab: "structure" } });
-        return;
-      }
-      if (!track) return;
-      const { data } = await api.patch<Track>(`/tracks/${track.id}`, { title, competency, description });
-      setTrack(data);
-    } catch {
-      setFormError("Não foi possível salvar a trilha.");
-    } finally {
-      setSaving(false);
+    const nextTitle = trimmed(title);
+    if (!nextTitle) {
+      feedback.error("Informe o título da trilha.");
+      return;
     }
+    setSaving(true);
+    if (isNew) {
+      await runAction({
+        run: () => api.post<Track>("/tracks", { title: nextTitle, competency, description }),
+        successMessage: "Trilha criada.",
+        errorMessage: "Não foi possível criar a trilha.",
+        onSuccess: ({ data }) => {
+          navigate(`/tracks/${data.id}`, { replace: true, state: { tab: "structure" } });
+        },
+      });
+      setSaving(false);
+      return;
+    }
+    if (!track) {
+      setSaving(false);
+      return;
+    }
+    await runAction({
+      run: () =>
+        api.patch<Track>(`/tracks/${track.id}`, { title: nextTitle, competency, description }),
+      successMessage: "Dados da trilha salvos.",
+      errorMessage: "Não foi possível salvar a trilha.",
+      onSuccess: ({ data }) => setTrack(data),
+    });
+    setSaving(false);
   }
 
   async function togglePublish() {
     if (!track || !track.is_active) return;
     setSaving(true);
-    try {
-      if (track.published) {
-        const { data } = await api.patch<Track>(`/tracks/${track.id}`, { published: false });
-        setTrack(data);
-      } else {
-        const { data } = await api.post<Track>(`/tracks/${track.id}/publish`);
-        setTrack(data);
-      }
-    } finally {
-      setSaving(false);
+    if (track.published) {
+      await runAction({
+        run: () => api.patch<Track>(`/tracks/${track.id}`, { published: false }),
+        successMessage: "Trilha despublicada.",
+        errorMessage: "Não foi possível despublicar a trilha.",
+        onSuccess: ({ data }) => setTrack(data),
+      });
+    } else {
+      await runAction({
+        run: () => api.post<Track>(`/tracks/${track.id}/publish`),
+        successMessage: "Trilha publicada.",
+        errorMessage: "Não foi possível publicar a trilha.",
+        onSuccess: ({ data }) => setTrack(data),
+      });
     }
+    setSaving(false);
   }
 
   async function toggleTrackActive() {
     if (!track) return;
-    if (track.is_active && !confirm("Desativar esta trilha? Turmas novas não poderão usá-la.")) return;
-    setSaving(true);
-    try {
-      const { data } = await api.patch<Track>(`/tracks/${track.id}`, { is_active: !track.is_active });
-      setTrack(data);
-    } finally {
-      setSaving(false);
+    if (track.is_active) {
+      const ok = await confirm({
+        title: "Desativar trilha",
+        message: "Desativar esta trilha? Turmas novas não poderão usá-la.",
+        confirmLabel: "Desativar",
+        tone: "danger",
+      });
+      if (!ok) return;
     }
+    setSaving(true);
+    await runAction({
+      run: () => api.patch<Track>(`/tracks/${track.id}`, { is_active: !track.is_active }),
+      successMessage: track.is_active ? "Trilha desativada." : "Trilha reativada.",
+      errorMessage: "Não foi possível alterar a trilha.",
+      onSuccess: ({ data }) => setTrack(data),
+    });
+    setSaving(false);
   }
 
   async function addModule() {
     if (!track) return;
     setAddingModule(true);
-    try {
-      const { data } = await api.post<Module>(`/tracks/${track.id}/modules`, {
-        title: `Módulo ${nextModulePosition(track)}`,
-        level: "beginner",
-        position: nextModulePosition(track),
-      });
-      await reloadTrack();
-      setExpandedModuleId(data.id);
-    } finally {
-      setAddingModule(false);
-    }
+    await runAction({
+      run: () =>
+        api.post<Module>(`/tracks/${track.id}/modules`, {
+          title: `Módulo ${nextModulePosition(track)}`,
+          level: "beginner",
+          position: nextModulePosition(track),
+        }),
+      successMessage: "Módulo adicionado.",
+      errorMessage: "Não foi possível adicionar o módulo.",
+      onSuccess: async ({ data }) => {
+        await reloadTrack();
+        setExpandedModuleId(data.id);
+      },
+    });
+    setAddingModule(false);
   }
 
   async function reorderModules(ordered: Module[]) {
-    await persistSequentialPositions(ordered, (id, position) =>
-      api.patch(`/tracks/modules/${id}`, { position }),
-    );
-    await reloadTrack();
+    await runAction({
+      run: async () => {
+        await persistSequentialPositions(ordered, (id, position) =>
+          api.patch(`/tracks/modules/${id}`, { position }),
+        );
+      },
+      successMessage: "Ordem dos módulos atualizada.",
+      errorMessage: "Não foi possível reordenar os módulos.",
+      onSuccess: () => reloadTrack(),
+    });
   }
 
   function selectLesson(lessonId: string, moduleId: string) {
@@ -269,10 +312,12 @@ export function TrackEditor() {
                     </div>
                   </div>
 
-                  {formError && <div className="form-error">{formError}</div>}
-
                   {(isNew || metaDirty) && (
-                    <button type="submit" className="btn btn-primary" disabled={saving}>
+                    <button
+                      type="submit"
+                      className="btn btn-primary"
+                      disabled={saving || !isNonEmpty(title)}
+                    >
                       {saving ? "Salvando…" : isNew ? "Criar trilha" : "Salvar dados"}
                     </button>
                   )}
@@ -317,6 +362,7 @@ export function TrackEditor() {
                         renderItem={(mod, sortable) => (
                           <ModuleEditor
                             module={mod}
+                            siblingModuleTitles={modules.filter((m) => m.id !== mod.id).map((m) => m.title)}
                             open={expandedModuleId === mod.id}
                             onToggle={() =>
                               setExpandedModuleId((current) => (current === mod.id ? null : mod.id))
@@ -324,6 +370,10 @@ export function TrackEditor() {
                             selectedLessonId={selectedLessonId}
                             onSelectLesson={setSelectedLessonId}
                             onChanged={reloadTrack}
+                            onRemoved={() => {
+                              setExpandedModuleId((current) => (current === mod.id ? null : current));
+                              setSelectedLessonId(null);
+                            }}
                             sortable={sortable}
                           />
                         )}

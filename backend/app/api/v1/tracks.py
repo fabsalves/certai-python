@@ -2,14 +2,16 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.deps import require_roles
+from app.models.cohort import CohortModuleProfessor
 from app.models.track import Lesson, Module, Track
 from app.models.user import Role, User
+from app.services.track_structure import ensure_unique_lesson_title, ensure_unique_module_title
 from app.schemas import (
     LessonCreate,
     LessonOut,
@@ -100,7 +102,8 @@ async def create_module(
 ):
     if await db.get(Track, track_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Trilha não encontrada")
-    module = Module(track_id=track_id, **body.model_dump())
+    title = await ensure_unique_module_title(db, track_id, body.title)
+    module = Module(track_id=track_id, **{**body.model_dump(), "title": title})
     db.add(module)
     await db.flush()
     await db.refresh(module, ["lessons"])
@@ -117,7 +120,12 @@ async def update_module(
     module = await db.get(Module, module_id)
     if module is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Módulo não encontrado")
-    for key, value in body.model_dump(exclude_unset=True).items():
+    data = body.model_dump(exclude_unset=True)
+    if "title" in data:
+        data["title"] = await ensure_unique_module_title(
+            db, module.track_id, data["title"], exclude_module_id=module_id
+        )
+    for key, value in data.items():
         setattr(module, key, value)
     await db.flush()
     await db.refresh(module, ["lessons"])
@@ -132,6 +140,9 @@ async def delete_module(
     module = await db.get(Module, module_id)
     if module is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Módulo não encontrado")
+    await db.execute(
+        delete(CohortModuleProfessor).where(CohortModuleProfessor.module_id == module_id)
+    )
     await db.delete(module)
 
 
@@ -142,7 +153,8 @@ async def create_lesson(
 ):
     if await db.get(Module, module_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Módulo não encontrado")
-    lesson = Lesson(module_id=module_id, **body.model_dump())
+    title = await ensure_unique_lesson_title(db, module_id, body.title)
+    lesson = Lesson(module_id=module_id, **{**body.model_dump(), "title": title})
     db.add(lesson)
     await db.flush()
     return lesson
@@ -158,7 +170,12 @@ async def update_lesson(
     lesson = await db.get(Lesson, lesson_id)
     if lesson is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Aula não encontrada")
-    for key, value in body.model_dump(exclude_unset=True).items():
+    data = body.model_dump(exclude_unset=True)
+    if "title" in data:
+        data["title"] = await ensure_unique_lesson_title(
+            db, lesson.module_id, data["title"], exclude_lesson_id=lesson_id
+        )
+    for key, value in data.items():
         setattr(lesson, key, value)
     await db.flush()
     return lesson

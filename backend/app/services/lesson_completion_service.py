@@ -14,7 +14,7 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.client import get_anthropic
+from app.ai.client import get_openai
 from app.core.config import settings
 from app.models.assessment import CohortLessonNote
 from app.models.track import Lesson
@@ -25,20 +25,26 @@ async def consolidate_notes(transcript: str) -> dict[str, str]:
     """The AI turns the professor's report into summary + unclear points."""
     if not transcript.strip():
         return {"summary": "", "unclear_points": ""}
-    client = get_anthropic()
-    resp = await client.messages.create(
+    client = get_openai()
+    resp = await client.chat.completions.create(
         model=settings.ENGINE_MODEL,
         max_tokens=512,
-        system=(
-            "From the professor's report about the lesson, produce a JSON object "
-            "with keys 'summary' and 'unclear_points', written in Brazilian "
-            "Portuguese. Reply with the JSON only."
-        ),
-        messages=[{"role": "user", "content": transcript}],
+        response_format={"type": "json_object"},
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "From the professor's report about the lesson, produce a JSON object "
+                    "with keys 'summary' and 'unclear_points', written in Brazilian "
+                    "Portuguese. Reply with the JSON only."
+                ),
+            },
+            {"role": "user", "content": transcript},
+        ],
     )
     import json
 
-    text = "".join(b.text for b in resp.content if b.type == "text")
+    text = resp.choices[0].message.content or ""
     try:
         return json.loads(text)
     except json.JSONDecodeError:

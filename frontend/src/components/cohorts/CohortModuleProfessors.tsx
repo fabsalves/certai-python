@@ -1,6 +1,7 @@
 import type { FormEvent } from "react";
 import type { ProfessorOption } from "../../lib/cohorts";
 import { levelLabel, type Module } from "../../lib/tracks";
+import { Select } from "../ui/Select";
 
 interface Props {
   modules: Module[];
@@ -56,22 +57,16 @@ export function CohortModuleProfessors({
                 <span className="cohort-professors__module-name">{mod.title}</span>
                 <span className="muted cohort-professors__module-level">{levelLabel(mod.level)}</span>
               </div>
-              <select
-                className="input cohort-professors__select"
+              <Select
                 value={assignments[mod.id] ?? ""}
-                onChange={(e) => onAssignmentChange(mod.id, e.target.value)}
+                options={professors.map((prof) => ({ value: prof.id, label: prof.name }))}
+                onChange={(professorId) => onAssignmentChange(mod.id, professorId)}
+                disabled={professors.length === 0}
+                placeholder="Selecione o professor…"
                 required
+                className="cohort-professors__select"
                 aria-label={`Professor do módulo ${mod.title}`}
-              >
-                <option value="" disabled>
-                  Selecione o professor…
-                </option>
-                {professors.map((prof) => (
-                  <option key={prof.id} value={prof.id}>
-                    {prof.name}
-                  </option>
-                ))}
-              </select>
+              />
             </li>
           ))}
         </ul>

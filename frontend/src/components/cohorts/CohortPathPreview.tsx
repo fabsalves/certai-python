@@ -10,6 +10,8 @@ interface Props {
   selectedLessonId: string | null;
   moduleProfessors?: ModuleProfessor[];
   onSelectLesson: (lessonId: string, moduleId: string) => void;
+  compact?: boolean;
+  embedded?: boolean;
 }
 
 export function CohortPathPreview({
@@ -18,6 +20,8 @@ export function CohortPathPreview({
   selectedLessonId,
   moduleProfessors = [],
   onSelectLesson,
+  compact = false,
+  embedded = false,
 }: Props) {
   const moduleProfessorByModuleId = useMemo(
     () =>
@@ -38,9 +42,9 @@ export function CohortPathPreview({
 
   if (nodes.length === 0) {
     return (
-      <div className="path-preview path-preview--empty card">
+      <div className={`path-preview path-preview--empty${embedded ? " path-preview--embedded" : " card"}`}>
         <p className="muted" style={{ margin: 0 }}>
-          A trilha ainda não tem aulas ativas.
+          A trilha ainda não possui módulos ativos.
         </p>
       </div>
     );
@@ -48,16 +52,30 @@ export function CohortPathPreview({
 
   const doneCount = progress.completed_lesson_ids.length;
   const allDone = progress.current_lesson_id === null && doneCount > 0;
+  const rootClass = [
+    "path-preview",
+    embedded ? "path-preview--embedded" : "card",
+    compact ? "path-preview--compact" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
-    <div className="path-preview card">
+    <div className={rootClass}>
       <div className="path-preview__head">
         <h3 style={{ margin: 0 }}>Trilha</h3>
-        <p className="muted" style={{ margin: "4px 0 0", fontSize: 13 }}>
-          {allDone
-            ? "Turma concluiu todas as aulas."
-            : `${doneCount} aula(s) concluída(s) · clique para abrir a aula`}
-        </p>
+        {!compact && (
+          <p className="muted" style={{ margin: "4px 0 0", fontSize: 13 }}>
+            {allDone
+              ? "Turma concluiu todas as aulas."
+              : `${doneCount} aula(s) concluída(s) · clique para abrir a aula`}
+          </p>
+        )}
+        {compact && (
+          <p className="muted path-preview__meta">
+            {allDone ? "Concluída" : `${doneCount} concluída(s)`}
+          </p>
+        )}
       </div>
 
       <div className="path-preview__body">

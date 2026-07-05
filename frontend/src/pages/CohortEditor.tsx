@@ -7,8 +7,12 @@ import { CohortPathPreview } from "../components/cohorts/CohortPathPreview";
 import { CohortProgressPanel } from "../components/cohorts/CohortProgressPanel";
 import { ProfessorCreateModal } from "../components/cohorts/ProfessorCreateModal";
 import { EditorTabPanel, EditorTabs } from "../components/tracks/EditorTabs";
+import { Select } from "../components/ui/Select";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { useFeedback } from "../lib/feedback";
+import { useApiAction } from "../lib/useApiAction";
+import { isNonEmpty, trimmed } from "../lib/validation";
 import type {
   Cohort,
   CohortProgress,
@@ -82,6 +86,8 @@ export function CohortEditor() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const runAction = useApiAction();
+  const feedback = useFeedback();
   const isNew = cohortId === "new";
   const canManage = user?.role === "admin" || user?.role === "designer";
   const isProfessor = user?.role === "professor";
@@ -97,7 +103,6 @@ export function CohortEditor() {
   const [moduleAssignments, setModuleAssignments] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState("");
-  const [formError, setFormError] = useState("");
   const [tab, setTab] = useState<EditorTab>("meta");
   const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
   const [profModalOpen, setProfModalOpen] = useState(false);
@@ -273,62 +278,80 @@ export function CohortEditor() {
 
   async function continueToProfessors(e?: FormEvent) {
     e?.preventDefault();
-    setFormError("");
-    if (!name.trim() || !trackId) return;
+    if (!isNonEmpty(name)) {
+      feedback.error("Informe o nome da turma.");
+      return;
+    }
+    if (!trackId) return;
     setTab("professors");
   }
 
   async function saveMeta(e?: FormEvent) {
     e?.preventDefault();
-    setFormError("");
 
     if (isNew) {
       await continueToProfessors();
       return;
     }
 
+    const nextName = trimmed(name);
+    if (!nextName) {
+      feedback.error("Informe o nome da turma.");
+      return;
+    }
+
     if (!cohort || !metaDirty) return;
     setSaving(true);
-    try {
-      const { data } = await api.patch<Cohort>(`/cohorts/${cohort.id}`, { name });
-      setCohort(data);
-    } catch {
-      setFormError("Não foi possível salvar a turma.");
-    } finally {
-      setSaving(false);
-    }
+    await runAction({
+      run: () => api.patch<Cohort>(`/cohorts/${cohort.id}`, { name: nextName }),
+      successMessage: "Dados da turma salvos.",
+      errorMessage: "Não foi possível salvar a turma.",
+      onSuccess: ({ data }) => setCohort(data),
+    });
+    setSaving(false);
   }
 
   async function saveProfessors(e?: FormEvent) {
     e?.preventDefault();
-    setFormError("");
-    setSaving(true);
-    try {
-      const module_professors = assignmentsPayload(moduleAssignments);
-
-      if (isNew) {
-        const { data } = await api.post<Cohort>("/cohorts", {
-          name,
-          track_id: trackId,
-          module_professors,
-        });
-        navigate(`/cohorts/${data.id}`, { replace: true, state: { tab: "students" } });
-        return;
-      }
-
-      if (!cohort) return;
-      const { data } = await api.patch<Cohort>(`/cohorts/${cohort.id}`, { module_professors });
-      setCohort(data);
-      setModuleAssignments(assignmentsFromCohort(data));
-    } catch {
-      setFormError("Não foi possível salvar os professores.");
-    } finally {
-      setSaving(false);
+    const nextName = trimmed(name);
+    if (!nextName) {
+      feedback.error("Informe o nome da turma.");
+      return;
     }
+    setSaving(true);
+    const module_professors = assignmentsPayload(moduleAssignments);
+
+    if (isNew) {
+      await runAction({
+        run: () =>
+          api.post<Cohort>("/cohorts", { name: nextName, track_id: trackId, module_professors }),
+        successMessage: "Turma criada.",
+        errorMessage: "Não foi possível criar a turma.",
+        onSuccess: ({ data }) => {
+          navigate(`/cohorts/${data.id}`, { replace: true, state: { tab: "students" } });
+        },
+      });
+      setSaving(false);
+      return;
+    }
+
+    if (!cohort) {
+      setSaving(false);
+      return;
+    }
+    await runAction({
+      run: () => api.patch<Cohort>(`/cohorts/${cohort.id}`, { module_professors }),
+      successMessage: "Professores salvos.",
+      errorMessage: "Não foi possível salvar os professores.",
+      onSuccess: ({ data }) => {
+        setCohort(data);
+        setModuleAssignments(assignmentsFromCohort(data));
+      },
+    });
+    setSaving(false);
   }
 
   function handleTabChange(id: string) {
-    setFormError("");
     setTab(id as EditorTab);
   }
 
@@ -428,37 +451,30 @@ export function CohortEditor() {
                           required
                         />
                       </div>
-                      <div className="field">
-                        <label htmlFor="cohort-track">Trilha</label>
-                        <select
-                          id="cohort-track"
-                          className="input"
-                          value={trackId}
-                          onChange={(e) => setTrackId(e.target.value)}
-                          required
-                          disabled={!isNew}
-                        >
-                          {(isNew ? tracks : [{ id: trackId, title: cohort?.track_title ?? "", is_active: true, modules: [] }]).map(
-                            (item) => (
-                              <option key={item.id} value={item.id}>{item.title}</option>
-                            ),
-                          )}
-                        </select>
-                        {!isNew && (
-                          <p className="muted" style={{ marginTop: 6, fontSize: 13 }}>
-                            A trilha não pode ser alterada após a criação.
-                          </p>
-                        )}
-                      </div>
+                      <Select
+                        id="cohort-track"
+                        label="Trilha"
+                        value={trackId}
+                        options={(isNew
+                          ? tracks
+                          : [{ id: trackId, title: cohort?.track_title ?? "" }]
+                        ).map((item) => ({ value: item.id, label: item.title }))}
+                        onChange={setTrackId}
+                        required
+                        disabled={!isNew}
+                      />
+                      {!isNew && (
+                        <p className="muted" style={{ marginTop: 6, fontSize: 13 }}>
+                          A trilha não pode ser alterada após a criação.
+                        </p>
+                      )}
                     </div>
-
-                    {formError && tab === "meta" && <div className="form-error">{formError}</div>}
 
                     {(isNew || metaDirty) && (
                       <button
                         type="submit"
                         className="btn btn-primary"
-                        disabled={saving || !name.trim() || !trackId}
+                        disabled={saving || !isNonEmpty(name) || !trackId}
                       >
                         {saving
                           ? "Salvando…"
@@ -479,7 +495,6 @@ export function CohortEditor() {
                     isNew={isNew}
                     saving={saving}
                     dirty={professorsDirty}
-                    error={tab === "professors" ? formError : undefined}
                     onAssignmentChange={(moduleId, professorId) =>
                       setModuleAssignments((current) => ({
                         ...current,

@@ -4,9 +4,9 @@ Philosophy: the AI decides everything. Tools are capabilities -- the richer, the
 better. The code here only executes the effect the AI chose, with no heuristics,
 no per-word inference, no flow determinism.
 
-Each tool declares its schema (for the API) and an async implementation. The engine
-calls `dispatch()` when the AI requests a tool and feeds the result back to the AI
-to keep reasoning (including scope escalation).
+Each tool declares its schema (for the OpenAI API) and an async implementation.
+The engine calls `dispatch()` when the AI requests a tool and feeds the result
+back to the AI to keep reasoning (including scope escalation).
 """
 
 import uuid
@@ -17,42 +17,48 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.context_builder import ContextBuilder
 from app.models.assessment import Level, MicroScore
 
-# Schemas exposed to the Anthropic API. Lean descriptions, no "rules".
+# Schemas expostos à OpenAI (function calling). Descrições enxutas, sem "regras".
 TOOL_SCHEMAS: list[dict[str, Any]] = [
     {
-        "name": "escalate_scope",
-        "description": (
-            "Fetch context one level up (module or track) when the student asks "
-            "something outside the current lesson scope. The result returns to you "
-            "to keep answering."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "target_level": {"type": "string", "enum": ["module", "track"]},
-                "reason": {"type": "string"},
+        "type": "function",
+        "function": {
+            "name": "escalate_scope",
+            "description": (
+                "Fetch context one level up (module or track) when the student asks "
+                "something outside the current lesson scope. The result returns to you "
+                "to keep answering."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "target_level": {"type": "string", "enum": ["module", "track"]},
+                    "reason": {"type": "string"},
+                },
+                "required": ["target_level"],
             },
-            "required": ["target_level"],
         },
     },
     {
-        "name": "score_understanding",
-        "description": (
-            "Record a qualitative micro-score of the student's understanding of a "
-            "competency. Use it when there is enough signal in the conversation -- "
-            "not on every message."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "competency": {"type": "string"},
-                "level": {
-                    "type": "string",
-                    "enum": ["very_low", "low", "medium", "high"],
+        "type": "function",
+        "function": {
+            "name": "score_understanding",
+            "description": (
+                "Record a qualitative micro-score of the student's understanding of a "
+                "competency. Use it when there is enough signal in the conversation -- "
+                "not on every message."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "competency": {"type": "string"},
+                    "level": {
+                        "type": "string",
+                        "enum": ["very_low", "low", "medium", "high"],
+                    },
+                    "evidence": {"type": "string"},
                 },
-                "evidence": {"type": "string"},
+                "required": ["competency", "level", "evidence"],
             },
-            "required": ["competency", "level", "evidence"],
         },
     },
 ]

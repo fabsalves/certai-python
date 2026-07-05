@@ -38,11 +38,11 @@ class Settings(BaseSettings):
     CELERY_BROKER_URL: str = "redis://localhost:6379/1"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
 
-    # --- IA ---
-    ANTHROPIC_API_KEY: str = ""
-    ENGINE_MODEL: str = "claude-sonnet-4-6"
-    HUMANIZER_MODEL: str = "claude-haiku-4-5-20251001"
-    EVALUATOR_MODEL: str = "claude-sonnet-4-6"
+    # --- IA (OpenAI — mesmo provedor do Realtime com alunos) ---
+    OPENAI_API_KEY: str = ""
+    ENGINE_MODEL: str = "gpt-4o"
+    HUMANIZER_MODEL: str = "gpt-4o-mini"
+    EVALUATOR_MODEL: str = "gpt-4o"
     GROQ_API_KEY: str = ""
     GROQ_TRANSCRIBE_MODEL: str = "whisper-large-v3"
 

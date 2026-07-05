@@ -1,0 +1,13 @@
+#!/usr/bin/env sh
+set -eu
+
+ROOT="$(CDPATH= cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT/backend"
+
+if [ ! -d .venv ]; then
+  printf 'Crie o venv primeiro: cd backend && python3.11 -m venv .venv && pip install -r requirements.txt\n' >&2
+  exit 1
+fi
+
+. .venv/bin/activate
+exec python -m app.seed "$@"

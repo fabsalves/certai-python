@@ -15,5 +15,5 @@ redis==5.2.1
 celery==5.4.0
 flower==2.0.1
 slowapi==0.1.9
-anthropic==0.42.0
+openai==1.68.0
 groq==0.13.1

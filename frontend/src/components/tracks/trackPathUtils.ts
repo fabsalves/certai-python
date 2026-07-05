@@ -11,6 +11,8 @@ export interface PathNodeItem {
   moduleLabel?: string;
   levelLabel?: string;
   professorLabel?: string;
+  /** Módulo ainda sem aulas — placeholder no percurso. */
+  emptyModule?: boolean;
   onClick?: () => void;
 }
 
@@ -30,6 +32,20 @@ export function buildPathFromTrack(
     if (!mod.is_active && !showInactive) continue;
 
     const lessons = sortedLessons(mod).filter((l) => showInactive || l.is_active);
+
+    if (lessons.length === 0) {
+      items.push({
+        id: `module-${mod.id}`,
+        title: mod.title,
+        step: null,
+        side: items.length % 2 === 0 ? "left" : "right",
+        state: mod.is_active ? "default" : "inactive",
+        moduleLabel: mod.title,
+        levelLabel: levelLabel(mod.level),
+        emptyModule: true,
+      });
+      continue;
+    }
 
     lessons.forEach((lesson, li) => {
       const inactive = !mod.is_active || !lesson.is_active;
@@ -81,6 +97,21 @@ export function buildPathFromTrackWithProgress(
     if (!mod.is_active && !showInactive) continue;
 
     const lessons = sortedLessons(mod).filter((l) => showInactive || l.is_active);
+
+    if (lessons.length === 0) {
+      items.push({
+        id: `module-${mod.id}`,
+        title: mod.title,
+        step: null,
+        side: items.length % 2 === 0 ? "left" : "right",
+        state: mod.is_active ? "default" : "inactive",
+        moduleLabel: mod.title,
+        levelLabel: levelLabel(mod.level),
+        professorLabel: moduleProfessorByModuleId?.[mod.id],
+        emptyModule: true,
+      });
+      continue;
+    }
 
     lessons.forEach((lesson, li) => {
       const inactive = !mod.is_active || !lesson.is_active;

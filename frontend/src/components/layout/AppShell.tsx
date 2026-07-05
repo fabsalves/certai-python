@@ -20,6 +20,7 @@ export function AppShell() {
 
   const items = navForRole(user.role);
   const current = navItemForPath(pathname, user.role);
+  const isPlayground = pathname.startsWith("/admin/playground");
 
   return (
     <div className="shell">
@@ -61,21 +62,23 @@ export function AppShell() {
         </div>
       </aside>
 
-      <div className="shell-main">
-        <header className="shell-topbar">
-          <div className="shell-topbar-breadcrumb">
-            CertAI
-            {current && (
-              <>
-                <span aria-hidden>/</span>
-                <strong>{current.label}</strong>
-              </>
-            )}
-          </div>
-          <span className="shell-topbar-title">{roleLabel[user.role]}</span>
-        </header>
+      <div className={`shell-main${isPlayground ? " shell-main--immersive" : ""}`}>
+        {!isPlayground && (
+          <header className="shell-topbar">
+            <div className="shell-topbar-breadcrumb">
+              CertAI
+              {current && (
+                <>
+                  <span aria-hidden>/</span>
+                  <strong>{current.label}</strong>
+                </>
+              )}
+            </div>
+            <span className="shell-topbar-title">{roleLabel[user.role]}</span>
+          </header>
+        )}
 
-        <div className="shell-content">
+        <div className={`shell-content${isPlayground ? " shell-content--immersive" : ""}`}>
           <Outlet />
         </div>
       </div>

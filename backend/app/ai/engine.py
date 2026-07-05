@@ -9,7 +9,9 @@ Few textual rules, lots of context. Per-step planning is done by the AI itself o
 the first turn (minimal system instruction below).
 """
 
-from app.ai.client import get_anthropic
+import json
+
+from app.ai.client import get_openai
 from app.ai.context_builder import ContextBundle
 from app.ai.tools import TOOL_SCHEMAS, ToolContext, dispatch
 from app.core.config import settings
@@ -41,35 +43,51 @@ async def respond(
     `history` is the list of messages in API format ({role, content}).
     Humanization is a separate pass (see humanizer.py).
     """
-    client = get_anthropic()
+    client = get_openai()
     system = f"{SYSTEM_BASE}\n\n{bundle.to_system_blocks()}"
-    messages = list(history)
+    messages: list[dict] = [{"role": "system", "content": system}, *history]
 
     for _ in range(MAX_TOOL_TURNS):
-        resp = await client.messages.create(
+        resp = await client.chat.completions.create(
             model=settings.ENGINE_MODEL,
             max_tokens=1024,
-            system=system,
-            tools=TOOL_SCHEMAS,
             messages=messages,
+            tools=TOOL_SCHEMAS,
         )
+        message = resp.choices[0].message
 
-        if resp.stop_reason == "tool_use":
-            messages.append({"role": "assistant", "content": resp.content})
-            results = []
-            for block in resp.content:
-                if block.type == "tool_use":
-                    out = await dispatch(block.name, block.input, tool_ctx)
-                    results.append(
+        if message.tool_calls:
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": message.content,
+                    "tool_calls": [
                         {
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
-                            "content": out,
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments,
+                            },
                         }
-                    )
-            messages.append({"role": "user", "content": results})
+                        for tc in message.tool_calls
+                    ],
+                }
+            )
+            for tc in message.tool_calls:
+                args = json.loads(tc.function.arguments or "{}")
+                out = await dispatch(tc.function.name, args, tool_ctx)
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": out,
+                    }
+                )
             continue
 
-        return "".join(b.text for b in resp.content if b.type == "text")
+        text = (message.content or "").strip()
+        if text:
+            return text
 
     return "Não consegui concluir o raciocínio agora. Pode reformular?"

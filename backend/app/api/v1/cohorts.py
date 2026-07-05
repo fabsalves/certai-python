@@ -19,6 +19,8 @@ from app.schemas import (
     CohortProgressOut,
     CohortUpdate,
     EnrollmentCreate,
+    EnrollmentBulkCreate,
+    EnrollmentBulkOut,
     EnrollmentOut,
     LessonCompletionIn,
     ModuleProfessorIn,
@@ -345,6 +347,53 @@ async def enroll(
     db.add(enrollment)
     await db.flush()
     return {"status": "matriculado"}
+
+
+@router.post(
+    "/{cohort_id}/enrollments/bulk",
+    response_model=EnrollmentBulkOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(can_manage)],
+)
+async def enroll_bulk(
+    cohort_id: uuid.UUID,
+    body: EnrollmentBulkCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    await _get_cohort_or_404(db, cohort_id)
+
+    unique_ids = list(dict.fromkeys(body.student_ids))
+    if not unique_ids:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Informe ao menos um aluno")
+
+    students = (
+        await db.execute(
+            select(User.id).where(User.id.in_(unique_ids), User.role == Role.STUDENT)
+        )
+    ).scalars().all()
+    if len(students) != len(unique_ids):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Um ou mais alunos são inválidos")
+
+    already_enrolled = set(
+        (
+            await db.execute(
+                select(Enrollment.student_id).where(
+                    Enrollment.cohort_id == cohort_id,
+                    Enrollment.student_id.in_(unique_ids),
+                )
+            )
+        ).scalars().all()
+    )
+
+    to_enroll = [student_id for student_id in unique_ids if student_id not in already_enrolled]
+    for student_id in to_enroll:
+        db.add(Enrollment(cohort_id=cohort_id, student_id=student_id))
+
+    await db.flush()
+    return EnrollmentBulkOut(
+        enrolled_count=len(to_enroll),
+        skipped_count=len(already_enrolled),
+    )
 
 
 @router.delete(
