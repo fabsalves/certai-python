@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from app.core.email import normalize_email
 from app.core.phone import normalize_br_phone
@@ -34,8 +34,18 @@ def _optional_whatsapp(value: str | None) -> str | None:
     return normalized
 
 
+def _required_whatsapp(value: str) -> str:
+    if not str(value).strip():
+        raise ValueError("WhatsApp é obrigatório")
+    normalized = normalize_br_phone(value)
+    if normalized is None:
+        raise ValueError("WhatsApp inválido")
+    return normalized
+
+
 NormalizedEmailStr = Annotated[EmailStr, AfterValidator(normalize_email)]
 OptionalWhatsappStr = Annotated[str | None, AfterValidator(_optional_whatsapp)]
+RequiredWhatsappStr = Annotated[str, AfterValidator(_required_whatsapp)]
 
 
 # --- Auth ---
@@ -60,6 +70,12 @@ class UserCreate(UserBase):
     role: Role = Role.STUDENT
     whatsapp: OptionalWhatsappStr = None
 
+    @model_validator(mode="after")
+    def require_whatsapp_for_students(self) -> "UserCreate":
+        if self.role == Role.STUDENT and not self.whatsapp:
+            raise ValueError("WhatsApp é obrigatório para alunos")
+        return self
+
 
 class UserOut(UserBase):
     model_config = ConfigDict(from_attributes=True)
@@ -67,6 +83,28 @@ class UserOut(UserBase):
     role: Role
     is_active: bool
     whatsapp: str | None = None
+
+
+class StudentBulkItem(BaseModel):
+    name: NameStr
+    email: NormalizedEmailStr
+    whatsapp: RequiredWhatsappStr
+
+
+class StudentBulkCreate(BaseModel):
+    password: str = Field(min_length=8, max_length=128)
+    students: list[StudentBulkItem] = Field(min_length=1)
+
+
+class StudentBulkSkipped(BaseModel):
+    email: str
+    reason: str
+
+
+class StudentBulkOut(BaseModel):
+    created: list[UserOut]
+    reused_ids: list[uuid.UUID]
+    skipped: list[StudentBulkSkipped]
 
 
 # --- Track / Module / Lesson ---

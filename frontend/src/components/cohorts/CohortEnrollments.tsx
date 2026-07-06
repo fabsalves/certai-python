@@ -46,7 +46,10 @@ export function CohortEnrollments({ cohortId, onChanged }: Props) {
     [enrollments],
   );
 
-  const enrolledIds = new Set(sortedEnrollments.map((e) => e.student_id));
+  const enrolledIds = useMemo(
+    () => new Set(sortedEnrollments.map((e) => e.student_id)),
+    [sortedEnrollments],
+  );
 
   const filteredEnrollments = useMemo(() => {
     const q = query.trim().toLowerCase();

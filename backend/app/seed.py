@@ -101,14 +101,14 @@ PROFESSOR_USERS = [
 ]
 
 STUDENT_USERS = [
-    ("aluno@certai.app", "Mariana Costa", "aluno12345"),
-    ("eriko@certai.app", "Ériko Sampaio", "aluno12345"),
-    ("juliana.mendes@certai.app", "Juliana Mendes", "aluno12345"),
-    ("pedro.almeida@certai.app", "Pedro Almeida", "aluno12345"),
-    ("camila.rocha@certai.app", "Camila Rocha", "aluno12345"),
-    ("lucas.nunes@certai.app", "Lucas Nunes", "aluno12345"),
-    ("fernanda.lima@certai.app", "Fernanda Lima", "aluno12345"),
-    ("bruno.carvalho@certai.app", "Bruno Carvalho", "aluno12345"),
+    ("aluno@certai.app", "Mariana Costa", "aluno12345", "5511999990001"),
+    ("eriko@certai.app", "Ériko Sampaio", "aluno12345", "5585987385666"),
+    ("juliana.mendes@certai.app", "Juliana Mendes", "aluno12345", "5511987650003"),
+    ("pedro.almeida@certai.app", "Pedro Almeida", "aluno12345", "5511987650004"),
+    ("camila.rocha@certai.app", "Camila Rocha", "aluno12345", "5511987650005"),
+    ("lucas.nunes@certai.app", "Lucas Nunes", "aluno12345", "5511987650006"),
+    ("fernanda.lima@certai.app", "Fernanda Lima", "aluno12345", "5511987650007"),
+    ("bruno.carvalho@certai.app", "Bruno Carvalho", "aluno12345", "5511987650008"),
 ]
 
 # Apenas dois matriculados na turma; os demais ficam disponíveis para matrícula em lote.
@@ -182,13 +182,8 @@ async def seed(*, force: bool = False) -> None:
             users.append(_make_user(email, name, role, password))
         for email, name, password in PROFESSOR_USERS:
             users.append(_make_user(email, name, Role.PROFESSOR, password))
-        for email, name, password in STUDENT_USERS:
-            wa = None
-            if email == "aluno@certai.app":
-                wa = "5511999990001"
-            elif email == "eriko@certai.app":
-                wa = "5585987385666"
-            users.append(_make_user(email, name, Role.STUDENT, password, whatsapp=wa))
+        for email, name, password, whatsapp in STUDENT_USERS:
+            users.append(_make_user(email, name, Role.STUDENT, password, whatsapp=whatsapp))
 
         db.add_all(users)
         await db.flush()

@@ -1,19 +1,26 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 
 interface ModalProps {
   open: boolean;
   onClose: () => void;
   title: string;
   children: ReactNode;
+  wide?: boolean;
 }
 
-export function Modal({ open, onClose, title, children }: ModalProps) {
+export function Modal({ open, onClose, title, children, wide = false }: ModalProps) {
+  useEffect(() => {
+    if (!open) return;
+    document.documentElement.classList.add("modal-scroll-lock");
+    return () => document.documentElement.classList.remove("modal-scroll-lock");
+  }, [open]);
+
   if (!open) return null;
 
   return (
     <div className="modal-backdrop" onClick={onClose} role="presentation">
       <div
-        className="modal card"
+        className={`modal card${wide ? " modal--wide" : ""}`}
         role="dialog"
         aria-modal
         aria-labelledby="modal-title"
