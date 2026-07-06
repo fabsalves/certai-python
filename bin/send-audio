@@ -1,0 +1,153 @@
+#!/usr/bin/env bash
+# Simula nota de voz inbound do aluno seed via webhook Cinndi local.
+#
+# Usage:
+#   ./bin/send-audio fixtures/audio/minha-nota.ogg
+#   ./bin/send-audio /caminho/absoluto/nota.mp3
+#
+# Requer: bin/dev, seed, conversa WhatsApp criada (encerre a aula), GROQ_API_KEY no .env
+set -euo pipefail
+
+ROOT="$(CDPATH= cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
+REL_PATH=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      sed -n '2,10p' "$0"
+      exit 0
+      ;;
+    *)
+      REL_PATH="$1"
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$REL_PATH" ]]; then
+  echo "Usage: ./bin/send-audio <path-from-project-root-or-absolute>" >&2
+  echo "Example: ./bin/send-audio fixtures/audio/nota.ogg" >&2
+  exit 1
+fi
+
+REL_PATH="${REL_PATH#./}"
+if [[ "$REL_PATH" = /* ]]; then
+  AUDIO_FILE="$REL_PATH"
+else
+  AUDIO_FILE="$ROOT/$REL_PATH"
+fi
+
+if [[ ! -f "$AUDIO_FILE" ]]; then
+  echo "Audio file not found: $AUDIO_FILE" >&2
+  exit 1
+fi
+
+if [[ -f "$ROOT/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source <(sed 's/\r$//' "$ROOT/.env")
+  set +a
+fi
+
+API_PORT="${API_PORT:-8000}"
+SEED_STUDENT_PHONE="${SEED_STUDENT_PHONE:-5585987385666}"
+CINNDI_LINE="${CINNDI_SENDER_PHONE:-5519982863180}"
+WEBHOOK_TOKEN="${CINNDI_WEBHOOK_TOKEN:-}"
+DEBOUNCE="${INBOUND_DEBOUNCE_SECONDS:-5}"
+BASE_URL="http://127.0.0.1:${API_PORT}"
+MSG_ID="sim-audio-$(date +%s)-$$"
+
+export AUDIO_FILE SEED_STUDENT_PHONE CINNDI_LINE MSG_ID
+
+payload_file=$(mktemp)
+trap 'rm -f "$payload_file"' EXIT
+
+python3 - <<'PY' >"$payload_file"
+import base64
+import json
+import mimetypes
+import os
+import pathlib
+import re
+import sys
+
+def digits(phone: str) -> str:
+    return re.sub(r"\D", "", phone or "")
+
+path = os.environ["AUDIO_FILE"]
+with open(path, "rb") as fh:
+    media_b64 = base64.b64encode(fh.read()).decode("ascii")
+
+name = pathlib.Path(path).name
+mimetype = mimetypes.guess_type(path)[0] or "audio/ogg"
+line = digits(os.environ["CINNDI_LINE"])
+sender = digits(os.environ["SEED_STUDENT_PHONE"])
+
+json.dump({
+    "tipo": "mensagem",
+    "numero": line,
+    "mensagem": {
+        "body": "",
+        "from": sender,
+        "to": line,
+        "id": os.environ["MSG_ID"],
+        "self": "in",
+        "type": "audio",
+        "media": {
+            "data": media_b64,
+            "mimetype": mimetype,
+            "filename": name,
+        },
+    },
+}, sys.stdout, ensure_ascii=False)
+PY
+
+url="${BASE_URL}/webhooks/cinndi"
+echo "→ POST ${url} (Cinndi inbound audio, base64)"
+echo "  file=${REL_PATH}  from=${SEED_STUDENT_PHONE}  line=${CINNDI_LINE}"
+
+curl_args=(-sS -w "\n%{http_code}" -X POST "$url" -H "Content-Type: application/json" --data-binary "@${payload_file}")
+if [[ -n "$WEBHOOK_TOKEN" ]]; then
+  curl_args+=(-H "X-Webhook-Token: ${WEBHOOK_TOKEN}")
+fi
+
+response=$(curl "${curl_args[@]}")
+body=$(echo "$response" | head -n -1)
+status=$(echo "$response" | tail -n 1)
+
+echo "← HTTP ${status}"
+echo "$body"
+echo ""
+echo "message_id=${MSG_ID}"
+
+detail=$(echo "$body" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+print(data.get('detail') or '')
+" 2>/dev/null || true)
+
+case "$detail" in
+  ok)
+    echo "✓ ok — após ~${DEBOUNCE}s debounce, worker transcreve (Groq) e roda o turno."
+    echo "  Resposta da Lira sai via Cinndi pro WhatsApp real do aluno."
+    ;;
+  duplicate)
+    echo "↷ duplicate — mesmo message_id já recebido."
+    ;;
+  no_conversation)
+    echo "✗ no_conversation — encerre a aula antes."
+    ;;
+  unknown_student)
+    echo "✗ unknown_student — SEED_STUDENT_PHONE não bate com users.whatsapp do seed."
+    ;;
+  empty_message)
+    echo "✗ empty_message — transcrição falhou ou áudio vazio. Confira GROQ_API_KEY."
+    ;;
+  ignored|missing_sender|invalid_phone)
+    echo "✗ ${detail} — confira payload e seed."
+    ;;
+  *)
+    echo "detail=${detail:-unknown}"
+    ;;
+esac

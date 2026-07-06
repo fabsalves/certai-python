@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# Simula mensagem inbound de WhatsApp (texto) do aluno seed via webhook Cinndi local.
+#
+# Usage:
+#   ./bin/send-message 'Achei difícil a parte sobre tom formal'
+#   SEED_STUDENT_PHONE=5585987385666 ./bin/send-message 'outro texto'
+#
+# Requer: bin/dev rodando, seed carregado, conversa WhatsApp da aula já criada
+#         (encerre a aula uma vez para disparar o convite e criar a conversation).
+set -euo pipefail
+
+ROOT="$(CDPATH= cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
+TEXT=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      sed -n '2,12p' "$0"
+      exit 0
+      ;;
+    *)
+      TEXT="$1"
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$TEXT" ]]; then
+  echo "Usage: ./bin/send-message 'message text'" >&2
+  exit 1
+fi
+
+if [[ -f "$ROOT/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source <(sed 's/\r$//' "$ROOT/.env")
+  set +a
+fi
+
+API_PORT="${API_PORT:-8000}"
+SEED_STUDENT_PHONE="${SEED_STUDENT_PHONE:-5585987385666}"
+CINNDI_LINE="${CINNDI_SENDER_PHONE:-5519982863180}"
+WEBHOOK_TOKEN="${CINNDI_WEBHOOK_TOKEN:-}"
+DEBOUNCE="${INBOUND_DEBOUNCE_SECONDS:-5}"
+BASE_URL="http://127.0.0.1:${API_PORT}"
+MSG_ID="sim-$(date +%s)-$$"
+
+export TEXT SEED_STUDENT_PHONE CINNDI_LINE MSG_ID
+
+payload=$(python3 - <<'PY'
+import json, os, re
+
+def digits(phone: str) -> str:
+    return re.sub(r"\D", "", phone or "")
+
+line = digits(os.environ["CINNDI_LINE"])
+sender = digits(os.environ["SEED_STUDENT_PHONE"])
+print(json.dumps({
+    "tipo": "mensagem",
+    "numero": line,
+    "mensagem": {
+        "body": os.environ["TEXT"],
+        "from": sender,
+        "to": line,
+        "id": os.environ["MSG_ID"],
+        "self": "in",
+        "type": "chat",
+    },
+}, ensure_ascii=False))
+PY
+)
+
+url="${BASE_URL}/webhooks/cinndi"
+echo "→ POST ${url}"
+echo "  from=${SEED_STUDENT_PHONE}  line=${CINNDI_LINE}"
+
+curl_args=(-sS -w "\n%{http_code}" -X POST "$url" -H "Content-Type: application/json" -d "$payload")
+if [[ -n "$WEBHOOK_TOKEN" ]]; then
+  curl_args+=(-H "X-Webhook-Token: ${WEBHOOK_TOKEN}")
+fi
+
+response=$(curl "${curl_args[@]}")
+body=$(echo "$response" | head -n -1)
+status=$(echo "$response" | tail -n 1)
+
+echo "← HTTP ${status}"
+echo "$body"
+echo ""
+echo "message_id=${MSG_ID}"
+
+detail=$(echo "$body" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+print(data.get('detail') or '')
+" 2>/dev/null || true)
+
+case "$detail" in
+  ok)
+    echo "✓ ok — worker processa após ~${DEBOUNCE}s (debounce)."
+    echo "  Resposta da Lira sai via Cinndi pro WhatsApp real do aluno."
+    echo "  Logs: stack do bin/dev (worker whatsapp)."
+    ;;
+  duplicate)
+    echo "↷ duplicate — mesmo message_id já recebido."
+    ;;
+  no_conversation)
+    echo "✗ no_conversation — encerre a aula antes (cria conversation WhatsApp + convite)."
+    ;;
+  unknown_student)
+    echo "✗ unknown_student — SEED_STUDENT_PHONE não bate com users.whatsapp do seed."
+    ;;
+  ignored|missing_sender|invalid_phone|empty_message)
+    echo "✗ ${detail} — confira payload e seed."
+    ;;
+  *)
+    echo "detail=${detail:-unknown}"
+    ;;
+esac

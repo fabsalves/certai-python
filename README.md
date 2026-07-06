@@ -159,6 +159,17 @@ O Foreman sobe API, worker, beat, flower e frontend de uma vez (`Procfile.dev`).
 | Playground (admin) | http://localhost:5173/admin/playground |
 | Flower (jobs) | http://localhost:5555 |
 
+### WhatsApp — testar sem inbound pelo celular
+
+Depois de encerrar uma aula (cria a conversa WhatsApp), simule mensagens do aluno:
+
+```bash
+./bin/send-message 'Achei difícil a parte sobre tom formal'
+./bin/send-audio fixtures/audio/audio-teste.ogg   # requer GROQ_API_KEY
+```
+
+Guia completo: [`docs/whatsapp-dev-local.md`](docs/whatsapp-dev-local.md)
+
 Logins de teste (após o seed):
 
 | Papel | E-mail | Senha |
@@ -206,6 +217,9 @@ certai/
 ├── bin/dev              foreman — sobe API, workers e frontend
 ├── bin/db-seed          seed do banco (aceita --force)
 ├── bin/db-reset         re-semeia o banco de dev
+├── bin/send-message     simula inbound WhatsApp (texto) — ver docs/whatsapp-dev-local.md
+├── bin/send-audio       simula inbound WhatsApp (áudio)
+├── docs/                guias (WhatsApp local, template Cinndi, …)
 ├── Procfile.dev
 ├── docker-compose.yml
 └── .env.example
