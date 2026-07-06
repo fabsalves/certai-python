@@ -46,6 +46,17 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     GROQ_TRANSCRIBE_MODEL: str = "whisper-large-v3"
 
+    # --- Cinndi / WhatsApp ---
+    CINNDI_API_URL: str = "https://api.cinndi.com/v2"
+    CINNDI_API_KEY: str = ""
+    CINNDI_SENDER_PHONE: str = "5519982863180"
+    CINNDI_WEBHOOK_TOKEN: str = ""
+    CINNDI_INSECURE_SSL: bool = False
+    WHATSAPP_INVITE_TEMPLATE: str = "certai_convite_aula"
+    WHATSAPP_TEMPLATE_LANG: str = "pt_BR"
+    ASSISTANT_NAME: str = "Lira"
+    INBOUND_DEBOUNCE_SECONDS: int = 5
+
     @computed_field
     @property
     def DATABASE_URL(self) -> str:

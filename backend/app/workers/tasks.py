@@ -1,19 +1,19 @@
 """Async tasks.
 
-Celery runs sync; the rest of the app is async. The bridge is `run_async()`, which
-runs the coroutine in the task's own event loop. Each task opens its own DB session
-(it does not share the request's).
+Celery runs sync; the rest of the app is async. The bridge is `run_async()` in
+async_runner.py (one persistent loop per worker process). Each task opens its own
+DB session (it does not share the request's).
 """
 
-import asyncio
-from typing import Any
+import logging
 from uuid import UUID
 
+from sqlalchemy import select
+
+from app.workers.async_runner import run_async
 from app.workers.celery_app import celery_app
 
-
-def run_async(coro: Any) -> Any:
-    return asyncio.run(coro)
+logger = logging.getLogger(__name__)
 
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=10)
@@ -27,8 +27,20 @@ def transcribe_audio(self, audio_path: str, conversation_id: str) -> dict:
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=15)
 def plan_dispatch(self, cohort_id: str, lesson_id: str) -> dict:
-    """After a lesson is completed, the AI plans the dispatch to students."""
-    return run_async(_plan_dispatch(UUID(cohort_id), UUID(lesson_id)))
+    """After a lesson is completed, dispatch WhatsApp invites to enrolled students."""
+    try:
+        return run_async(_plan_dispatch(UUID(cohort_id), UUID(lesson_id)))
+    except Exception as exc:  # noqa: BLE001
+        raise self.retry(exc=exc)
+
+
+@celery_app.task(bind=True, max_retries=3, default_retry_delay=10)
+def process_whatsapp_inbound(self, conversation_id: str, task_id: str) -> dict:
+    """Process debounced inbound WhatsApp message and reply via Cinndi."""
+    try:
+        return run_async(_process_whatsapp_inbound(UUID(conversation_id), task_id))
+    except Exception as exc:  # noqa: BLE001
+        raise self.retry(exc=exc)
 
 
 @celery_app.task(bind=True, max_retries=2, default_retry_delay=30)
@@ -66,14 +78,72 @@ async def _transcribe_audio(audio_path: str, conversation_id: UUID) -> dict:
 
 
 async def _plan_dispatch(cohort_id: UUID, lesson_id: UUID) -> dict:
-    # The AI decides what to send, to whom and when. Integration point stub:
-    # the engine with planning scope + the notification queue would go here.
-    return {"cohort_id": str(cohort_id), "lesson_id": str(lesson_id), "status": "planned"}
+    from app.core.database import SessionLocal
+    from app.services.whatsapp.dispatch_service import dispatch_lesson_invites
+
+    async with SessionLocal() as db:
+        return await dispatch_lesson_invites(db, cohort_id, lesson_id)
+
+
+async def _process_whatsapp_inbound(conversation_id: UUID, task_id: str) -> dict:
+    from app.core.database import SessionLocal
+    from app.models.conversation import Author, Conversation, Message
+    from app.models.user import User
+    from app.services.cinndi.outbound import CinndiOutboundError, send_text_message
+    from app.services.conversation_service import generate_lesson_reply
+    from app.services.whatsapp.debounce import clear_debounce, is_active_task
+
+    if not await is_active_task(conversation_id, task_id):
+        return {"status": "stale", "conversation_id": str(conversation_id)}
+
+    async with SessionLocal() as db:
+        conversation = await db.get(Conversation, conversation_id)
+        if conversation is None or conversation.lesson_id is None:
+            await clear_debounce(conversation_id)
+            return {"status": "missing_conversation"}
+
+        student = await db.get(User, conversation.user_id)
+        if student is None or not student.whatsapp:
+            await clear_debounce(conversation_id)
+            return {"status": "missing_whatsapp"}
+
+        try:
+            final = await generate_lesson_reply(
+                db,
+                conversation,
+                conversation.cohort_id,
+                conversation.lesson_id,
+                conversation.user_id,
+            )
+            provider_id = send_text_message(to_phone=student.whatsapp, body=final)
+
+            last_msg = await db.scalar(
+                select(Message)
+                .where(
+                    Message.conversation_id == conversation.id,
+                    Message.author == Author.AGENT,
+                )
+                .order_by(Message.created_at.desc())
+                .limit(1)
+            )
+            if last_msg is not None:
+                last_msg.provider_message_id = provider_id
+                last_msg.delivery_status = "sent"
+            await db.commit()
+        except CinndiOutboundError as exc:
+            await db.rollback()
+            logger.warning("whatsapp reply failed conv=%s: %s", conversation_id, exc)
+            await clear_debounce(conversation_id)
+            return {"status": "send_failed", "error": str(exc)}
+        except Exception:
+            await db.rollback()
+            raise
+
+    await clear_debounce(conversation_id)
+    return {"status": "ok", "conversation_id": str(conversation_id)}
 
 
 async def _evaluate_gaps(cohort_id: UUID) -> dict:
-    from sqlalchemy import select
-
     from app.ai.client import get_openai
     from app.core.config import settings
     from app.core.database import SessionLocal
@@ -109,8 +179,6 @@ async def _evaluate_gaps(cohort_id: UUID) -> dict:
 
 
 async def _sweep_evaluations() -> dict:
-    from sqlalchemy import select
-
     from app.core.database import SessionLocal
     from app.models.cohort import Cohort
 

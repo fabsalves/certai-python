@@ -306,7 +306,7 @@ async def list_enrollments(
 ):
     await _get_cohort_or_404(db, cohort_id)
     stmt = (
-        select(Enrollment, User.name, User.email)
+        select(Enrollment, User.name, User.email, User.whatsapp)
         .join(User, Enrollment.student_id == User.id)
         .where(Enrollment.cohort_id == cohort_id)
         .order_by(User.name)
@@ -318,9 +318,10 @@ async def list_enrollments(
             student_id=enrollment.student_id,
             student_name=student_name,
             student_email=student_email,
+            student_whatsapp=student_whatsapp,
             enrolled_at=enrollment.created_at,
         )
-        for enrollment, student_name, student_email in rows
+        for enrollment, student_name, student_email, student_whatsapp in rows
     ]
 
 

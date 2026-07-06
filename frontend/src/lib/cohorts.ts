@@ -19,6 +19,7 @@ export interface Enrollment {
   student_id: string;
   student_name: string;
   student_email: string;
+  student_whatsapp?: string | null;
   enrolled_at: string;
 }
 

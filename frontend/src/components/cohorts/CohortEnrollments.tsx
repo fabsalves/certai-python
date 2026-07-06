@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { maskPhoneBR } from "../../lib/validation";
 import { api } from "../../lib/api";
 import type { Enrollment } from "../../lib/cohorts";
 import { useAuth } from "../../lib/auth";
@@ -123,6 +124,11 @@ export function CohortEnrollments({ cohortId, onChanged }: Props) {
                   <div className="cohort-students__item-main">
                     <span className="cohort-students__name">{e.student_name}</span>
                     <span className="muted cohort-students__email">{e.student_email}</span>
+                    {e.student_whatsapp && (
+                      <span className="muted cohort-students__email">
+                        WhatsApp: {maskPhoneBR(e.student_whatsapp.replace(/^55/, ""))}
+                      </span>
+                    )}
                   </div>
                   <button
                     type="button"

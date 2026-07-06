@@ -6,6 +6,7 @@ export interface UserOption {
   email: string;
   role: Role;
   is_active: boolean;
+  whatsapp?: string | null;
 }
 
 export interface UserCreateInput {
@@ -13,4 +14,5 @@ export interface UserCreateInput {
   name: string;
   password: string;
   role?: Role;
+  whatsapp?: string;
 }

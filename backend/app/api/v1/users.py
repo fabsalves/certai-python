@@ -61,11 +61,16 @@ async def create_user(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="E-mail já cadastrado"
         )
+    if body.whatsapp and await db.scalar(select(User).where(User.whatsapp == body.whatsapp)):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="WhatsApp já cadastrado"
+        )
     new_user = User(
         email=body.email,
         name=body.name,
         role=body.role,
         hashed_password=hash_password(body.password),
+        whatsapp=body.whatsapp,
     )
     db.add(new_user)
     await db.flush()

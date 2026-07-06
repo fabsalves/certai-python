@@ -25,3 +25,6 @@ class User(Base):
         Enum(Role, native_enum=False, length=20), default=Role.STUDENT, nullable=False
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    whatsapp: Mapped[str | None] = mapped_column(
+        String(20), unique=True, index=True, nullable=True
+    )

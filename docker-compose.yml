@@ -59,7 +59,7 @@ services:
       - backend
       - redis
     # Filas separadas -> escala cada tipo de carga de forma independente.
-    command: celery -A app.workers.celery_app.celery_app worker -Q default,transcricao,disparo,avaliacao --concurrency=4 -l info
+    command: celery -A app.workers.celery_app.celery_app worker -Q default,transcription,whatsapp,evaluation --concurrency=4 -l info
 
   beat:
     build: ./backend

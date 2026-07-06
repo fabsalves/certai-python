@@ -102,7 +102,7 @@ PROFESSOR_USERS = [
 
 STUDENT_USERS = [
     ("aluno@certai.app", "Mariana Costa", "aluno12345"),
-    ("rafael.souza@certai.app", "Rafael Souza", "aluno12345"),
+    ("eriko@certai.app", "Ériko Sampaio", "aluno12345"),
     ("juliana.mendes@certai.app", "Juliana Mendes", "aluno12345"),
     ("pedro.almeida@certai.app", "Pedro Almeida", "aluno12345"),
     ("camila.rocha@certai.app", "Camila Rocha", "aluno12345"),
@@ -114,7 +114,7 @@ STUDENT_USERS = [
 # Apenas dois matriculados na turma; os demais ficam disponíveis para matrícula em lote.
 ENROLLED_STUDENT_EMAILS = {
     "aluno@certai.app",
-    "rafael.souza@certai.app",
+    "eriko@certai.app",
 }
 
 
@@ -122,12 +122,15 @@ def _run_alembic(*args: str) -> None:
     subprocess.run(["alembic", *args], check=True)
 
 
-def _make_user(email: str, name: str, role: Role, password: str) -> User:
+def _make_user(
+    email: str, name: str, role: Role, password: str, whatsapp: str | None = None
+) -> User:
     return User(
         email=email,
         name=name,
         role=role,
         hashed_password=hash_password(password),
+        whatsapp=whatsapp,
     )
 
 
@@ -180,7 +183,12 @@ async def seed(*, force: bool = False) -> None:
         for email, name, password in PROFESSOR_USERS:
             users.append(_make_user(email, name, Role.PROFESSOR, password))
         for email, name, password in STUDENT_USERS:
-            users.append(_make_user(email, name, Role.STUDENT, password))
+            wa = None
+            if email == "aluno@certai.app":
+                wa = "5511999990001"
+            elif email == "eriko@certai.app":
+                wa = "5585987385666"
+            users.append(_make_user(email, name, Role.STUDENT, password, whatsapp=wa))
 
         db.add_all(users)
         await db.flush()
@@ -270,6 +278,7 @@ async def seed(*, force: bool = False) -> None:
         print("  prof@certai.app / prof12345  (Ana Paula — Fundamentos)")
         print("  marcos.ferreira@certai.app / prof12345  (Marcos — Prática)")
         print("  aluno@certai.app / aluno12345  (Mariana Costa)")
+        print("  eriko@certai.app / aluno12345  (Ériko Sampaio — WhatsApp real)")
         print("")
         print(f"Turma: {cohort.name}")
         print(f"  {len(ENROLLED_STUDENT_EMAILS)} alunos matriculados")

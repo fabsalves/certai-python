@@ -9,6 +9,7 @@ from slowapi.util import get_remote_address
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api.v1.router import api_router
+from app.api.webhooks.cinndi import router as cinndi_webhook_router
 from app.core.config import settings
 from app.core.redis_client import redis_client
 
@@ -62,3 +63,4 @@ async def health():
 
 
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+app.include_router(cinndi_webhook_router)

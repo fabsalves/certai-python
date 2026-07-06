@@ -33,7 +33,8 @@ celery_app.conf.update(
     task_default_queue="default",
     task_routes={
         "app.workers.tasks.transcribe_audio": {"queue": "transcription"},
-        "app.workers.tasks.plan_dispatch": {"queue": "dispatch"},
+        "app.workers.tasks.plan_dispatch": {"queue": "whatsapp"},
+        "app.workers.tasks.process_whatsapp_inbound": {"queue": "whatsapp"},
         "app.workers.tasks.evaluate_cohort_gaps": {"queue": "evaluation"},
     },
 )
@@ -45,3 +46,6 @@ celery_app.conf.beat_schedule = {
         "schedule": crontab(hour=3, minute=0),  # every day at 03:00
     },
 }
+
+# Registers worker_process_init/shutdown for the persistent asyncio loop.
+import app.workers.async_runner  # noqa: E402, F401

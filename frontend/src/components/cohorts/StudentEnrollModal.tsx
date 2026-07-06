@@ -4,7 +4,7 @@ import { api } from "../../lib/api";
 import type { UserOption, UserCreateInput } from "../../lib/users";
 import { useFeedback } from "../../lib/feedback";
 import { useApiAction } from "../../lib/useApiAction";
-import { isNonEmpty, normalizedEmail, trimmed } from "../../lib/validation";
+import { isNonEmpty, isValidPhoneBR, maskPhoneBR, normalizedEmail, normalizePhoneForApi, trimmed } from "../../lib/validation";
 
 interface Props {
   open: boolean;
@@ -35,6 +35,7 @@ export function StudentEnrollModal({
   const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [newWhatsapp, setNewWhatsapp] = useState("");
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
@@ -53,6 +54,7 @@ export function StudentEnrollModal({
     setNewName("");
     setNewEmail("");
     setNewPassword("");
+    setNewWhatsapp("");
     setQuery("");
     setSelectedIds(new Set());
     onClose();
@@ -127,6 +129,11 @@ export function StudentEnrollModal({
       feedback.error("Informe o nome do aluno.");
       return;
     }
+    const whatsapp = normalizePhoneForApi(newWhatsapp);
+    if (whatsapp && !isValidPhoneBR(whatsapp)) {
+      feedback.error("Informe um WhatsApp válido (DDD + número).");
+      return;
+    }
     setCreating(true);
     await runAction({
       run: async () => {
@@ -135,6 +142,7 @@ export function StudentEnrollModal({
           name: nextName,
           password: newPassword,
           role: "student",
+          ...(whatsapp ? { whatsapp } : {}),
         };
         const { data: created } = await api.post<UserOption>("/users", body);
         await api.post(`/cohorts/${cohortId}/enrollments`, { student_id: created.id });
@@ -289,6 +297,19 @@ export function StudentEnrollModal({
               value={newPassword}
               onChange={(ev) => setNewPassword(ev.target.value)}
               required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="student-whatsapp">WhatsApp</label>
+            <input
+              id="student-whatsapp"
+              type="tel"
+              className="input"
+              inputMode="numeric"
+              autoComplete="tel"
+              value={newWhatsapp}
+              onChange={(ev) => setNewWhatsapp(maskPhoneBR(ev.target.value))}
+              placeholder="(11) 98765-4321"
             />
           </div>
           <footer className="modal-form__footer">

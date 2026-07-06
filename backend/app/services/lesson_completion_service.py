@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.client import get_openai
 from app.core.config import settings
+from app.core.db_events import enqueue_after_commit
 from app.models.assessment import CohortLessonNote
 from app.models.track import Lesson
 from app.models.cohort import CohortProgress
@@ -91,9 +92,9 @@ async def complete_lesson(
 
     await db.flush()
 
-    # Dispatch planning runs in the background (does not block the professor).
+    # Dispatch runs after commit so progress is visible to the worker.
     from app.workers.tasks import plan_dispatch
 
-    plan_dispatch.delay(str(cohort_id), str(lesson_id))
+    enqueue_after_commit(db, plan_dispatch, str(cohort_id), str(lesson_id))
 
     return note

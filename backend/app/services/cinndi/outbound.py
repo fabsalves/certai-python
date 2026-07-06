@@ -1,0 +1,97 @@
+"""Low-level Cinndi outbound HTTP calls."""
+
+from __future__ import annotations
+
+from typing import Any
+
+import httpx
+
+from app.core.config import settings
+from app.core.phone import digits_only
+from app.services.cinndi.outbound_message_id import provider_message_id_from_response
+
+
+class CinndiOutboundError(Exception):
+    pass
+
+
+MAX_ATTEMPTS = 2
+
+
+def _base_url() -> str:
+    return (settings.CINNDI_API_URL or "").rstrip("/")
+
+
+def _api_key() -> str:
+    return settings.CINNDI_API_KEY or ""
+
+
+def _from_phone() -> str:
+    return digits_only(settings.CINNDI_SENDER_PHONE)
+
+
+def _execute(
+    method: str,
+    endpoint: str,
+    body: dict[str, Any],
+    *,
+    max_attempts: int = MAX_ATTEMPTS,
+    timeout: float = 30.0,
+) -> dict[str, Any]:
+    if not _base_url() or not _api_key():
+        raise CinndiOutboundError("Cinndi API not configured")
+
+    url = f"{_base_url()}/{endpoint.lstrip('/')}"
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    last_error = "unknown error"
+
+    for attempt in range(1, max(1, max_attempts) + 1):
+        try:
+            with httpx.Client(timeout=timeout, verify=not settings.CINNDI_INSECURE_SSL) as client:
+                response = client.request(method.upper(), url, json=body, headers=headers)
+            if response.is_success:
+                return {"success": True, "code": response.status_code, "body": response.text}
+            last_error = response.text
+        except httpx.HTTPError as exc:
+            last_error = str(exc)
+
+    raise CinndiOutboundError(last_error)
+
+
+def send_text_message(*, to_phone: str, body: str) -> str | None:
+    from_phone = _from_phone()
+    to_digits = digits_only(to_phone)
+    if not from_phone or not to_digits:
+        raise CinndiOutboundError("invalid from/to phone")
+
+    response = _execute(
+        "POST",
+        f"enviar-mensagem-texto/{from_phone}/{_api_key()}",
+        {"para": to_digits, "mensagem": body},
+    )
+    return provider_message_id_from_response(response["body"])
+
+
+def send_template_message(
+    *,
+    to_phone: str,
+    template_name: str,
+    body_params: list[str],
+    code: str = "pt_BR",
+) -> str | None:
+    from_phone = _from_phone()
+    to_digits = digits_only(to_phone)
+    if not from_phone or not to_digits:
+        raise CinndiOutboundError("invalid from/to phone")
+
+    response = _execute(
+        "POST",
+        f"enviar-template/{from_phone}/{_api_key()}",
+        {
+            "para": to_digits,
+            "name": template_name,
+            "code": code,
+            "body": list(body_params),
+        },
+    )
+    return provider_message_id_from_response(response["body"])

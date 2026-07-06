@@ -5,6 +5,7 @@ from typing import Annotated
 from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field
 
 from app.core.email import normalize_email
+from app.core.phone import normalize_br_phone
 from app.models.track import ModuleLevel
 from app.models.user import Role
 
@@ -24,7 +25,17 @@ def _optional_non_empty(value: str | None) -> str | None:
 
 NameStr = Annotated[str, AfterValidator(_require_non_empty), Field(max_length=255)]
 OptionalNameStr = Annotated[str | None, AfterValidator(_optional_non_empty)]
+def _optional_whatsapp(value: str | None) -> str | None:
+    if value is None or not str(value).strip():
+        return None
+    normalized = normalize_br_phone(value)
+    if normalized is None:
+        raise ValueError("WhatsApp inválido")
+    return normalized
+
+
 NormalizedEmailStr = Annotated[EmailStr, AfterValidator(normalize_email)]
+OptionalWhatsappStr = Annotated[str | None, AfterValidator(_optional_whatsapp)]
 
 
 # --- Auth ---
@@ -47,6 +58,7 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str = Field(min_length=8, max_length=128)
     role: Role = Role.STUDENT
+    whatsapp: OptionalWhatsappStr = None
 
 
 class UserOut(UserBase):
@@ -54,6 +66,7 @@ class UserOut(UserBase):
     id: uuid.UUID
     role: Role
     is_active: bool
+    whatsapp: str | None = None
 
 
 # --- Track / Module / Lesson ---
@@ -176,6 +189,7 @@ class EnrollmentOut(BaseModel):
     student_id: uuid.UUID
     student_name: str
     student_email: str
+    student_whatsapp: str | None = None
     enrolled_at: datetime
 
 
