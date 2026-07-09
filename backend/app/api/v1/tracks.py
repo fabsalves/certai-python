@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -11,7 +11,15 @@ from app.core.deps import require_roles
 from app.models.cohort import CohortModuleProfessor
 from app.models.track import Lesson, Module, Track
 from app.models.user import Role, User
+from app.services.storage import get_storage
+from app.services.storage.download import file_response
 from app.services.track_structure import ensure_unique_lesson_title, ensure_unique_module_title
+from app.services.upload_validation import (
+    MATERIAL_MAX_BYTES,
+    TRACK_MATERIAL_BY_EXT,
+    read_upload,
+    resolve_allowed_type,
+)
 from app.schemas import (
     LessonCreate,
     LessonOut,
@@ -93,6 +101,48 @@ async def publish_track(
     track.published = True
     await db.flush()
     return await _get_track(db, track_id)
+
+
+@router.post("/{track_id}/material", response_model=TrackOut, dependencies=[Depends(can_edit)])
+async def upload_track_material(
+    track_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    file: Annotated[UploadFile, File(description="PDF ou PPT da trilha")],
+):
+    """Attach or replace the single material file for a track (PDF/PPT/PPTX)."""
+    track = await _get_track(db, track_id)
+    content_type, ext = resolve_allowed_type(file, TRACK_MATERIAL_BY_EXT)
+    content = await read_upload(
+        file,
+        max_bytes=MATERIAL_MAX_BYTES,
+        too_large_message="Arquivo muito grande (máx. 20 MB)",
+    )
+
+    storage = get_storage()
+    if track.material_storage_key:
+        await storage.delete(track.material_storage_key)
+
+    key = f"tracks/{track_id}/material/{uuid.uuid4()}{ext}"
+    await storage.save(content, key, content_type=content_type)
+
+    track.material_storage_key = key
+    track.material_filename = file.filename or f"material{ext}"
+    track.material_content_type = content_type
+    await db.flush()
+    return await _get_track(db, track_id)
+
+
+@router.get("/{track_id}/material", dependencies=[Depends(can_edit)])
+async def download_track_material(
+    track_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    track = await _get_track(db, track_id)
+    return await file_response(
+        storage_key=track.material_storage_key,
+        filename=track.material_filename or "material",
+        content_type=track.material_content_type,
+    )
 
 
 @router.post("/{track_id}/modules", response_model=ModuleOut,

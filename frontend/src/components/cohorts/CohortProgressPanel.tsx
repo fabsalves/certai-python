@@ -1,5 +1,14 @@
-import type { CohortProgress } from "../../lib/cohorts";
+import { useEffect, useState } from "react";
+import type { CohortLessonNote, CohortProgress } from "../../lib/cohorts";
+import { api } from "../../lib/api";
+import { downloadApiFile } from "../../lib/download";
+import { useApiAction } from "../../lib/useApiAction";
 import { sortedLessons, sortedModules, type Track } from "../../lib/tracks";
+import {
+  FileAttachmentBlock,
+  FileChip,
+  fileKindFromName,
+} from "../ui/FileAttachment";
 import { LessonReportCapture } from "./LessonReportCapture";
 
 interface Props {
@@ -29,6 +38,7 @@ export function CohortProgressPanel({
   professorName,
   onCompleted,
 }: Props) {
+  const runAction = useApiAction();
   const activeLessonId = selectedLessonId ?? progress.current_lesson_id;
   const selected = activeLessonId ? findLesson(track, activeLessonId) : null;
   const isCurrent = activeLessonId === progress.current_lesson_id;
@@ -36,6 +46,53 @@ export function CohortProgressPanel({
     ? progress.completed_lesson_ids.includes(activeLessonId)
     : false;
   const allDone = progress.current_lesson_id === null && progress.completed_lesson_ids.length > 0;
+
+  const [notes, setNotes] = useState<CohortLessonNote[]>([]);
+  const [downloading, setDownloading] = useState<"attachment" | "audio" | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get<CohortLessonNote[]>(`/cohorts/${cohortId}/lesson-notes`)
+      .then(({ data }) => {
+        if (!cancelled) setNotes(data);
+      })
+      .catch(() => {
+        if (!cancelled) setNotes([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cohortId, progress.completed_lesson_ids.length]);
+
+  const note = activeLessonId
+    ? notes.find((item) => item.lesson_id === activeLessonId)
+    : undefined;
+
+  async function downloadAttachment() {
+    if (!activeLessonId || !note?.has_attachment) return;
+    setDownloading("attachment");
+    await runAction({
+      run: () =>
+        downloadApiFile(
+          `/cohorts/${cohortId}/lessons/${activeLessonId}/attachment`,
+          note.attachment_filename ?? "anexo",
+        ),
+      errorMessage: "Não foi possível baixar o anexo.",
+    });
+    setDownloading(null);
+  }
+
+  async function downloadAudio() {
+    if (!activeLessonId || !note?.has_audio) return;
+    setDownloading("audio");
+    await runAction({
+      run: () =>
+        downloadApiFile(`/cohorts/${cohortId}/lessons/${activeLessonId}/audio`, "relato-aula.webm"),
+      errorMessage: "Não foi possível baixar o áudio.",
+    });
+    setDownloading(null);
+  }
 
   if (allDone && !selected) {
     return (
@@ -73,6 +130,29 @@ export function CohortProgressPanel({
               : "Aguardando conclusão das aulas anteriores."}
         </p>
       </div>
+
+      {isDone && note && (note.has_attachment || note.has_audio) && (
+        <FileAttachmentBlock label="Arquivos do relato">
+          {note.has_attachment && (
+            <FileChip
+              filename={note.attachment_filename ?? "anexo"}
+              kind={fileKindFromName(note.attachment_filename)}
+              meta="Documento anexado"
+              onDownload={downloadAttachment}
+              downloading={downloading === "attachment"}
+            />
+          )}
+          {note.has_audio && (
+            <FileChip
+              filename="relato-aula.webm"
+              kind="audio"
+              meta="Áudio gravado"
+              onDownload={downloadAudio}
+              downloading={downloading === "audio"}
+            />
+          )}
+        </FileAttachmentBlock>
+      )}
 
       {isCurrent && activeLessonId && (
         <LessonReportCapture

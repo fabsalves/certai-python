@@ -24,6 +24,9 @@ class Track(Base):
     competency: Mapped[str] = mapped_column(String(255), default="")  # what the student must absorb
     published: Mapped[bool] = mapped_column(default=False, nullable=False)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    material_storage_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    material_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    material_content_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     modules: Mapped[list["Module"]] = relationship(
         back_populates="track", order_by="Module.position", cascade="all, delete-orphan"

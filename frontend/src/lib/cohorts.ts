@@ -28,6 +28,13 @@ export interface CohortProgress {
   current_lesson_id: string | null;
 }
 
+export interface CohortLessonNote {
+  lesson_id: string;
+  attachment_filename: string | null;
+  has_attachment: boolean;
+  has_audio: boolean;
+}
+
 export interface TrackOption {
   id: string;
   title: string;

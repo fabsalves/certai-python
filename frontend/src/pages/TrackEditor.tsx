@@ -4,9 +4,16 @@ import axios from "axios";
 import { EditorTabPanel, EditorTabs } from "../components/tracks/EditorTabs";
 import { ModuleEditor } from "../components/tracks/ModuleEditor";
 import { TrackPathPreview } from "../components/tracks/TrackPathPreview";
+import {
+  FileAttachmentBlock,
+  FileChip,
+  FilePicker,
+  fileKindFromName,
+} from "../components/ui/FileAttachment";
 import { SortableList } from "../components/ui/SortableList";
 import { api } from "../lib/api";
 import { useConfirm } from "../lib/confirm";
+import { downloadApiFile } from "../lib/download";
 import { useFeedback } from "../lib/feedback";
 import { useApiAction } from "../lib/useApiAction";
 import { isNonEmpty, trimmed } from "../lib/validation";
@@ -41,6 +48,9 @@ export function TrackEditor() {
   const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
   const [expandedModuleId, setExpandedModuleId] = useState<string | null>(null);
   const [tab, setTab] = useState<EditorTab>("meta");
+  const [materialFile, setMaterialFile] = useState<File | null>(null);
+  const [uploadingMaterial, setUploadingMaterial] = useState(false);
+  const [downloadingMaterial, setDownloadingMaterial] = useState(false);
 
   const reloadTrack = useCallback(async () => {
     if (!trackId || isNew) return;
@@ -134,6 +144,37 @@ export function TrackEditor() {
       onSuccess: ({ data }) => setTrack(data),
     });
     setSaving(false);
+  }
+
+  async function uploadMaterial(e?: FormEvent) {
+    e?.preventDefault();
+    if (!track || !materialFile) return;
+    setUploadingMaterial(true);
+    const form = new FormData();
+    form.append("file", materialFile);
+    await runAction({
+      run: () =>
+        api.post<Track>(`/tracks/${track.id}/material`, form, {
+          headers: { "Content-Type": "multipart/form-data" },
+        }),
+      successMessage: "Material da trilha enviado.",
+      errorMessage: "Não foi possível enviar o material.",
+      onSuccess: ({ data }) => {
+        setTrack(data);
+        setMaterialFile(null);
+      },
+    });
+    setUploadingMaterial(false);
+  }
+
+  async function downloadMaterial() {
+    if (!track?.material_filename) return;
+    setDownloadingMaterial(true);
+    await runAction({
+      run: () => downloadApiFile(`/tracks/${track.id}/material`, track.material_filename ?? "material"),
+      errorMessage: "Não foi possível baixar o material.",
+    });
+    setDownloadingMaterial(false);
   }
 
   async function togglePublish() {
@@ -322,6 +363,60 @@ export function TrackEditor() {
                     </button>
                   )}
                 </form>
+
+                {track && (
+                  <form className="track-meta track-meta__material" onSubmit={uploadMaterial}>
+                    <FileAttachmentBlock
+                      label="Material da trilha"
+                      hint="PDF ou PPT. Um arquivo por trilha — enviar outro substitui o atual."
+                    >
+                      {track.material_filename && !materialFile && (
+                        <FileChip
+                          filename={track.material_filename}
+                          kind={fileKindFromName(track.material_filename)}
+                          meta="Arquivo atual"
+                          onDownload={downloadMaterial}
+                          downloading={downloadingMaterial}
+                        />
+                      )}
+                      {materialFile && (
+                        <FileChip
+                          filename={materialFile.name}
+                          kind={fileKindFromName(materialFile.name)}
+                          meta="Pronto para enviar"
+                          onClear={() => setMaterialFile(null)}
+                          clearLabel="Cancelar"
+                        />
+                      )}
+                      <div className="file-attachment__actions">
+                        <FilePicker
+                          id="track-material"
+                          accept=".pdf,.ppt,.pptx,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                          buttonLabel={
+                            track.material_filename || materialFile
+                              ? "Escolher outro arquivo"
+                              : "Escolher arquivo"
+                          }
+                          disabled={uploadingMaterial}
+                          onChange={setMaterialFile}
+                        />
+                        {materialFile && (
+                          <button
+                            type="submit"
+                            className="btn btn-primary btn-sm"
+                            disabled={uploadingMaterial}
+                          >
+                            {uploadingMaterial
+                              ? "Enviando…"
+                              : track.material_filename
+                                ? "Substituir material"
+                                : "Enviar material"}
+                          </button>
+                        )}
+                      </div>
+                    </FileAttachmentBlock>
+                  </form>
+                )}
               </EditorTabPanel>
 
               <EditorTabPanel id="structure" labelledBy="track-tab-structure" hidden={tab !== "structure" || !track}>

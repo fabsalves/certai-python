@@ -46,6 +46,14 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     GROQ_TRANSCRIBE_MODEL: str = "whisper-large-v3"
 
+    # --- Storage (local em dev; S3 em staging/prod) ---
+    STORAGE_BACKEND: Literal["local", "s3"] = "local"
+    STORAGE_LOCAL_ROOT: str = "./media"
+    AWS_BUCKET: str = ""
+    AWS_REGION: str = "us-east-1"
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
+
     # --- Cinndi / WhatsApp ---
     CINNDI_API_URL: str = "https://api.cinndi.com/v2"
     CINNDI_API_KEY: str = ""

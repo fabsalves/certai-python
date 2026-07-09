@@ -2,6 +2,12 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import { api } from "../../lib/api";
 import { formatDuration, useAudioRecorder } from "../../hooks/useAudioRecorder";
 import { useApiAction } from "../../lib/useApiAction";
+import {
+  FileAttachmentBlock,
+  FileChip,
+  FilePicker,
+  fileKindFromName,
+} from "../ui/FileAttachment";
 
 interface Props {
   cohortId: string;
@@ -25,6 +31,7 @@ export function LessonReportCapture({
   const runAction = useApiAction();
   const { status, seconds, blob, error: recorderError, start, stop, reset } = useAudioRecorder();
   const [transcript, setTranscript] = useState("");
+  const [attachment, setAttachment] = useState<File | null>(null);
   const [transcribing, setTranscribing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const transcribedRef = useRef<Blob | null>(null);
@@ -32,6 +39,7 @@ export function LessonReportCapture({
   useEffect(() => {
     reset();
     setTranscript("");
+    setAttachment(null);
     transcribedRef.current = null;
   }, [cohortId, lessonId, reset]);
 
@@ -65,11 +73,19 @@ export function LessonReportCapture({
   async function submitReport(e: FormEvent) {
     e.preventDefault();
     setSubmitting(true);
+    const form = new FormData();
+    form.append("lesson_id", lessonId);
+    form.append("transcript", transcript);
+    if (attachment) {
+      form.append("attachment", attachment);
+    }
+    if (blob) {
+      form.append("audio", blob, "relato-aula.webm");
+    }
     await runAction({
       run: () =>
-        api.post(completePath ?? `/cohorts/${cohortId}/complete-lesson`, {
-          lesson_id: lessonId,
-          transcript,
+        api.post(completePath ?? `/cohorts/${cohortId}/complete-lesson`, form, {
+          headers: { "Content-Type": "multipart/form-data" },
         }),
       successMessage: "Aula encerrada. A turma avançou na trilha.",
       errorMessage: "Não foi possível encerrar a aula. Tente novamente.",
@@ -77,6 +93,7 @@ export function LessonReportCapture({
         reset();
         transcribedRef.current = null;
         setTranscript("");
+        setAttachment(null);
         onCompleted();
       },
     });
@@ -144,6 +161,30 @@ export function LessonReportCapture({
             placeholder="Grave o áudio ou digite o que a turma viu, dúvidas comuns, pontos de atenção…"
           />
         </div>
+
+        <FileAttachmentBlock
+          label="Anexo opcional"
+          hint="DOCX ou TXT — fica guardado junto com o relato."
+        >
+          {attachment ? (
+            <FileChip
+              filename={attachment.name}
+              kind={fileKindFromName(attachment.name)}
+              meta="Será enviado ao encerrar"
+              onClear={() => setAttachment(null)}
+              clearLabel="Remover"
+            />
+          ) : (
+            <FilePicker
+              id="lesson-attachment"
+              accept=".docx,.txt,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              buttonLabel="Anexar documento"
+              disabled={transcribing || submitting}
+              onChange={setAttachment}
+            />
+          )}
+        </FileAttachmentBlock>
+
         <button type="submit" className="btn btn-primary" disabled={submitting || transcribing}>
           {submitting ? "Encerrando…" : "Encerrar aula e avançar turma"}
         </button>

@@ -24,6 +24,8 @@ export interface Track {
   competency: string;
   published: boolean;
   is_active: boolean;
+  material_filename?: string | null;
+  material_content_type?: string | null;
   modules: Module[];
 }
 

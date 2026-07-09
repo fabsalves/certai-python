@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,7 +13,6 @@ from app.models.track import Lesson
 from app.models.user import Role, User
 from app.schemas import (
     AgentResponse,
-    LessonCompletionIn,
     MessageIn,
     MessageOut,
     TranscriptionOut,
@@ -21,6 +20,12 @@ from app.schemas import (
 from app.services.conversation_service import student_lesson_message
 from app.services.lesson_completion_service import complete_lesson
 from app.services.transcription_service import transcribe_audio
+from app.services.upload_validation import (
+    AUDIO_MAX_BYTES,
+    is_audio_content_type,
+    parse_report_attachment,
+    parse_report_audio,
+)
 
 router = APIRouter(prefix="/admin/playground", tags=["admin-playground"])
 
@@ -187,15 +192,13 @@ async def transcribe_lesson_report(
     cohort = await _get_cohort_or_404(db, cohort_id)
     await _ensure_module_professor(db, cohort_id, professor_id, lesson_id)
 
-    if not audio.content_type or not (
-        audio.content_type.startswith("audio/") or audio.content_type == "video/webm"
-    ):
+    if not is_audio_content_type(audio.content_type):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Arquivo deve ser de áudio")
 
     content = await audio.read()
     if not content:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Áudio vazio")
-    if len(content) > 25 * 1024 * 1024:
+    if len(content) > AUDIO_MAX_BYTES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Áudio muito grande (máx. 25 MB)")
 
     filename = audio.filename or "report.webm"
@@ -216,23 +219,36 @@ async def transcribe_lesson_report(
 async def complete_lesson_as_professor(
     cohort_id: uuid.UUID,
     professor_id: uuid.UUID,
-    body: LessonCompletionIn,
     user: Annotated[User, Depends(admin_only)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    lesson_id: Annotated[uuid.UUID, Form(description="Aula a encerrar")],
+    transcript: Annotated[str, Form()] = "",
+    attachment: Annotated[UploadFile | None, File()] = None,
+    audio: Annotated[UploadFile | None, File()] = None,
 ):
     """Encerra aula como professor do módulo — somente admin."""
     cohort = await _get_cohort_or_404(db, cohort_id)
-    await _ensure_module_professor(db, cohort_id, professor_id, body.lesson_id)
+    await _ensure_module_professor(db, cohort_id, professor_id, lesson_id)
 
     current = await _current_lesson_id(db, cohort)
-    if current is not None and body.lesson_id != current:
+    if current is not None and lesson_id != current:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
             "Só é possível encerrar a aula atual da turma",
         )
 
+    stored_attachment = await parse_report_attachment(attachment)
+    stored_audio = await parse_report_audio(audio)
+
     try:
-        note = await complete_lesson(db, cohort_id, body.lesson_id, body.transcript)
+        note = await complete_lesson(
+            db,
+            cohort_id,
+            lesson_id,
+            transcript,
+            attachment=stored_attachment,
+            audio=stored_audio,
+        )
     except ValueError as e:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(e))
 

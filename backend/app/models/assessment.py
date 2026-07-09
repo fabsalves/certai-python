@@ -52,3 +52,8 @@ class CohortLessonNote(Base):
     summary: Mapped[str] = mapped_column(Text, default="")            # AI consolidation
     unclear_points: Mapped[str] = mapped_column(Text, default="")
     professor_transcript: Mapped[str] = mapped_column(Text, default="")  # transcribed audio
+    attachment_storage_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    attachment_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    attachment_content_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    audio_storage_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    audio_content_type: Mapped[str | None] = mapped_column(String(128), nullable=True)

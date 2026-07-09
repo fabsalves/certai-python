@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -14,6 +14,7 @@ from app.models.user import Role, User
 from app.schemas import (
     CohortCreate,
     CohortDetailOut,
+    CohortLessonNoteOut,
     CohortListOut,
     CohortOut,
     CohortProgressOut,
@@ -22,14 +23,21 @@ from app.schemas import (
     EnrollmentBulkCreate,
     EnrollmentBulkOut,
     EnrollmentOut,
-    LessonCompletionIn,
     ModuleProfessorIn,
     ModuleProfessorOut,
     TrackOut,
     TranscriptionOut,
 )
+from app.models.assessment import CohortLessonNote
 from app.services.lesson_completion_service import complete_lesson
+from app.services.storage.download import file_response
 from app.services.transcription_service import transcribe_audio
+from app.services.upload_validation import (
+    AUDIO_MAX_BYTES,
+    is_audio_content_type,
+    parse_report_attachment,
+    parse_report_audio,
+)
 
 router = APIRouter(prefix="/cohorts", tags=["cohorts"])
 
@@ -460,6 +468,101 @@ async def get_progress(
     )
 
 
+async def _latest_lesson_note(
+    db: AsyncSession, cohort_id: uuid.UUID, lesson_id: uuid.UUID
+) -> CohortLessonNote | None:
+    return await db.scalar(
+        select(CohortLessonNote)
+        .where(
+            CohortLessonNote.cohort_id == cohort_id,
+            CohortLessonNote.lesson_id == lesson_id,
+        )
+        .order_by(CohortLessonNote.created_at.desc())
+        .limit(1)
+    )
+
+
+@router.get(
+    "/{cohort_id}/lesson-notes",
+    response_model=list[CohortLessonNoteOut],
+    dependencies=[Depends(can_view)],
+)
+async def list_lesson_notes(
+    cohort_id: uuid.UUID, user: CurrentUser, db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Metadata of professor reports (attachment/audio) for completed lessons."""
+    cohort = await _get_cohort_or_404(db, cohort_id)
+    await _assert_cohort_access(db, user, cohort)
+
+    notes = (
+        await db.execute(
+            select(CohortLessonNote)
+            .where(CohortLessonNote.cohort_id == cohort_id)
+            .order_by(CohortLessonNote.created_at.desc())
+        )
+    ).scalars().all()
+
+    # One entry per lesson (latest note wins).
+    by_lesson: dict[uuid.UUID, CohortLessonNote] = {}
+    for note in notes:
+        if note.lesson_id not in by_lesson:
+            by_lesson[note.lesson_id] = note
+
+    return [
+        CohortLessonNoteOut(
+            lesson_id=note.lesson_id,
+            attachment_filename=note.attachment_filename,
+            has_attachment=bool(note.attachment_storage_key),
+            has_audio=bool(note.audio_storage_key),
+        )
+        for note in by_lesson.values()
+    ]
+
+
+@router.get(
+    "/{cohort_id}/lessons/{lesson_id}/attachment",
+    dependencies=[Depends(can_view)],
+)
+async def download_lesson_attachment(
+    cohort_id: uuid.UUID,
+    lesson_id: uuid.UUID,
+    user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    cohort = await _get_cohort_or_404(db, cohort_id)
+    await _assert_cohort_access(db, user, cohort)
+    note = await _latest_lesson_note(db, cohort_id, lesson_id)
+    if note is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Relato não encontrado")
+    return await file_response(
+        storage_key=note.attachment_storage_key,
+        filename=note.attachment_filename or "anexo",
+        content_type=note.attachment_content_type,
+    )
+
+
+@router.get(
+    "/{cohort_id}/lessons/{lesson_id}/audio",
+    dependencies=[Depends(can_view)],
+)
+async def download_lesson_audio(
+    cohort_id: uuid.UUID,
+    lesson_id: uuid.UUID,
+    user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    cohort = await _get_cohort_or_404(db, cohort_id)
+    await _assert_cohort_access(db, user, cohort)
+    note = await _latest_lesson_note(db, cohort_id, lesson_id)
+    if note is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Relato não encontrado")
+    return await file_response(
+        storage_key=note.audio_storage_key,
+        filename="relato-aula.webm",
+        content_type=note.audio_content_type or "audio/webm",
+    )
+
+
 @router.post("/{cohort_id}/transcribe-report", response_model=TranscriptionOut)
 async def transcribe_lesson_report(
     cohort_id: uuid.UUID,
@@ -472,15 +575,13 @@ async def transcribe_lesson_report(
     cohort = await _get_cohort_or_404(db, cohort_id)
     await _assert_lesson_professor(db, user, cohort, lesson_id)
 
-    if not audio.content_type or not (
-        audio.content_type.startswith("audio/") or audio.content_type == "video/webm"
-    ):
+    if not is_audio_content_type(audio.content_type):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Arquivo deve ser de áudio")
 
     content = await audio.read()
     if not content:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Áudio vazio")
-    if len(content) > 25 * 1024 * 1024:
+    if len(content) > AUDIO_MAX_BYTES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Áudio muito grande (máx. 25 MB)")
 
     filename = audio.filename or "report.webm"
@@ -500,24 +601,37 @@ async def transcribe_lesson_report(
 @router.post("/{cohort_id}/complete-lesson")
 async def complete(
     cohort_id: uuid.UUID,
-    body: LessonCompletionIn,
     user: Annotated[CurrentUser, Depends(require_roles(Role.PROFESSOR))],
     db: Annotated[AsyncSession, Depends(get_db)],
+    lesson_id: Annotated[uuid.UUID, Form(description="Aula a encerrar")],
+    transcript: Annotated[str, Form()] = "",
+    attachment: Annotated[UploadFile | None, File()] = None,
+    audio: Annotated[UploadFile | None, File()] = None,
 ):
     """The professor signals the cohort studied the lesson. Advances the cohort and
-    unlocks context."""
+    unlocks context. Optionally stores docx/txt + recorded audio for compliance."""
     cohort = await _get_cohort_or_404(db, cohort_id)
-    await _assert_lesson_professor(db, user, cohort, body.lesson_id)
+    await _assert_lesson_professor(db, user, cohort, lesson_id)
 
     current = await _current_lesson_id(db, cohort)
-    if current is not None and body.lesson_id != current:
+    if current is not None and lesson_id != current:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
             "Só é possível encerrar a aula atual da turma",
         )
 
+    stored_attachment = await parse_report_attachment(attachment)
+    stored_audio = await parse_report_audio(audio)
+
     try:
-        note = await complete_lesson(db, cohort_id, body.lesson_id, body.transcript)
+        note = await complete_lesson(
+            db,
+            cohort_id,
+            lesson_id,
+            transcript,
+            attachment=stored_attachment,
+            audio=stored_audio,
+        )
     except ValueError as e:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(e))
 

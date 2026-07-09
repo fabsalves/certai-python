@@ -166,6 +166,8 @@ class TrackOut(TrackCreate):
     id: uuid.UUID
     published: bool
     is_active: bool
+    material_filename: str | None = None
+    material_content_type: str | None = None
     modules: list[ModuleOut] = []
 
 
@@ -234,6 +236,13 @@ class EnrollmentOut(BaseModel):
 class CohortProgressOut(BaseModel):
     completed_lesson_ids: list[uuid.UUID]
     current_lesson_id: uuid.UUID | None = None
+
+
+class CohortLessonNoteOut(BaseModel):
+    lesson_id: uuid.UUID
+    attachment_filename: str | None = None
+    has_attachment: bool = False
+    has_audio: bool = False
 
 
 # --- Lesson completion ---
