@@ -304,3 +304,26 @@ class PlaygroundContextOut(BaseModel):
     system_blocks: str
     track_material: PlaygroundTrackMaterialOut
     lesson_notes: list[PlaygroundLessonNoteContextOut] = []
+
+
+class PlaygroundLessonFocusOut(BaseModel):
+    lesson_id: uuid.UUID
+    lesson_title: str
+
+
+class PlaygroundMicroScoreOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    lesson_id: uuid.UUID | None = None
+    lesson_title: str = ""
+    competency: str = ""
+    level: str
+    evidence: str = ""
+    created_at: datetime
+
+
+class PlaygroundScoresOut(BaseModel):
+    track_competency: str = ""
+    lesson_focus: PlaygroundLessonFocusOut
+    scores_in_lesson: list[PlaygroundMicroScoreOut] = []
+    scores_other_lessons: list[PlaygroundMicroScoreOut] = []

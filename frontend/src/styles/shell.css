@@ -1424,34 +1424,59 @@ html.modal-scroll-lock body {
 
 .playground-rail__tabs {
   flex-shrink: 0;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  align-items: stretch;
   gap: 0;
   height: var(--chrome-header-height);
   box-sizing: border-box;
+  padding: 0 6px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
 
 .playground-rail__tab {
-  padding: 0 12px;
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
   border: none;
   background: transparent;
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 500;
+  line-height: 1.35;
   color: var(--text-muted);
   cursor: pointer;
+  transition: color 0.12s;
+  white-space: nowrap;
 }
 
 .playground-rail__tab.is-active {
   color: var(--ink);
-  box-shadow: inset 0 -2px 0 var(--accent);
+  font-weight: 600;
 }
 
-.playground-rail__tab:hover:not(.is-active) {
+.playground-rail__tab.is-active::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 0;
+  height: 2px;
+  background: var(--brand);
+  border-radius: 2px 2px 0 0;
+}
+
+.playground-rail__tab:hover:not(.is-active):not(:disabled) {
   color: var(--ink);
-  background: var(--bg);
+}
+
+.playground-rail__tab:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .playground-rail > .path-preview,
@@ -1481,9 +1506,11 @@ html.modal-scroll-lock body {
 
 .playground-context__title {
   margin: 0;
+  font-family: var(--font-sans);
   font-size: 13px;
   font-weight: 600;
   color: var(--ink);
+  letter-spacing: 0;
 }
 
 .playground-context__scroll {
@@ -2022,7 +2049,17 @@ html.modal-scroll-lock body {
 
 @media (max-width: 900px) {
   .playground-rail {
-    width: 260px;
+    width: 280px;
+  }
+
+  .playground-rail__tab {
+    font-size: 14px;
+    padding: 0 6px;
+  }
+
+  .playground-rail__tab.is-active::after {
+    left: 4px;
+    right: 4px;
   }
 }
 

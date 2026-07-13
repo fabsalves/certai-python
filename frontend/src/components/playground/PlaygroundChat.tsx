@@ -21,6 +21,7 @@ interface Props {
   lessonTitle: string;
   canChat: boolean;
   headerActions?: ReactNode;
+  onMessageSent?: () => void;
 }
 
 function authorLabel(author: PlaygroundMessage["author"]): string {
@@ -37,6 +38,7 @@ export function PlaygroundChat({
   lessonTitle,
   canChat,
   headerActions,
+  onMessageSent,
 }: Props) {
   const [messages, setMessages] = useState<PlaygroundMessage[]>([]);
   const [input, setInput] = useState("");
@@ -111,6 +113,7 @@ export function PlaygroundChat({
         ...prev,
         { author: "agent", content: response, created_at: new Date().toISOString() },
       ]);
+      onMessageSent?.();
     } catch {
       setMessages((prev) => prev.filter((m) => m !== optimistic));
       setInput(content);

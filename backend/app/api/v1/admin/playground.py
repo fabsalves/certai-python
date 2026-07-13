@@ -15,11 +15,15 @@ from app.schemas import (
     MessageIn,
     MessageOut,
     PlaygroundContextOut,
+    PlaygroundLessonFocusOut,
     PlaygroundLessonNoteContextOut,
+    PlaygroundMicroScoreOut,
+    PlaygroundScoresOut,
     PlaygroundTrackMaterialOut,
     TranscriptionOut,
 )
 from app.services.playground_context_service import build_playground_context
+from app.services.playground_scores_service import build_playground_scores
 from app.services.conversation_service import list_lesson_messages, student_lesson_message
 from app.services.lesson_completion_service import complete_lesson
 from app.services.transcription_service import transcribe_audio
@@ -153,6 +157,36 @@ async def get_lesson_context(
         system_blocks=data["system_blocks"],
         track_material=PlaygroundTrackMaterialOut(**data["track_material"]),
         lesson_notes=[PlaygroundLessonNoteContextOut(**n) for n in data["lesson_notes"]],
+    )
+
+
+@router.get(
+    "/cohorts/{cohort_id}/students/{student_id}/lessons/{lesson_id}/scores",
+    response_model=PlaygroundScoresOut,
+)
+async def list_student_scores(
+    cohort_id: uuid.UUID,
+    student_id: uuid.UUID,
+    lesson_id: uuid.UUID,
+    user: Annotated[User, Depends(admin_only)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Micro-scores recorded for a student — read-only, admin playground."""
+    await _get_cohort_or_404(db, cohort_id)
+    await _ensure_enrolled_student(db, cohort_id, student_id)
+
+    try:
+        data = await build_playground_scores(db, cohort_id, student_id, lesson_id)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(e)) from e
+
+    return PlaygroundScoresOut(
+        track_competency=data["track_competency"],
+        lesson_focus=PlaygroundLessonFocusOut(**data["lesson_focus"]),
+        scores_in_lesson=[PlaygroundMicroScoreOut(**s) for s in data["scores_in_lesson"]],
+        scores_other_lessons=[
+            PlaygroundMicroScoreOut(**s) for s in data["scores_other_lessons"]
+        ],
     )
 
 
