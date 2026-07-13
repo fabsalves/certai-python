@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.deps import CurrentUser, require_roles
 from app.models.cohort import Cohort, CohortModuleProfessor, CohortProgress, Enrollment
-from app.models.conversation import Conversation, Message
 from app.models.track import Lesson
 from app.models.user import Role, User
 from app.schemas import (
@@ -21,7 +20,7 @@ from app.schemas import (
     TranscriptionOut,
 )
 from app.services.playground_context_service import build_playground_context
-from app.services.conversation_service import student_lesson_message
+from app.services.conversation_service import list_lesson_messages, student_lesson_message
 from app.services.lesson_completion_service import complete_lesson
 from app.services.transcription_service import transcribe_audio
 from app.services.upload_validation import (
@@ -172,23 +171,7 @@ async def list_student_messages(
     await _get_cohort_or_404(db, cohort_id)
     await _ensure_enrolled_student(db, cohort_id, student_id)
 
-    conversation = await db.scalar(
-        select(Conversation).where(
-            Conversation.cohort_id == cohort_id,
-            Conversation.user_id == student_id,
-            Conversation.lesson_id == lesson_id,
-        )
-    )
-    if conversation is None:
-        return []
-
-    messages = (
-        await db.scalars(
-            select(Message)
-            .where(Message.conversation_id == conversation.id)
-            .order_by(Message.created_at)
-        )
-    ).all()
+    messages = await list_lesson_messages(db, cohort_id, student_id, lesson_id)
     return [
         MessageOut(author=m.author.value, content=m.content, created_at=m.created_at)
         for m in messages
@@ -210,7 +193,9 @@ async def send_student_message(
     """Envia mensagem como aluno matriculado — sessão segregada por turma e aluno."""
     await _get_cohort_or_404(db, cohort_id)
     await _ensure_enrolled_student(db, cohort_id, student_id)
-    return await student_lesson_message(db, cohort_id, lesson_id, student_id, body.content)
+    return await student_lesson_message(
+        db, cohort_id, lesson_id, student_id, body.content, merge_channels=True
+    )
 
 
 @router.post(
