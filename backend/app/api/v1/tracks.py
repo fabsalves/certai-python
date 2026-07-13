@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
+from app.core.db_events import enqueue_after_commit
 from app.core.deps import require_roles
 from app.models.cohort import CohortModuleProfessor
 from app.models.track import Lesson, Module, Track
@@ -109,7 +110,8 @@ async def upload_track_material(
     db: Annotated[AsyncSession, Depends(get_db)],
     file: Annotated[UploadFile, File(description="PDF ou PPT da trilha")],
 ):
-    """Attach or replace the single material file for a track (PDF/PPT/PPTX)."""
+    """Attach or replace the single material file for a track (PDF/PPT/PPTX).
+    The AI ingestion (macro track guide) runs asynchronously after commit."""
     track = await _get_track(db, track_id)
     content_type, ext = resolve_allowed_type(file, TRACK_MATERIAL_BY_EXT)
     content = await read_upload(
@@ -128,7 +130,37 @@ async def upload_track_material(
     track.material_storage_key = key
     track.material_filename = file.filename or f"material{ext}"
     track.material_content_type = content_type
+    # New file invalidates any previous ingestion.
+    track.material_extracted_text = ""
+    track.material_guide = ""
+    track.material_ingestion_status = "pending"
     await db.flush()
+
+    from app.workers.tasks import ingest_track_material
+
+    enqueue_after_commit(db, ingest_track_material, str(track_id))
+    return await _get_track(db, track_id)
+
+
+@router.post(
+    "/{track_id}/material/ingest",
+    response_model=TrackOut,
+    dependencies=[Depends(can_edit)],
+)
+async def reingest_track_material(
+    track_id: uuid.UUID, db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Re-enqueue the AI ingestion of the track material (legacy files or failures)."""
+    track = await _get_track(db, track_id)
+    if not track.material_storage_key:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A trilha não possui material anexado")
+
+    track.material_ingestion_status = "pending"
+    await db.flush()
+
+    from app.workers.tasks import ingest_track_material
+
+    enqueue_after_commit(db, ingest_track_material, str(track_id))
     return await _get_track(db, track_id)
 
 

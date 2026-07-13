@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { CohortLessonNote, CohortProgress } from "../../lib/cohorts";
 import { api } from "../../lib/api";
 import { downloadApiFile } from "../../lib/download";
@@ -29,6 +29,14 @@ function findLesson(track: Track, lessonId: string) {
   return null;
 }
 
+const NOTE_INGESTION_LABELS: Record<string, string> = {
+  pending: "Relato aguardando processamento pela IA…",
+  processing: "IA processando o relato da aula…",
+  done: "Relato processado pela IA.",
+  failed:
+    "Falha no processamento do relato. Os convites aos alunos estão retidos até o reprocessamento.",
+};
+
 export function CohortProgressPanel({
   cohortId,
   track,
@@ -49,25 +57,44 @@ export function CohortProgressPanel({
 
   const [notes, setNotes] = useState<CohortLessonNote[]>([]);
   const [downloading, setDownloading] = useState<"attachment" | "audio" | null>(null);
+  const [reingesting, setReingesting] = useState(false);
+
+  const loadNotes = useCallback(() => {
+    return api
+      .get<CohortLessonNote[]>(`/cohorts/${cohortId}/lesson-notes`)
+      .then(({ data }) => setNotes(data))
+      .catch(() => setNotes([]));
+  }, [cohortId]);
 
   useEffect(() => {
-    let cancelled = false;
-    api
-      .get<CohortLessonNote[]>(`/cohorts/${cohortId}/lesson-notes`)
-      .then(({ data }) => {
-        if (!cancelled) setNotes(data);
-      })
-      .catch(() => {
-        if (!cancelled) setNotes([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [cohortId, progress.completed_lesson_ids.length]);
+    loadNotes();
+  }, [loadNotes, progress.completed_lesson_ids.length]);
+
+  // Refresh while the worker ingests a report, so the status updates live.
+  const hasIngestingNotes = notes.some(
+    (item) => item.ingestion_status === "pending" || item.ingestion_status === "processing",
+  );
+  useEffect(() => {
+    if (!hasIngestingNotes) return;
+    const timer = window.setInterval(loadNotes, 4000);
+    return () => window.clearInterval(timer);
+  }, [hasIngestingNotes, loadNotes]);
 
   const note = activeLessonId
     ? notes.find((item) => item.lesson_id === activeLessonId)
     : undefined;
+
+  async function reingestNote() {
+    if (!activeLessonId) return;
+    setReingesting(true);
+    await runAction({
+      run: () => api.post(`/cohorts/${cohortId}/lessons/${activeLessonId}/reingest`),
+      successMessage: "Reprocessamento do relato enfileirado.",
+      errorMessage: "Não foi possível reprocessar o relato.",
+      onSuccess: () => loadNotes(),
+    });
+    setReingesting(false);
+  }
 
   async function downloadAttachment() {
     if (!activeLessonId || !note?.has_attachment) return;
@@ -130,6 +157,28 @@ export function CohortProgressPanel({
               : "Aguardando conclusão das aulas anteriores."}
         </p>
       </div>
+
+      {isDone && note && note.ingestion_status !== "done" && (
+        <div
+          className={note.ingestion_status === "failed" ? "form-error" : "muted"}
+          style={{ fontSize: 14 }}
+        >
+          <p style={{ margin: 0 }}>
+            {NOTE_INGESTION_LABELS[note.ingestion_status] ?? note.ingestion_status}
+          </p>
+          {note.ingestion_status === "failed" && canComplete && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              style={{ marginTop: 8 }}
+              disabled={reingesting}
+              onClick={reingestNote}
+            >
+              {reingesting ? "Enfileirando…" : "Reprocessar relato"}
+            </button>
+          )}
+        </div>
+      )}
 
       {isDone && note && (note.has_attachment || note.has_audio) && (
         <FileAttachmentBlock label="Arquivos do relato">

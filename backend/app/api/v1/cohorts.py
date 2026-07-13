@@ -514,6 +514,7 @@ async def list_lesson_notes(
             attachment_filename=note.attachment_filename,
             has_attachment=bool(note.attachment_storage_key),
             has_audio=bool(note.audio_storage_key),
+            ingestion_status=note.ingestion_status,
         )
         for note in by_lesson.values()
     ]
@@ -609,7 +610,8 @@ async def complete(
     audio: Annotated[UploadFile | None, File()] = None,
 ):
     """The professor signals the cohort studied the lesson. Advances the cohort and
-    unlocks context. Optionally stores docx/txt + recorded audio for compliance."""
+    unlocks context. The AI ingestion (and only then the WhatsApp dispatch) runs
+    asynchronously after this request commits."""
     cohort = await _get_cohort_or_404(db, cohort_id)
     await _assert_lesson_professor(db, user, cohort, lesson_id)
 
@@ -637,6 +639,36 @@ async def complete(
 
     return {
         "status": "aula encerrada, turma avançada",
-        "summary": note.summary,
-        "unclear_points": note.unclear_points,
+        "ingestion_status": note.ingestion_status,
     }
+
+
+@router.post("/{cohort_id}/lessons/{lesson_id}/reingest")
+async def reingest_lesson_note(
+    cohort_id: uuid.UUID,
+    lesson_id: uuid.UUID,
+    user: Annotated[CurrentUser, Depends(require_roles(Role.PROFESSOR))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Re-enqueue the AI ingestion of a failed lesson report. On completion the
+    task chains the WhatsApp dispatch that was held back."""
+    cohort = await _get_cohort_or_404(db, cohort_id)
+    await _assert_lesson_professor(db, user, cohort, lesson_id)
+
+    note = await _latest_lesson_note(db, cohort_id, lesson_id)
+    if note is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Relato não encontrado")
+    if note.ingestion_status != "failed":
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Só é possível reprocessar relatos com falha na ingestão",
+        )
+
+    note.ingestion_status = "pending"
+    await db.flush()
+
+    from app.core.db_events import enqueue_after_commit
+    from app.workers.tasks import ingest_lesson_completion
+
+    enqueue_after_commit(db, ingest_lesson_completion, str(note.id))
+    return {"status": "reprocessamento enfileirado", "ingestion_status": note.ingestion_status}

@@ -21,6 +21,7 @@ from sqlalchemy.orm import selectinload
 from app.models.assessment import CohortLessonNote
 from app.models.track import Lesson, Module, Track
 from app.models.cohort import Cohort, CohortProgress
+from app.services.ingestion import INGESTION_DONE
 
 
 @dataclass
@@ -32,11 +33,12 @@ class ContextBundle:
     unlocked_content: list[dict] = field(default_factory=list)  # only what the cohort saw
     cohort_notes: list[dict] = field(default_factory=list)
     current_position: dict | None = None
+    track_guide: str = ""  # macro guide from the track material, available at any lesson
 
     def to_system_blocks(self) -> str:
         import json
 
-        return (
+        blocks = (
             "## Track map (full sequence, titles only)\n"
             f"{json.dumps(self.track_map, ensure_ascii=False, indent=2)}\n\n"
             "## Unlocked content (lessons the cohort has studied)\n"
@@ -46,6 +48,12 @@ class ContextBundle:
             "## Student current position\n"
             f"{json.dumps(self.current_position, ensure_ascii=False, indent=2)}\n"
         )
+        if self.track_guide.strip():
+            blocks += (
+                "\n## Track guide (macro reference from the track material)\n"
+                f"{self.track_guide.strip()}\n"
+            )
+        return blocks
 
 
 class ContextBuilder:
@@ -102,6 +110,11 @@ class ContextBuilder:
             unlocked_content=content,
             cohort_notes=notes,
             current_position=position,
+            track_guide=(
+                track.material_guide
+                if track.material_ingestion_status == INGESTION_DONE
+                else ""
+            ),
         )
 
     async def build_module(self, cohort_id: uuid.UUID, module_anchor_id: uuid.UUID) -> ContextBundle:
@@ -128,7 +141,16 @@ class ContextBuilder:
             for l in m.lessons
             if l.is_active and l.id in unlocked
         ]
-        return ContextBundle(scope="track", track_map=track_map, unlocked_content=content)
+        return ContextBundle(
+            scope="track",
+            track_map=track_map,
+            unlocked_content=content,
+            track_guide=(
+                track.material_guide
+                if track.material_ingestion_status == INGESTION_DONE
+                else ""
+            ),
+        )
 
     async def _notes(self, cohort_id: uuid.UUID, lesson_ids: list[uuid.UUID]) -> list[dict]:
         if not lesson_ids:
@@ -136,6 +158,14 @@ class ContextBuilder:
         stmt = select(CohortLessonNote).where(
             CohortLessonNote.cohort_id == cohort_id,
             CohortLessonNote.lesson_id.in_(lesson_ids),
+            CohortLessonNote.ingestion_status == INGESTION_DONE,
         )
         rows = (await self.db.execute(stmt)).scalars().all()
-        return [{"summary": r.summary, "unclear_points": r.unclear_points} for r in rows]
+        return [
+            {
+                "summary": r.summary,
+                "unclear_points": r.unclear_points,
+                "knowledge_base": r.attachment_knowledge_base,
+            }
+            for r in rows
+        ]

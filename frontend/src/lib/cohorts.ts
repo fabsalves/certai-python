@@ -33,6 +33,7 @@ export interface CohortLessonNote {
   attachment_filename: string | null;
   has_attachment: boolean;
   has_audio: boolean;
+  ingestion_status: string;
 }
 
 export interface TrackOption {

@@ -168,6 +168,7 @@ class TrackOut(TrackCreate):
     is_active: bool
     material_filename: str | None = None
     material_content_type: str | None = None
+    material_ingestion_status: str | None = None
     modules: list[ModuleOut] = []
 
 
@@ -243,6 +244,7 @@ class CohortLessonNoteOut(BaseModel):
     attachment_filename: str | None = None
     has_attachment: bool = False
     has_audio: bool = False
+    ingestion_status: str = "done"
 
 
 # --- Lesson completion ---
@@ -270,3 +272,35 @@ class MessageOut(BaseModel):
 class AgentResponse(BaseModel):
     conversation_id: uuid.UUID
     response: str
+
+
+# --- Playground (admin debug) ---
+class PlaygroundTrackMaterialOut(BaseModel):
+    filename: str | None = None
+    ingestion_status: str | None = None
+    guide: str = ""
+    in_ai_bundle: bool = False
+
+
+class PlaygroundLessonNoteContextOut(BaseModel):
+    lesson_id: uuid.UUID
+    lesson_title: str
+    ingestion_status: str | None = None
+    summary: str = ""
+    unclear_points: str = ""
+    knowledge_base: str = ""
+    has_attachment: bool = False
+    attachment_filename: str | None = None
+    in_ai_bundle: bool = False
+
+
+class PlaygroundContextOut(BaseModel):
+    scope: str
+    current_position: dict | None = None
+    track_map: list[dict]
+    unlocked_content: list[dict]
+    cohort_notes_in_bundle: list[dict]
+    track_guide_in_bundle: str = ""
+    system_blocks: str
+    track_material: PlaygroundTrackMaterialOut
+    lesson_notes: list[PlaygroundLessonNoteContextOut] = []

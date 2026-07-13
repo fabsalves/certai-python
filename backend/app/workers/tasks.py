@@ -43,6 +43,33 @@ def process_whatsapp_inbound(self, conversation_id: str, task_id: str) -> dict:
         raise self.retry(exc=exc)
 
 
+@celery_app.task(bind=True, max_retries=3, default_retry_delay=15)
+def ingest_lesson_completion(self, note_id: str) -> dict:
+    """AI ingestion of the lesson report (transcript + attachment). On success,
+    chains the WhatsApp dispatch; students are only invited after ingestion."""
+    try:
+        return run_async(_ingest_lesson_completion(UUID(note_id)))
+    except Exception as exc:  # noqa: BLE001
+        # retry(exc=...) re-raises exc itself once retries are exhausted, so the
+        # failed state must be recorded before delegating to Celery.
+        if self.request.retries >= self.max_retries:
+            run_async(_mark_lesson_ingestion_failed(UUID(note_id)))
+            raise
+        raise self.retry(exc=exc)
+
+
+@celery_app.task(bind=True, max_retries=3, default_retry_delay=15)
+def ingest_track_material(self, track_id: str) -> dict:
+    """AI ingestion of the track material file into a macro track guide."""
+    try:
+        return run_async(_ingest_track_material(UUID(track_id)))
+    except Exception as exc:  # noqa: BLE001
+        if self.request.retries >= self.max_retries:
+            run_async(_mark_track_ingestion_failed(UUID(track_id)))
+            raise
+        raise self.retry(exc=exc)
+
+
 @celery_app.task(bind=True, max_retries=2, default_retry_delay=30)
 def evaluate_cohort_gaps(self, cohort_id: str) -> dict:
     """An external AI reads the cohort's micro-scores and points out gaps."""
@@ -83,6 +110,49 @@ async def _plan_dispatch(cohort_id: UUID, lesson_id: UUID) -> dict:
 
     async with SessionLocal() as db:
         return await dispatch_lesson_invites(db, cohort_id, lesson_id)
+
+
+async def _ingest_lesson_completion(note_id: UUID) -> dict:
+    from app.core.database import SessionLocal
+    from app.services.ingestion.lesson_note_ingestion_service import ingest_lesson_note
+
+    async with SessionLocal() as db:
+        note = await ingest_lesson_note(db, note_id)
+        cohort_id, lesson_id = str(note.cohort_id), str(note.lesson_id)
+        await db.commit()
+
+    # Dispatch only on the transition to done, after the ingestion is committed.
+    plan_dispatch.delay(cohort_id, lesson_id)
+    return {"note_id": str(note_id), "status": "done", "dispatch": "enqueued"}
+
+
+async def _mark_lesson_ingestion_failed(note_id: UUID) -> None:
+    from app.core.database import SessionLocal
+    from app.services.ingestion.lesson_note_ingestion_service import mark_lesson_note_failed
+
+    async with SessionLocal() as db:
+        await mark_lesson_note_failed(db, note_id)
+        await db.commit()
+
+
+async def _ingest_track_material(track_id: UUID) -> dict:
+    from app.core.database import SessionLocal
+    from app.services.ingestion.track_material_service import ingest_track_material as run_ingestion
+
+    async with SessionLocal() as db:
+        track = await run_ingestion(db, track_id)
+        status = track.material_ingestion_status
+        await db.commit()
+    return {"track_id": str(track_id), "status": status}
+
+
+async def _mark_track_ingestion_failed(track_id: UUID) -> None:
+    from app.core.database import SessionLocal
+    from app.services.ingestion.track_material_service import mark_track_material_failed
+
+    async with SessionLocal() as db:
+        await mark_track_material_failed(db, track_id)
+        await db.commit()
 
 
 async def _process_whatsapp_inbound(conversation_id: UUID, task_id: str) -> dict:

@@ -28,6 +28,14 @@ import {
 
 type EditorTab = "meta" | "structure";
 
+const INGESTION_LABELS: Record<string, string> = {
+  pending: "Ingestão pela IA: aguardando",
+  processing: "Ingestão pela IA: processando…",
+  done: "Ingerido pela IA",
+  failed: "Falha na ingestão pela IA",
+  unsupported: "Formato sem ingestão automática (envie PDF ou PPTX)",
+};
+
 export function TrackEditor() {
   const { trackId } = useParams<{ trackId: string }>();
   const navigate = useNavigate();
@@ -51,6 +59,7 @@ export function TrackEditor() {
   const [materialFile, setMaterialFile] = useState<File | null>(null);
   const [uploadingMaterial, setUploadingMaterial] = useState(false);
   const [downloadingMaterial, setDownloadingMaterial] = useState(false);
+  const [reingestingMaterial, setReingestingMaterial] = useState(false);
 
   const reloadTrack = useCallback(async () => {
     if (!trackId || isNew) return;
@@ -176,6 +185,26 @@ export function TrackEditor() {
     });
     setDownloadingMaterial(false);
   }
+
+  async function reingestMaterial() {
+    if (!track?.material_filename) return;
+    setReingestingMaterial(true);
+    await runAction({
+      run: () => api.post<Track>(`/tracks/${track.id}/material/ingest`),
+      successMessage: "Ingestão do material enfileirada.",
+      errorMessage: "Não foi possível reprocessar o material.",
+      onSuccess: ({ data }) => setTrack(data),
+    });
+    setReingestingMaterial(false);
+  }
+
+  // Refresh the ingestion status while the worker processes the material.
+  const materialIngestionStatus = track?.material_ingestion_status ?? null;
+  useEffect(() => {
+    if (materialIngestionStatus !== "pending" && materialIngestionStatus !== "processing") return;
+    const timer = window.setInterval(reloadTrack, 4000);
+    return () => window.clearInterval(timer);
+  }, [materialIngestionStatus, reloadTrack]);
 
   async function togglePublish() {
     if (!track || !track.is_active) return;
@@ -374,11 +403,31 @@ export function TrackEditor() {
                         <FileChip
                           filename={track.material_filename}
                           kind={fileKindFromName(track.material_filename)}
-                          meta="Arquivo atual"
+                          meta={
+                            materialIngestionStatus
+                              ? INGESTION_LABELS[materialIngestionStatus] ?? materialIngestionStatus
+                              : "Ainda não processado pela IA"
+                          }
                           onDownload={downloadMaterial}
                           downloading={downloadingMaterial}
                         />
                       )}
+                      {track.material_filename &&
+                        !materialFile &&
+                        (materialIngestionStatus === "failed" || materialIngestionStatus === null) && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            disabled={reingestingMaterial}
+                            onClick={reingestMaterial}
+                          >
+                            {reingestingMaterial
+                              ? "Enfileirando…"
+                              : materialIngestionStatus === "failed"
+                                ? "Reprocessar ingestão"
+                                : "Processar com IA"}
+                          </button>
+                        )}
                       {materialFile && (
                         <FileChip
                           filename={materialFile.name}
