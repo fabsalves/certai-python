@@ -87,3 +87,31 @@ export async function fetchPlaygroundContext(
   );
   return data;
 }
+
+export interface PlaygroundMicroScore {
+  id: string;
+  lesson_id: string | null;
+  lesson_title: string;
+  competency: string;
+  level: string;
+  evidence: string;
+  created_at: string;
+}
+
+export interface PlaygroundScores {
+  track_competency: string;
+  lesson_focus: { lesson_id: string; lesson_title: string };
+  scores_in_lesson: PlaygroundMicroScore[];
+  scores_other_lessons: PlaygroundMicroScore[];
+}
+
+export async function fetchPlaygroundScores(
+  cohortId: string,
+  studentId: string,
+  lessonId: string,
+): Promise<PlaygroundScores> {
+  const { data } = await api.get<PlaygroundScores>(
+    `/admin/playground/cohorts/${cohortId}/students/${studentId}/lessons/${lessonId}/scores`,
+  );
+  return data;
+}

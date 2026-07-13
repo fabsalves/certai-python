@@ -3,6 +3,7 @@ import { CohortPathPreview } from "../components/cohorts/CohortPathPreview";
 import { LessonReportCapture } from "../components/cohorts/LessonReportCapture";
 import { PlaygroundChat } from "../components/playground/PlaygroundChat";
 import { PlaygroundContextPanel } from "../components/playground/PlaygroundContextPanel";
+import { PlaygroundScoresPanel } from "../components/playground/PlaygroundScoresPanel";
 import { PlaygroundSessionHead } from "../components/playground/PlaygroundSessionHead";
 import { Select } from "../components/ui/Select";
 import { api } from "../lib/api";
@@ -12,10 +13,21 @@ import {
   playgroundCompletePath,
   playgroundTranscribePath,
 } from "../lib/playground";
+import {
+  readPlaygroundSession,
+  writePlaygroundSession,
+  type PlaygroundRailTab,
+} from "../lib/playgroundSession";
 import { sortedLessons, sortedModules, type Track } from "../lib/tracks";
 
 type SessionMode = "student" | "professor";
-type RailTab = "track" | "context";
+type RailTab = PlaygroundRailTab;
+
+function initialRailTab(): RailTab {
+  const tab = readPlaygroundSession()?.railTab;
+  if (tab === "track" || tab === "context" || tab === "scores") return tab;
+  return "track";
+}
 
 function findLessonModule(track: Track, lessonId: string) {
   for (const mod of sortedModules(track)) {
@@ -37,19 +49,23 @@ function SettingsIcon() {
 
 export function Playground() {
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
-  const [cohortId, setCohortId] = useState("");
+  const [cohortId, setCohortId] = useState(() => readPlaygroundSession()?.cohortId ?? "");
   const [cohort, setCohort] = useState<Cohort | null>(null);
   const [track, setTrack] = useState<Track | null>(null);
   const [progress, setProgress] = useState<CohortProgress | null>(null);
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
-  const [mode, setMode] = useState<SessionMode>("student");
-  const [studentId, setStudentId] = useState("");
-  const [professorId, setProfessorId] = useState("");
-  const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
+  const [mode, setMode] = useState<SessionMode>(() =>
+    readPlaygroundSession()?.mode === "professor" ? "professor" : "student",
+  );
+  const [studentId, setStudentId] = useState(() => readPlaygroundSession()?.studentId ?? "");
+  const [professorId, setProfessorId] = useState(() => readPlaygroundSession()?.professorId ?? "");
+  const [selectedLessonId, setSelectedLessonId] = useState<string | null>(
+    () => readPlaygroundSession()?.selectedLessonId ?? null,
+  );
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [railTab, setRailTab] = useState<RailTab>("track");
+  const [railTab, setRailTab] = useState<RailTab>(initialRailTab);
   const [contextRefreshKey, setContextRefreshKey] = useState(0);
 
   const refreshProgress = useCallback(async (id: string) => {
@@ -64,11 +80,33 @@ export function Playground() {
       .get<Cohort[]>("/cohorts")
       .then((res) => {
         setCohorts(res.data);
-        if (res.data.length > 0) setCohortId(res.data[0].id);
+        setCohortId((prev) => {
+          if (prev && res.data.some((item) => item.id === prev)) return prev;
+          return res.data[0]?.id ?? "";
+        });
       })
       .catch(() => setLoadError("Não foi possível carregar as turmas."))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!cohortId) return;
+
+    writePlaygroundSession({
+      cohortId,
+      mode,
+      studentId,
+      professorId,
+      selectedLessonId,
+      railTab,
+    });
+  }, [cohortId, mode, studentId, professorId, selectedLessonId, railTab]);
+
+  useEffect(() => {
+    if (railTab === "scores" && (mode !== "student" || !studentId)) {
+      setRailTab("track");
+    }
+  }, [mode, studentId, railTab]);
 
   useEffect(() => {
     if (!cohortId) return;
@@ -88,9 +126,14 @@ export function Playground() {
         setTrack(trackRes.data);
         setProgress(progressRes.data);
         setEnrollments(enrollmentsRes.data);
-        setSelectedLessonId(
-          progressRes.data.current_lesson_id ?? progressRes.data.completed_lesson_ids.at(-1) ?? null,
-        );
+        setSelectedLessonId((prev) => {
+          if (prev && findLessonModule(trackRes.data, prev)) return prev;
+          return (
+            progressRes.data.current_lesson_id ??
+            progressRes.data.completed_lesson_ids.at(-1) ??
+            null
+          );
+        });
         setStudentId((prev) => {
           if (prev && enrollmentsRes.data.some((e) => e.student_id === prev)) return prev;
           return enrollmentsRes.data[0]?.student_id ?? "";
@@ -254,6 +297,7 @@ export function Playground() {
                 lessonTitle={selectedLesson.lesson.title}
                 canChat={canStudentChat}
                 headerActions={sessionMenu}
+                onMessageSent={() => setContextRefreshKey((k) => k + 1)}
               />
             ) : (
               <div className="playground-stage__empty">
@@ -318,6 +362,21 @@ export function Playground() {
             >
               Contexto IA
             </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={railTab === "scores"}
+              className={`playground-rail__tab${railTab === "scores" ? " is-active" : ""}`}
+              onClick={() => setRailTab("scores")}
+              disabled={mode !== "student" || !studentId}
+              title={
+                mode !== "student" || !studentId
+                  ? "Disponível no modo aluno com aluno selecionado"
+                  : undefined
+              }
+            >
+              Scores
+            </button>
           </div>
           {railTab === "track" ? (
             <CohortPathPreview
@@ -329,9 +388,16 @@ export function Playground() {
               moduleProfessors={cohort.module_professors}
               onSelectLesson={(lessonId) => setSelectedLessonId(lessonId)}
             />
-          ) : (
+          ) : railTab === "context" ? (
             <PlaygroundContextPanel
               cohortId={cohortId}
+              lessonId={selectedLessonId}
+              refreshKey={contextRefreshKey}
+            />
+          ) : (
+            <PlaygroundScoresPanel
+              cohortId={cohortId}
+              studentId={studentId}
               lessonId={selectedLessonId}
               refreshKey={contextRefreshKey}
             />
