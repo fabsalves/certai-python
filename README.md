@@ -66,8 +66,7 @@ ContextBuilder ──► monta o bundle por escopo (aula/módulo/trilha),
 Avaliação: micro-scores qualitativos (muito baixo → alto), nunca nota numérica. Uma IA
 externa (job em batch) lê os scores e aponta lacunas, sem média única.
 
-Conversas com alunos usam a **OpenAI** (Chat Completions hoje; Realtime em breve), para
-manter o mesmo ecossistema de modelos e voz ao longo do fluxo.
+Conversas com alunos usam a **OpenAI** (Chat Completions no WhatsApp; Realtime na rota `/voz/:token`).
 
 ---
 
@@ -169,6 +168,17 @@ Depois de encerrar uma aula (cria a conversa WhatsApp), simule mensagens do alun
 ```
 
 Guia completo: [`docs/whatsapp-dev-local.md`](docs/whatsapp-dev-local.md)
+
+### Voz ao vivo (WhatsApp + Realtime)
+
+Template de convite com CTA: `certai_convite_aula_voz_v2` (ver [`docs/whatsapp-template-certai_convite_aula.md`](docs/whatsapp-template-certai_convite_aula.md)).
+
+```bash
+# Link de voz direto (sem WhatsApp) — dev local
+./bin/voice-link --student eriko@certai.app
+```
+
+ENV principais: `WHATSAPP_INVITE_USE_VOICE_TEMPLATE`, `WHATSAPP_INVITE_VOICE_TEMPLATE`, `FRONTEND_BASE_URL`, `OPENAI_REALTIME_*`. Detalhes em `.env.example`.
 
 Logins de teste (após o seed):
 

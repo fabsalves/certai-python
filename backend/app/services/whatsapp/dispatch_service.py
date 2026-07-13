@@ -15,13 +15,23 @@ from app.models.track import Lesson, Module, Track
 from app.models.user import Role, User
 from app.services.cinndi.outbound import CinndiOutboundError, send_template_message
 from app.services.conversation_service import get_or_create_conversation, record_message
+from app.services.realtime.handoff_token_service import HandoffTokenService
 
 logger = logging.getLogger(__name__)
+
+_handoff_service = HandoffTokenService()
 
 INVITE_TEMPLATE_BODY = (
     "Oi {first_name}! Aqui é a {assistant}, sua parceira de estudos no CertAI.\n"
     'Quero conversar com você sobre a aula "{lesson_title}" da trilha "{track_title}".\n'
     "Vamos explorar o que você fixou e tirar dúvidas? Pode responder por aqui, texto ou áudio."
+)
+
+VOICE_INVITE_TEMPLATE_BODY = (
+    "Oi {first_name}! 👋 Aqui é a {assistant}, sua parceira de estudos no CertAI.\n"
+    'Quero conversar com você sobre a aula "{lesson_title}" da trilha "{track_title}".\n\n'
+    "🎙️ Prefere falar comigo ao vivo? Toque no botão abaixo.\n"
+    "Ou responda por aqui, texto ou áudio — como preferir. 🙂"
 )
 
 
@@ -38,6 +48,21 @@ def render_invite_body(
     assistant_name: str,
 ) -> str:
     return INVITE_TEMPLATE_BODY.format(
+        first_name=first_name,
+        assistant=assistant_name,
+        lesson_title=lesson_title,
+        track_title=track_title,
+    )
+
+
+def render_voice_invite_body(
+    *,
+    first_name: str,
+    lesson_title: str,
+    track_title: str,
+    assistant_name: str,
+) -> str:
+    return VOICE_INVITE_TEMPLATE_BODY.format(
         first_name=first_name,
         assistant=assistant_name,
         lesson_title=lesson_title,
@@ -88,6 +113,7 @@ async def dispatch_lesson_invites(
     sent = 0
     skipped = 0
     errors = 0
+    use_voice_template = settings.WHATSAPP_INVITE_USE_VOICE_TEMPLATE
 
     for student in students:
         conversation = await get_or_create_conversation(
@@ -104,20 +130,40 @@ async def dispatch_lesson_invites(
 
         first_name = _first_name(student.name)
         assistant = settings.ASSISTANT_NAME
-        body_text = render_invite_body(
-            first_name=first_name,
-            lesson_title=lesson.title,
-            track_title=track_title,
-            assistant_name=assistant,
-        )
         params = [first_name, lesson.title, track_title, assistant]
+        button_suffix: str | None = None
+
+        if use_voice_template:
+            handoff_token, _expires_at = _handoff_service.generate(
+                user_id=student.id,
+                cohort_id=cohort_id,
+                lesson_id=lesson_id,
+                conversation_id=conversation.id,
+            )
+            body_text = render_voice_invite_body(
+                first_name=first_name,
+                lesson_title=lesson.title,
+                track_title=track_title,
+                assistant_name=assistant,
+            )
+            template_name = settings.WHATSAPP_INVITE_VOICE_TEMPLATE
+            button_suffix = handoff_token
+        else:
+            body_text = render_invite_body(
+                first_name=first_name,
+                lesson_title=lesson.title,
+                track_title=track_title,
+                assistant_name=assistant,
+            )
+            template_name = settings.WHATSAPP_INVITE_TEMPLATE
 
         try:
             provider_id = send_template_message(
                 to_phone=student.whatsapp or "",
-                template_name=settings.WHATSAPP_INVITE_TEMPLATE,
+                template_name=template_name,
                 body_params=params,
                 code=settings.WHATSAPP_TEMPLATE_LANG,
+                button_suffix=button_suffix,
             )
         except CinndiOutboundError as exc:
             logger.warning(
@@ -148,4 +194,5 @@ async def dispatch_lesson_invites(
         "sent": sent,
         "skipped": skipped,
         "errors": errors,
+        "voice_template": use_voice_template,
     }

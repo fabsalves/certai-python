@@ -72,6 +72,8 @@ class Settings(BaseSettings):
     CINNDI_WEBHOOK_TOKEN: str = ""
     CINNDI_INSECURE_SSL: bool = False
     WHATSAPP_INVITE_TEMPLATE: str = "certai_convite_aula"
+    WHATSAPP_INVITE_VOICE_TEMPLATE: str = "certai_convite_aula_voz_v2"
+    WHATSAPP_INVITE_USE_VOICE_TEMPLATE: bool = False
     WHATSAPP_TEMPLATE_LANG: str = "pt_BR"
     ASSISTANT_NAME: str = "Lira"
     INBOUND_DEBOUNCE_SECONDS: int = 5

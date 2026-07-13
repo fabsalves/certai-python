@@ -469,6 +469,8 @@ Alterações em [`dispatch_service.py`](certai-python/backend/app/services/whats
 
 **Submissão Meta (ação paralela ao desenvolvimento):** submeter `certai_convite_aula_voz` com botão URL **já**, em paralelo às Etapas A–D — aprovação leva dias e a Etapa E é a última. Manter `certai_convite_aula` original como fallback até aprovação.
 
+> **Atualização pós-Etapa E:** template em produção = **`certai_convite_aula_voz_v2`** (APPROVED). Cinndi usa `botoesURL` na criação (`url` **sem** barra final: `https://app.certai.com.br/voz`) e `buttons` (string) no envio. O v1 (`certai_convite_aula_voz`) registrou `voz//{{1}}` por barra final no prefixo — legado, não usar. Ver [`whatsapp-template-certai_convite_aula.md`](whatsapp-template-certai_convite_aula.md) e [`doc-template-cinndi.md`](doc-template-cinndi.md).
+
 Doc: atualizar [`docs/whatsapp-template-certai_convite_aula.md`](certai-python/docs/whatsapp-template-certai_convite_aula.md) com variante voz.
 
 ---

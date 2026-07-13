@@ -78,20 +78,26 @@ def send_template_message(
     template_name: str,
     body_params: list[str],
     code: str = "pt_BR",
+    button_suffix: str | None = None,
 ) -> str | None:
+    """Envia template Cinndi. Para botão URL dinâmico, passe o sufixo em button_suffix."""
     from_phone = _from_phone()
     to_digits = digits_only(to_phone)
     if not from_phone or not to_digits:
         raise CinndiOutboundError("invalid from/to phone")
 
+    payload: dict[str, Any] = {
+        "para": to_digits,
+        "name": template_name,
+        "code": code,
+        "header": "",
+        "body": list(body_params),
+        "buttons": button_suffix or "",
+    }
+
     response = _execute(
         "POST",
         f"enviar-template/{from_phone}/{_api_key()}",
-        {
-            "para": to_digits,
-            "name": template_name,
-            "code": code,
-            "body": list(body_params),
-        },
+        payload,
     )
     return provider_message_id_from_response(response["body"])
