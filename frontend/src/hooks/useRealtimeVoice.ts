@@ -1,17 +1,9 @@
-import axios from "axios";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { fetchRealtimeToken, type RealtimeTokenResponse } from "../lib/realtimeApi";
 
 const REALTIME_CALLS_URL = "https://api.openai.com/v1/realtime/calls";
 
 export type RealtimeVoiceStatus = "" | "connecting" | "connected" | "error";
-
-export interface RealtimeTokenResponse {
-  ephemeral_token: string;
-  expires_at: number;
-  realtime_model: string;
-  realtime_voice: string;
-  play_session_opener: boolean;
-}
 
 function normalizeRealtimeResponseOutput(response: { output?: unknown } | undefined): unknown[] {
   const raw = response?.output;
@@ -44,12 +36,7 @@ function extractAssistantText(output: unknown[]): string {
   return parts.join("").trim();
 }
 
-async function fetchRealtimeToken(): Promise<RealtimeTokenResponse> {
-  const { data } = await axios.post<RealtimeTokenResponse>("/api/v1/realtime/token");
-  return data;
-}
-
-export function useRealtimeVoice() {
+export function useRealtimeVoice(handoffToken: string) {
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
   const lastUserTranscriptRef = useRef("");
@@ -75,6 +62,11 @@ export function useRealtimeVoice() {
   }, []);
 
   const connect = useCallback(async (audioElement: HTMLAudioElement | null) => {
+    if (!handoffToken) {
+      setError("Link de voz inválido");
+      setStatus("error");
+      return;
+    }
     if (status === "connecting" || status === "connected") return;
 
     setStatus("connecting");
@@ -82,7 +74,7 @@ export function useRealtimeVoice() {
     setStreamReady(false);
 
     try {
-      const tokenData = await fetchRealtimeToken();
+      const tokenData: RealtimeTokenResponse = await fetchRealtimeToken(handoffToken);
       const ephemeralToken = tokenData.ephemeral_token;
 
       const pc = new RTCPeerConnection();
@@ -173,7 +165,7 @@ export function useRealtimeVoice() {
       setError(message);
       setStatus("error");
     }
-  }, [disconnect, status]);
+  }, [disconnect, handoffToken, status]);
 
   useEffect(() => () => disconnect(), [disconnect]);
 

@@ -24,7 +24,7 @@ export default function App() {
         <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/voice-poc" element={<VoiceSession />} />
+          <Route path="/voz/:handoffToken" element={<VoiceSession />} />
 
           <Route
             element={

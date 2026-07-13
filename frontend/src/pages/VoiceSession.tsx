@@ -1,30 +1,107 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useParams } from "react-router-dom";
+import axios from "axios";
 import { useRealtimeVoice } from "../hooks/useRealtimeVoice";
+import { apiErrorMessage } from "../lib/api";
+import { validateSession, type SessionValidateResponse } from "../lib/realtimeApi";
+
+type PageState = "loading" | "ready" | "expired" | "error";
+
+const pageLayout: CSSProperties = {
+  minHeight: "100vh",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 24,
+  gap: 20,
+  background: "var(--surface-50, #f3f7f6)",
+};
 
 export function VoiceSession() {
+  const { handoffToken = "" } = useParams<{ handoffToken: string }>();
   const audioRef = useRef<HTMLAudioElement>(null);
-  const { status, error, streamReady, connect, disconnect } = useRealtimeVoice();
+
+  const [pageState, setPageState] = useState<PageState>("loading");
+  const [sessionInfo, setSessionInfo] = useState<SessionValidateResponse | null>(null);
+  const [pageError, setPageError] = useState("");
+
+  const { status, error, streamReady, connect, disconnect } = useRealtimeVoice(handoffToken);
+
+  useEffect(() => {
+    if (!handoffToken) {
+      setPageState("error");
+      setPageError("Link de voz inválido.");
+      return;
+    }
+
+    let cancelled = false;
+    setPageState("loading");
+    setPageError("");
+
+    void validateSession(handoffToken)
+      .then((data) => {
+        if (cancelled) return;
+        setSessionInfo(data);
+        setPageState("ready");
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        if (axios.isAxiosError(err) && err.response?.status === 401) {
+          setPageState("expired");
+          setPageError(
+            apiErrorMessage(
+              err,
+              "Este link de voz expirou. Volte ao WhatsApp e peça um novo convite."
+            )
+          );
+          return;
+        }
+        setPageState("error");
+        setPageError(apiErrorMessage(err, "Não foi possível validar o link de voz."));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [handoffToken]);
 
   const busy = status === "connecting";
   const connected = status === "connected";
 
+  if (pageState === "loading") {
+    return (
+      <div style={pageLayout}>
+        <p className="muted">Validando link…</p>
+      </div>
+    );
+  }
+
+  if (pageState === "expired" || pageState === "error") {
+    return (
+      <div style={pageLayout}>
+        <h1 style={{ fontSize: 24, marginBottom: 12 }}>Chamada de voz</h1>
+        <p style={{ color: "var(--danger)", maxWidth: 420, textAlign: "center" }}>{pageError}</p>
+      </div>
+    );
+  }
+
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 24,
-        gap: 20,
-        background: "var(--surface-50, #f3f7f6)",
-      }}
-    >
+    <div style={pageLayout}>
       <div style={{ textAlign: "center", maxWidth: 420 }}>
-        <h1 style={{ fontSize: 28, marginBottom: 8 }}>Lira — voz (POC)</h1>
+        <h1 style={{ fontSize: 28, marginBottom: 8 }}>
+          {sessionInfo?.assistant_name ?? "Lira"} — voz ao vivo
+        </h1>
         <p className="muted" style={{ fontSize: 15 }}>
-          Etapa A: WebRTC direto com OpenAI Realtime. Abra o console do navegador para ver as transcrições.
+          Olá, {sessionInfo?.student_first_name}! Vamos conversar sobre{" "}
+          <strong>{sessionInfo?.lesson_title}</strong>
+          {sessionInfo?.track_title ? (
+            <>
+              {" "}
+              da trilha <strong>{sessionInfo.track_title}</strong>
+            </>
+          ) : null}
+          .
         </p>
       </div>
 

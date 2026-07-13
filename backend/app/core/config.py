@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     GROQ_TRANSCRIBE_MODEL: str = "whisper-large-v3"
 
+    # --- Voz / handoff (link público /voz/:token) ---
+    FRONTEND_BASE_URL: str = "http://localhost:5173"
+    VOICE_HANDOFF_EXPIRE_HOURS: int = 48
+
     # --- OpenAI Realtime (voz ao vivo) ---
     OPENAI_REALTIME_MODEL: str = "gpt-realtime-2"
     OPENAI_REALTIME_VOICE: str = "coral"
