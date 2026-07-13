@@ -18,7 +18,9 @@ from app.models.track import Lesson, Module, ModuleLevel, Track
 from app.models.cohort import Cohort, CohortModuleProfessor, Enrollment
 from app.models.user import Role, User
 
-# Conteúdo enxuto e coeso para testes de conversa da Lira (mesma trilha de pareceres).
+# Conteúdo publicado pelo designer na trilha — material que a turma estudou.
+# Sem gabarito resolvido no texto: a Lira deve extrair entendimento na conversa.
+# Relato, anexo do professor e material da trilha ficam fora do seed (fluxo manual).
 LESSON_CRITICAL_READING = """\
 Objetivo: separar o que está escrito do que você conclui ao ler um texto de trabalho.
 
@@ -27,12 +29,16 @@ Passos:
 2. Interpretações — o que você conclui a partir do que leu.
 3. Pergunta-guia: "Isso está escrito ou estou supondo?"
 
-Exemplo (e-mail interno):
-Texto: "Não vou aprovar isso agora."
-- Fato: a pessoa diz que não aprova neste momento.
-- Interpretação: ela pode estar aguardando o anexo do financeiro antes de decidir (se o anexo não aparece no e-mail, isso é suposição).
+Texto para aplicar (e-mail interno):
+"Não vou aprovar isso agora."
 
-Prática: classifique fatos e interpretações antes de opinar sobre intenção ou clima da mensagem.
+Prática:
+- Classifique o que é fato e o que é interpretação nesse e-mail.
+- Traga um trecho curto de mensagem ou e-mail do seu trabalho e faça a mesma separação.
+
+Na conversa com a Lira:
+- Explique com suas palavras a diferença entre fato e interpretação.
+- Aplique a pergunta-guia no e-mail acima antes de opinar sobre intenção ou clima da mensagem.
 """
 
 LESSON_PARECER_STRUCTURE = """\
@@ -44,21 +50,46 @@ Estrutura:
 3. Recomendação — o que você sugere fazer, de forma objetiva.
 
 Regra: cada bloco responde a uma pergunta diferente. Se misturar recomendação na análise, o leitor se perde.
+
+Modelo (esqueleto):
+---
+Contexto: [Quem pediu o quê, sobre qual situação, em que prazo.]
+Análise: [Fatos do caso.] [Interpretação fundamentada — sem recomendar ainda.]
+Recomendação: [Ação objetiva que responde ao pedido inicial.]
+---
+
+Situação para praticar:
+A área de operações pediu parecer sobre atraso na entrega de um fornecedor crítico.
+
+Na conversa com a Lira:
+- Identifique qual bloco está confuso em um rascunho seu ou no modelo acima.
+- Separe o que seria fato e o que seria interpretação dentro da Análise.
 """
 
 LESSON_FIRST_DRAFT = """\
 Objetivo: produzir um rascunho legível sem polir demais.
 
-Roteiro:
-- Escreva em 15–20 minutos, em ordem: contexto → análise → recomendação.
+Roteiro (15–20 minutos):
+1. Contexto — escreva primeiro, em 3–4 frases.
+2. Análise — fatos do caso, depois interpretação.
+3. Recomendação — uma ação clara.
+
+Durante o rascunho:
 - Use frases curtas; marque [?] onde faltar dado.
 - Não revise estilo ainda; revise só se o raciocínio fecha.
 
 Critério de pronto: alguém de fora entende o problema e a proposta, mesmo com imperfeições.
+
+Na conversa com a Lira:
+- Leia em voz alta um trecho do seu rascunho (ou descreva o que escreveria).
+- Aponte onde você ainda tem [?] e o que falta para fechar o raciocínio.
 """
 
 LESSON_PEER_REVIEW = """\
 Objetivo: revisar o parecer de um colega focando clareza, não "estilo bonito".
+
+Trecho para revisar:
+"O projeto está atrasado porque a equipe não se empenhou. Recomendo trocar o fornecedor."
 
 Checklist:
 1. O contexto deixa claro o pedido?
@@ -66,6 +97,10 @@ Checklist:
 3. A recomendação responde ao pedido inicial?
 
 Feedback útil: aponta trecho confuso + sugere pergunta ("o leitor vai entender de onde veio esse número?").
+
+Na conversa com a Lira:
+- Aplique o checklist no trecho acima.
+- Diga o que você perguntaria ao autor antes de sugerir mudança de texto.
 """
 
 LESSON_ARGUMENT = """\
@@ -76,18 +111,31 @@ Boas práticas:
 - Cada afirmação relevante amarrada a um fato ou dado do caso.
 - Evite absolutismos ("sempre", "nunca") sem prova.
 
-Teste rápido: sublinhe conectivos de opinião ("acredito", "parece") e veja se há fato antes deles.
+Trecho para analisar:
+"Acredito que o contrato deve ser rescindido. O fornecedor sempre atrasa e isso demonstra desinteresse.
+Parece que a liderança não acompanha as entregas."
+
+Teste rápido: sublinhe conectivos de opinião ("acredito", "parece", "sempre") e verifique se há fato antes deles.
+
+Na conversa com a Lira:
+- Separe, no trecho acima, o que é afirmação com evidência e o que é opinião sem amparo.
+- Reformule uma frase mantendo só o que o texto ou o caso sustentam.
 """
 
 LESSON_FINAL = """\
 Objetivo: entregar versão final do parecer.
 
-Antes de enviar:
+Checklist antes de enviar:
 1. Leitura em voz alta (1 vez) — onde tropeçar, simplifique.
-2. Confira se contexto, análise e recomendação estão identificáveis em 10 segundos de olhada.
+2. Contexto, análise e recomendação identificáveis em 10 segundos de olhada.
 3. Título claro: assunto + posição/resposta.
+4. Anexos citados no corpo estão de fato anexados.
 
 Entrega: PDF ou e-mail com assunto objetivo; corpo sem anexos essenciais faltando.
+
+Na conversa com a Lira:
+- Simule o assunto do e-mail de entrega e diga em uma frase a posição do parecer.
+- Indique o último ponto que você ainda revisaria antes de enviar.
 """
 
 STAFF_USERS = [
@@ -279,6 +327,15 @@ async def seed(*, force: bool = False) -> None:
         print(f"  {len(ENROLLED_STUDENT_EMAILS)} alunos matriculados")
         print(f"  {len(STUDENT_USERS) - len(ENROLLED_STUDENT_EMAILS)} alunos disponíveis p/ matrícula em lote")
         print("  Demais alunos: senha aluno12345")
+        print("")
+        print("Personas sugeridas para testar conversas (respostas manuais no playground):")
+        print("  Mariana (aluno@) — engajada, responde com texto")
+        print("  Ériko (eriko@) — WhatsApp real")
+        print("  Pedro (pedro.almeida@) — monossilábico (sim / não / bora)")
+        print("  Camila (camila.rocha@) — auto-relato (consegui / tranquilo)")
+        print("  Lucas (lucas.nunes@) — pede esclarecimento (como assim?)")
+        print("")
+        print("Fluxo manual após seed: professor encerra aula → ingestão → aluno conversa.")
 
 
 if __name__ == "__main__":

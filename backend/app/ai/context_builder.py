@@ -155,17 +155,22 @@ class ContextBuilder:
     async def _notes(self, cohort_id: uuid.UUID, lesson_ids: list[uuid.UUID]) -> list[dict]:
         if not lesson_ids:
             return []
-        stmt = select(CohortLessonNote).where(
-            CohortLessonNote.cohort_id == cohort_id,
-            CohortLessonNote.lesson_id.in_(lesson_ids),
-            CohortLessonNote.ingestion_status == INGESTION_DONE,
+        stmt = (
+            select(CohortLessonNote, Lesson.title)
+            .join(Lesson, CohortLessonNote.lesson_id == Lesson.id)
+            .where(
+                CohortLessonNote.cohort_id == cohort_id,
+                CohortLessonNote.lesson_id.in_(lesson_ids),
+                CohortLessonNote.ingestion_status == INGESTION_DONE,
+            )
         )
-        rows = (await self.db.execute(stmt)).scalars().all()
+        rows = (await self.db.execute(stmt)).all()
         return [
             {
-                "summary": r.summary,
-                "unclear_points": r.unclear_points,
-                "knowledge_base": r.attachment_knowledge_base,
+                "lesson": title,
+                "summary": note.summary,
+                "unclear_points": note.unclear_points,
+                "knowledge_base": note.attachment_knowledge_base,
             }
-            for r in rows
+            for note, title in rows
         ]

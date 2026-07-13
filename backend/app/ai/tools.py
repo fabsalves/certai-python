@@ -44,8 +44,11 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
             "name": "score_understanding",
             "description": (
                 "Record a qualitative micro-score of the student's understanding of a "
-                "competency. Use it when there is enough signal in the conversation -- "
-                "not on every message."
+                "competency. Use only when the student demonstrated understanding in "
+                "their own words (explanation, classification, or application) — not "
+                "for self-reported confidence alone ('entendi', 'consegui'). The "
+                "evidence field must cite what they said or did in the conversation. "
+                "Sporadic — not on every message."
             ),
             "parameters": {
                 "type": "object",

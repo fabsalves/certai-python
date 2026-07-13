@@ -70,6 +70,46 @@ async def record_message(
     return message
 
 
+async def list_lesson_messages(
+    db: AsyncSession,
+    cohort_id: uuid.UUID,
+    student_id: uuid.UUID,
+    lesson_id: uuid.UUID,
+) -> list[Message]:
+    """All messages for a student in a lesson, across channels (WhatsApp + in-app)."""
+    conversation_ids = (
+        await db.scalars(
+            select(Conversation.id).where(
+                Conversation.cohort_id == cohort_id,
+                Conversation.user_id == student_id,
+                Conversation.lesson_id == lesson_id,
+            )
+        )
+    ).all()
+    if not conversation_ids:
+        return []
+    return (
+        await db.scalars(
+            select(Message)
+            .where(Message.conversation_id.in_(conversation_ids))
+            .order_by(Message.created_at)
+        )
+    ).all()
+
+
+async def merged_lesson_history(
+    db: AsyncSession,
+    cohort_id: uuid.UUID,
+    student_id: uuid.UUID,
+    lesson_id: uuid.UUID,
+) -> list[dict]:
+    """Conversation history for the AI — merged across channels."""
+    return [
+        {"role": "user" if m.author == Author.STUDENT else "assistant", "content": m.content}
+        for m in await list_lesson_messages(db, cohort_id, student_id, lesson_id)
+    ]
+
+
 async def conversation_history(conversation_id: uuid.UUID, db: AsyncSession) -> list[dict]:
     msgs = (
         await db.scalars(
@@ -90,8 +130,13 @@ async def generate_lesson_reply(
     cohort_id: uuid.UUID,
     lesson_id: uuid.UUID,
     student_id: uuid.UUID,
+    *,
+    merge_channels: bool = False,
 ) -> str:
-    history = await conversation_history(conversation.id, db)
+    if merge_channels:
+        history = await merged_lesson_history(db, cohort_id, student_id, lesson_id)
+    else:
+        history = await conversation_history(conversation.id, db)
     bundle = await ContextBuilder(db).build_lesson(cohort_id, lesson_id)
     tool_ctx = ToolContext(db, cohort_id, student_id, lesson_id)
 
@@ -108,11 +153,20 @@ async def student_lesson_message(
     lesson_id: uuid.UUID,
     student_id: uuid.UUID,
     content: str,
+    *,
+    merge_channels: bool = False,
 ) -> AgentResponse:
     """Persiste a mensagem do aluno e devolve a resposta da Lira."""
     conversation = await get_or_create_conversation(
         db, cohort_id, student_id, lesson_id, channel=ConversationChannel.IN_APP
     )
     await record_message(db, conversation, Author.STUDENT, content)
-    final = await generate_lesson_reply(db, conversation, cohort_id, lesson_id, student_id)
+    final = await generate_lesson_reply(
+        db,
+        conversation,
+        cohort_id,
+        lesson_id,
+        student_id,
+        merge_channels=merge_channels,
+    )
     return AgentResponse(conversation_id=conversation.id, response=final)

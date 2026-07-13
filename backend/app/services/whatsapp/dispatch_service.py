@@ -19,9 +19,9 @@ from app.services.conversation_service import get_or_create_conversation, record
 logger = logging.getLogger(__name__)
 
 INVITE_TEMPLATE_BODY = (
-    "Oi {first_name}! 👋 Aqui é a {assistant}, sua parceira de estudos no CertAI.\n"
+    "Oi {first_name}! Aqui é a {assistant}, sua parceira de estudos no CertAI.\n"
     'Quero conversar com você sobre a aula "{lesson_title}" da trilha "{track_title}".\n'
-    "Bora um papo rápido pra fixar o conteúdo? Pode me responder por aqui, texto ou áudio. 🙂"
+    "Vamos explorar o que você fixou e tirar dúvidas? Pode responder por aqui, texto ou áudio."
 )
 
 
