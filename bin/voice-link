@@ -1,0 +1,178 @@
+#!/usr/bin/env bash
+# Gera link público de voz (/voz/:token) para testes locais.
+#
+# Usage:
+#   ./bin/voice-link
+#   ./bin/voice-link --student eriko@certai.app
+#
+# Requer: backend rodando (bin/dev ou uvicorn), seed carregado.
+set -euo pipefail
+
+ROOT="$(CDPATH= cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
+STUDENT_EMAIL=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      sed -n '2,10p' "$0"
+      exit 0
+      ;;
+    --student)
+      STUDENT_EMAIL="${2:-}"
+      shift 2
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ -f "$ROOT/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source <(sed 's/\r$//' "$ROOT/.env")
+  set +a
+fi
+
+API_PORT="${API_PORT:-8000}"
+ADMIN_EMAIL="${VOICE_LINK_ADMIN_EMAIL:-admin@certai.app}"
+ADMIN_PASSWORD="${VOICE_LINK_ADMIN_PASSWORD:-admin12345}"
+BASE_URL="http://127.0.0.1:${API_PORT}"
+PYTHON="${ROOT}/backend/.venv/bin/python"
+
+if [[ ! -x "$PYTHON" ]]; then
+  echo "✗ venv não encontrado — rode: cd backend && python3.11 -m venv .venv && pip install -r requirements.txt" >&2
+  exit 1
+fi
+
+export STUDENT_EMAIL ADMIN_EMAIL ADMIN_PASSWORD BASE_URL BACKEND_ROOT="${ROOT}/backend"
+
+"$PYTHON" - <<'PY'
+import os
+import sys
+
+backend_root = os.environ["BACKEND_ROOT"]
+sys.path.insert(0, backend_root)
+os.chdir(backend_root)
+
+import asyncio
+import json
+import logging
+import urllib.error
+import urllib.parse
+import urllib.request
+
+logging.disable(logging.CRITICAL)
+
+from sqlalchemy import select
+
+from app.core.database import SessionLocal
+from app.models.cohort import Cohort, Enrollment
+from app.models.track import Lesson
+from app.models.user import User
+
+BASE_URL = os.environ["BASE_URL"]
+ADMIN_EMAIL = os.environ["ADMIN_EMAIL"]
+ADMIN_PASSWORD = os.environ["ADMIN_PASSWORD"]
+STUDENT_EMAIL = os.environ.get("STUDENT_EMAIL", "").strip()
+
+
+def http_json(method: str, url: str, payload=None, headers=None):
+    data = None
+    req_headers = dict(headers or {})
+    if payload is not None:
+        data = json.dumps(payload).encode()
+        req_headers.setdefault("Content-Type", "application/json")
+    req = urllib.request.Request(url, data=data, headers=req_headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            body = resp.read().decode()
+            return resp.status, json.loads(body) if body else {}
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode()
+        try:
+            parsed = json.loads(body)
+        except json.JSONDecodeError:
+            parsed = {"detail": body or exc.reason}
+        raise RuntimeError(f"HTTP {exc.code}: {parsed}") from exc
+
+
+async def load_ids():
+    async with SessionLocal() as db:
+        cohort = await db.scalar(select(Cohort).limit(1))
+        if cohort is None:
+            raise RuntimeError("Nenhuma turma no banco — rode bin/db-seed")
+
+        lesson = await db.scalar(select(Lesson).limit(1))
+        if lesson is None:
+            raise RuntimeError("Nenhuma aula no banco — rode bin/db-seed")
+
+        stmt = select(User).join(Enrollment).where(Enrollment.cohort_id == cohort.id)
+        if STUDENT_EMAIL:
+            stmt = stmt.where(User.email == STUDENT_EMAIL)
+        student = await db.scalar(stmt.limit(1))
+        if student is None:
+            hint = f" para {STUDENT_EMAIL}" if STUDENT_EMAIL else ""
+            raise RuntimeError(f"Nenhum aluno matriculado{hint} — rode bin/db-seed")
+
+        return {
+            "cohort_id": str(cohort.id),
+            "user_id": str(student.id),
+            "lesson_id": str(lesson.id),
+            "student_email": student.email,
+            "student_name": student.name,
+            "lesson_title": lesson.title,
+        }
+
+
+def login():
+    form = urllib.parse.urlencode(
+        {"username": ADMIN_EMAIL, "password": ADMIN_PASSWORD}
+    ).encode()
+    req = urllib.request.Request(
+        f"{BASE_URL}/api/v1/auth/login",
+        data=form,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode()
+        raise RuntimeError(f"Login falhou ({ADMIN_EMAIL}): {body or exc.reason}") from exc
+    token = data.get("access_token")
+    if not token:
+        raise RuntimeError("Login não retornou access_token")
+    return token
+
+
+async def main():
+    ids = await load_ids()
+    token = login()
+    _, result = http_json(
+        "POST",
+        f"{BASE_URL}/api/v1/realtime/handoff/generate",
+        payload={
+            "cohort_id": ids["cohort_id"],
+            "user_id": ids["user_id"],
+            "lesson_id": ids["lesson_id"],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    print(json.dumps({**result, "student": ids["student_name"], "lesson": ids["lesson_title"]}, indent=2, ensure_ascii=False))
+    print()
+    print("Abra em aba anônima (sem login):")
+    print(result["url"])
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except Exception as exc:
+        print(f"✗ {exc}", file=sys.stderr)
+        sys.exit(1)
+PY

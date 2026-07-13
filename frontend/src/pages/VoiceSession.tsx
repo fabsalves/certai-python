@@ -26,7 +26,7 @@ export function VoiceSession() {
   const [sessionInfo, setSessionInfo] = useState<SessionValidateResponse | null>(null);
   const [pageError, setPageError] = useState("");
 
-  const { status, error, streamReady, connect, disconnect } = useRealtimeVoice(handoffToken);
+  const { status, error, streamReady, turnCount, connect, disconnect } = useRealtimeVoice(handoffToken);
 
   useEffect(() => {
     if (!handoffToken) {
@@ -124,6 +124,12 @@ export function VoiceSession() {
         {status === "error" && "Erro na conexão"}
         {!status && "Toque para iniciar a chamada"}
       </p>
+
+      {connected && turnCount > 0 && (
+        <p style={{ fontSize: 12, color: "var(--ink-muted, #6b7c78)" }}>
+          {turnCount} mensagem{turnCount === 1 ? "" : "ns"} salva{turnCount === 1 ? "" : "s"}
+        </p>
+      )}
 
       {error && (
         <div

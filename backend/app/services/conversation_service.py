@@ -14,6 +14,7 @@ from app.models.conversation import (
     ConversationChannel,
     ConversationScope,
     Message,
+    MessageSource,
 )
 from app.schemas import AgentResponse
 
@@ -57,17 +58,29 @@ async def record_message(
     *,
     provider_message_id: str | None = None,
     delivery_status: str | None = None,
-) -> Message:
+    source: MessageSource | None = None,
+    idempotency_key: str | None = None,
+) -> tuple[Message, bool]:
+    """Persiste mensagem. Retorna (message, created) — created=False se idempotency_key duplicada."""
+    if idempotency_key:
+        existing = await db.scalar(
+            select(Message).where(Message.idempotency_key == idempotency_key)
+        )
+        if existing is not None:
+            return existing, False
+
     message = Message(
         conversation_id=conversation.id,
         author=author,
         content=content,
         provider_message_id=provider_message_id,
         delivery_status=delivery_status,
+        source=source,
+        idempotency_key=idempotency_key,
     )
     db.add(message)
     await db.flush()
-    return message
+    return message, True
 
 
 async def list_lesson_messages(

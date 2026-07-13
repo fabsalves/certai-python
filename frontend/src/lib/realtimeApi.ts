@@ -14,9 +14,31 @@ export interface SessionValidateResponse {
 export interface RealtimeTokenResponse {
   ephemeral_token: string;
   expires_at: number;
+  voice_session_id: string;
+  lock_token: string;
   realtime_model: string;
   realtime_voice: string;
   play_session_opener: boolean;
+}
+
+export interface TurnRelayItem {
+  idempotency_key: string;
+  author: "student" | "agent";
+  content: string;
+  realtime_item_id: string;
+  sequence: number;
+}
+
+export interface TurnsRelayResponse {
+  accepted: number;
+  duplicates: number;
+  conversation_id: string;
+}
+
+export interface EndSessionResponse {
+  ok: boolean;
+  status: string;
+  turn_count: number;
 }
 
 export async function validateSession(handoffToken: string): Promise<SessionValidateResponse> {
@@ -26,9 +48,51 @@ export async function validateSession(handoffToken: string): Promise<SessionVali
   return data;
 }
 
-export async function fetchRealtimeToken(handoffToken: string): Promise<RealtimeTokenResponse> {
+export async function fetchRealtimeToken(
+  handoffToken: string,
+  reconnectFromSessionId?: string | null,
+): Promise<RealtimeTokenResponse> {
   const { data } = await realtimeHttp.post<RealtimeTokenResponse>("/token", {
     handoff_token: handoffToken,
+    reconnect_from_session_id: reconnectFromSessionId ?? null,
+  });
+  return data;
+}
+
+export async function relayTurns(
+  voiceSessionId: string,
+  lockToken: string,
+  turns: TurnRelayItem[],
+): Promise<TurnsRelayResponse> {
+  const { data } = await realtimeHttp.post<TurnsRelayResponse>("/turns", {
+    voice_session_id: voiceSessionId,
+    lock_token: lockToken,
+    turns,
+  });
+  return data;
+}
+
+export async function sendHeartbeat(
+  voiceSessionId: string,
+  lockToken: string,
+): Promise<{ ok: boolean }> {
+  const { data } = await realtimeHttp.post<{ ok: boolean }>("/heartbeat", {
+    voice_session_id: voiceSessionId,
+    lock_token: lockToken,
+  });
+  return data;
+}
+
+export async function endVoiceSession(
+  voiceSessionId: string,
+  lockToken: string,
+  options?: { finalSequence?: number; reason?: string },
+): Promise<EndSessionResponse> {
+  const { data } = await realtimeHttp.post<EndSessionResponse>("/end", {
+    voice_session_id: voiceSessionId,
+    lock_token: lockToken,
+    reason: options?.reason ?? "explicit",
+    final_sequence: options?.finalSequence ?? null,
   });
   return data;
 }
