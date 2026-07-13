@@ -88,7 +88,7 @@ export function LessonReportCapture({
           headers: { "Content-Type": "multipart/form-data" },
         }),
       successMessage:
-        "Aula encerrada — a IA está processando o relato. Os convites aos alunos saem ao concluir.",
+        "Aula encerrada. Estamos processando o relato; os convites saem para os alunos quando terminar.",
       errorMessage: "Não foi possível encerrar a aula. Tente novamente.",
       onSuccess: () => {
         reset();
@@ -134,7 +134,7 @@ export function LessonReportCapture({
               <span className="muted">Transcrevendo…</span>
             ) : (
               <>
-                <span className="muted">Gravação pronta — revise o texto abaixo</span>
+                <span className="muted">Gravação pronta. Revise o texto abaixo.</span>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={reset}>
                   Regravar
                 </button>
@@ -165,7 +165,7 @@ export function LessonReportCapture({
 
         <FileAttachmentBlock
           label="Anexo opcional"
-          hint="DOCX ou TXT — fica guardado junto com o relato."
+          hint="DOCX ou TXT. Fica guardado junto com o relato."
         >
           {attachment ? (
             <FileChip

@@ -31,7 +31,7 @@ VOICE_INVITE_TEMPLATE_BODY = (
     "Oi {first_name}! 👋 Aqui é a {assistant}, sua parceira de estudos no CertAI.\n"
     'Quero conversar com você sobre a aula "{lesson_title}" da trilha "{track_title}".\n\n'
     "🎙️ Prefere falar comigo ao vivo? Toque no botão abaixo.\n"
-    "Ou responda por aqui, texto ou áudio — como preferir. 🙂"
+    "Ou responda por aqui, texto ou áudio, como preferir. 🙂"
 )
 
 

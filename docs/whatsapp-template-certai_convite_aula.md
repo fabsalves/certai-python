@@ -74,7 +74,7 @@ Oi {{1}}! 👋 Aqui é a {{4}}, sua parceira de estudos no CertAI.
 Quero conversar com você sobre a aula "{{2}}" da trilha "{{3}}".
 
 🎙️ Prefere falar comigo ao vivo? Toque no botão abaixo.
-Ou responda por aqui, texto ou áudio — como preferir. 🙂
+Ou responda por aqui, texto ou áudio, como preferir. 🙂
 ```
 
 | Variável (corpo) | Conteúdo |
@@ -108,7 +108,7 @@ curl -X POST "https://api.cinndi.com/v2/novo-template/NUMERO/TOKEN" \
     "nome": "certai_convite_aula_voz_v2",
     "idioma": "pt_BR",
     "tipo": "MARKETING",
-    "mensagem": "Oi {{1}}! 👋 Aqui é a {{4}}, sua parceira de estudos no CertAI.\nQuero conversar com você sobre a aula \"{{2}}\" da trilha \"{{3}}\".\n\n🎙️ Prefere falar comigo ao vivo? Toque no botão abaixo.\nOu responda por aqui, texto ou áudio — como preferir. 🙂",
+    "mensagem": "Oi {{1}}! 👋 Aqui é a {{4}}, sua parceira de estudos no CertAI.\nQuero conversar com você sobre a aula \"{{2}}\" da trilha \"{{3}}\".\n\n🎙️ Prefere falar comigo ao vivo? Toque no botão abaixo.\nOu responda por aqui, texto ou áudio, como preferir. 🙂",
     "botoesURL": {
       "texto": "Falar com a Lira",
       "url": "https://app.certai.com.br/voz",

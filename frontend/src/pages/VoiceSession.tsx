@@ -89,9 +89,12 @@ export function VoiceSession() {
   return (
     <div style={pageLayout}>
       <div style={{ textAlign: "center", maxWidth: 420 }}>
-        <h1 style={{ fontSize: 28, marginBottom: 8 }}>
-          {sessionInfo?.assistant_name ?? "Lira"} — voz ao vivo
+        <h1 style={{ fontSize: 28, marginBottom: 4 }}>
+          {sessionInfo?.assistant_name ?? "Lira"}
         </h1>
+        <p className="muted" style={{ fontSize: 14, marginBottom: 8 }}>
+          Chamada ao vivo
+        </p>
         <p className="muted" style={{ fontSize: 15 }}>
           Olá, {sessionInfo?.student_first_name}! Vamos conversar sobre{" "}
           <strong>{sessionInfo?.lesson_title}</strong>
@@ -120,7 +123,7 @@ export function VoiceSession() {
 
       <p style={{ fontSize: 14, color: "var(--ink-muted, #6b7c78)" }}>
         {status === "connecting" && "Conectando…"}
-        {status === "connected" && (streamReady ? "Conectado — fale com a Lira" : "Conectado — aguardando áudio…")}
+        {status === "connected" && (streamReady ? "Conectado. Pode falar." : "Conectado. Aguardando áudio…")}
         {status === "error" && "Erro na conexão"}
         {!status && "Toque para iniciar a chamada"}
       </p>

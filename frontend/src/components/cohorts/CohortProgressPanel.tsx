@@ -30,11 +30,11 @@ function findLesson(track: Track, lessonId: string) {
 }
 
 const NOTE_INGESTION_LABELS: Record<string, string> = {
-  pending: "Relato aguardando processamento pela IA…",
-  processing: "IA processando o relato da aula…",
-  done: "Relato processado pela IA.",
+  pending: "Relato aguardando processamento…",
+  processing: "Processando o relato da aula…",
+  done: "Relato processado.",
   failed:
-    "Falha no processamento do relato. Os convites aos alunos estão retidos até o reprocessamento.",
+    "Falha no processamento do relato. Os convites aos alunos ficam retidos até o reprocessamento.",
 };
 
 export function CohortProgressPanel({
@@ -153,7 +153,7 @@ export function CohortProgressPanel({
           {isDone
             ? "Aula já concluída pela turma."
             : isCurrent
-              ? "Aula atual — grave ou escreva o relato, revise e encerre para liberar a próxima."
+              ? "Aula atual. Grave ou escreva o relato, revise e encerre para liberar a próxima."
               : "Aguardando conclusão das aulas anteriores."}
         </p>
       </div>

@@ -68,7 +68,7 @@ function TextBlock({ label, value }: { label: string; value: string }) {
     return (
       <div className="playground-context__field">
         <span className="playground-context__label">{label}</span>
-        <p className="muted playground-context__empty-value">—</p>
+        <p className="muted playground-context__empty-value">Nenhum</p>
       </div>
     );
   }
@@ -172,8 +172,8 @@ export function PlaygroundScoresPanel({
             </p>
             {scores.scores_in_lesson.length === 0 ? (
               <p className="muted playground-context__empty-value">
-                Nenhum score nesta aula. A Lira registra via tool quando há demonstração
-                na conversa — não a cada mensagem.
+                Nenhum score nesta aula. A Lira registra quando há demonstração
+                de entendimento na conversa, não a cada mensagem.
               </p>
             ) : (
               scores.scores_in_lesson.map((score) => (
@@ -188,7 +188,7 @@ export function PlaygroundScoresPanel({
             defaultOpen={false}
           >
             {scores.scores_other_lessons.length === 0 ? (
-              <p className="muted playground-context__empty-value">—</p>
+              <p className="muted playground-context__empty-value">Nenhum</p>
             ) : (
               scores.scores_other_lessons.map((score) => (
                 <ScoreCard key={score.id} score={score} />

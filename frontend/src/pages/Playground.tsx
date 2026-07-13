@@ -211,7 +211,7 @@ export function Playground() {
     () =>
       cohorts.map((item) => ({
         value: item.id,
-        label: `${item.name} — ${item.track_title}`,
+        label: `${item.name} · ${item.track_title}`,
       })),
     [cohorts],
   );
@@ -360,7 +360,7 @@ export function Playground() {
               className={`playground-rail__tab${railTab === "context" ? " is-active" : ""}`}
               onClick={() => setRailTab("context")}
             >
-              Contexto IA
+              Contexto da Lira
             </button>
             <button
               type="button"

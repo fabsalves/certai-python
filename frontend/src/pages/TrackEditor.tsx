@@ -29,11 +29,11 @@ import {
 type EditorTab = "meta" | "structure";
 
 const INGESTION_LABELS: Record<string, string> = {
-  pending: "Ingestão pela IA: aguardando",
-  processing: "Ingestão pela IA: processando…",
-  done: "Ingerido pela IA",
-  failed: "Falha na ingestão pela IA",
-  unsupported: "Formato sem ingestão automática (envie PDF ou PPTX)",
+  pending: "Material aguardando processamento",
+  processing: "Processando material…",
+  done: "Material processado",
+  failed: "Falha ao processar o material",
+  unsupported: "Formato sem processamento automático (envie PDF ou PPTX)",
 };
 
 export function TrackEditor() {
@@ -191,7 +191,7 @@ export function TrackEditor() {
     setReingestingMaterial(true);
     await runAction({
       run: () => api.post<Track>(`/tracks/${track.id}/material/ingest`),
-      successMessage: "Ingestão do material enfileirada.",
+      successMessage: "Processamento do material enfileirado.",
       errorMessage: "Não foi possível reprocessar o material.",
       onSuccess: ({ data }) => setTrack(data),
     });
@@ -397,7 +397,7 @@ export function TrackEditor() {
                   <form className="track-meta track-meta__material" onSubmit={uploadMaterial}>
                     <FileAttachmentBlock
                       label="Material da trilha"
-                      hint="PDF ou PPT. Um arquivo por trilha — enviar outro substitui o atual."
+                      hint="PDF ou PPT. Um arquivo por trilha; enviar outro substitui o atual."
                     >
                       {track.material_filename && !materialFile && (
                         <FileChip
@@ -406,7 +406,7 @@ export function TrackEditor() {
                           meta={
                             materialIngestionStatus
                               ? INGESTION_LABELS[materialIngestionStatus] ?? materialIngestionStatus
-                              : "Ainda não processado pela IA"
+                              : "Ainda não processado"
                           }
                           onDownload={downloadMaterial}
                           downloading={downloadingMaterial}
@@ -424,8 +424,8 @@ export function TrackEditor() {
                             {reingestingMaterial
                               ? "Enfileirando…"
                               : materialIngestionStatus === "failed"
-                                ? "Reprocessar ingestão"
-                                : "Processar com IA"}
+                                ? "Reprocessar material"
+                                : "Processar material"}
                           </button>
                         )}
                       {materialFile && (

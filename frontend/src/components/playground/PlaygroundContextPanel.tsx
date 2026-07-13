@@ -51,7 +51,7 @@ function TextBlock({ label, value }: { label: string; value: string }) {
     return (
       <div className="playground-context__field">
         <span className="playground-context__label">{label}</span>
-        <p className="muted playground-context__empty-value">—</p>
+        <p className="muted playground-context__empty-value">Nenhum</p>
       </div>
     );
   }
@@ -133,7 +133,7 @@ export function PlaygroundContextPanel({ cohortId, lessonId, refreshKey = 0 }: P
         <div className="playground-context__scroll">
           <ContextSection
             title="Posição do aluno"
-            badge={context.current_position?.lesson ?? "—"}
+            badge={context.current_position?.lesson ?? "N/D"}
           >
             {context.current_position ? (
               <p className="playground-context__meta">
@@ -151,7 +151,7 @@ export function PlaygroundContextPanel({ cohortId, lessonId, refreshKey = 0 }: P
           >
             {context.unlocked_content.length === 0 ? (
               <p className="muted playground-context__empty-value">
-                Nenhuma aula liberada ainda — a Lira não vê conteúdo de aula.
+                Nenhuma aula liberada ainda. A Lira só enxerga conteúdo das aulas que a turma já concluiu.
               </p>
             ) : (
               context.unlocked_content.map((item) => (
