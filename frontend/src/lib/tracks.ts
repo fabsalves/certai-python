@@ -26,6 +26,7 @@ export interface Track {
   is_active: boolean;
   material_filename?: string | null;
   material_content_type?: string | null;
+  material_ingestion_status?: string | null;
   modules: Module[];
 }
 

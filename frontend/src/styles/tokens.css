@@ -42,6 +42,8 @@
   /* layout */
   --sidebar-width: 260px;
   --topbar-height: 56px;
+  --chrome-header-height: 72px;
+  --chrome-footer-height: 112px;
   --content-max-width: 1440px;
 }
 

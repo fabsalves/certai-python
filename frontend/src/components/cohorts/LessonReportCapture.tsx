@@ -87,7 +87,8 @@ export function LessonReportCapture({
         api.post(completePath ?? `/cohorts/${cohortId}/complete-lesson`, form, {
           headers: { "Content-Type": "multipart/form-data" },
         }),
-      successMessage: "Aula encerrada. A turma avançou na trilha.",
+      successMessage:
+        "Aula encerrada — a IA está processando o relato. Os convites aos alunos saem ao concluir.",
       errorMessage: "Não foi possível encerrar a aula. Tente novamente.",
       onSuccess: () => {
         reset();

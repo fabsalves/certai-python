@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CohortPathPreview } from "../components/cohorts/CohortPathPreview";
 import { LessonReportCapture } from "../components/cohorts/LessonReportCapture";
 import { PlaygroundChat } from "../components/playground/PlaygroundChat";
+import { PlaygroundContextPanel } from "../components/playground/PlaygroundContextPanel";
 import { PlaygroundSessionHead } from "../components/playground/PlaygroundSessionHead";
 import { Select } from "../components/ui/Select";
 import { api } from "../lib/api";
@@ -14,6 +15,7 @@ import {
 import { sortedLessons, sortedModules, type Track } from "../lib/tracks";
 
 type SessionMode = "student" | "professor";
+type RailTab = "track" | "context";
 
 function findLessonModule(track: Track, lessonId: string) {
   for (const mod of sortedModules(track)) {
@@ -47,10 +49,13 @@ export function Playground() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [railTab, setRailTab] = useState<RailTab>("track");
+  const [contextRefreshKey, setContextRefreshKey] = useState(0);
 
   const refreshProgress = useCallback(async (id: string) => {
     const { data } = await api.get<CohortProgress>(`/cohorts/${id}/progress`);
     setProgress(data);
+    setContextRefreshKey((k) => k + 1);
     return data;
   }, []);
 
@@ -294,15 +299,43 @@ export function Playground() {
 
       {track && progress && cohort && (
         <aside className="playground-rail">
-          <CohortPathPreview
-            embedded
-            compact
-            track={track}
-            progress={progress}
-            selectedLessonId={selectedLessonId}
-            moduleProfessors={cohort.module_professors}
-            onSelectLesson={(lessonId) => setSelectedLessonId(lessonId)}
-          />
+          <div className="playground-rail__tabs" role="tablist" aria-label="Painel lateral">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={railTab === "track"}
+              className={`playground-rail__tab${railTab === "track" ? " is-active" : ""}`}
+              onClick={() => setRailTab("track")}
+            >
+              Trilha
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={railTab === "context"}
+              className={`playground-rail__tab${railTab === "context" ? " is-active" : ""}`}
+              onClick={() => setRailTab("context")}
+            >
+              Contexto IA
+            </button>
+          </div>
+          {railTab === "track" ? (
+            <CohortPathPreview
+              embedded
+              compact
+              track={track}
+              progress={progress}
+              selectedLessonId={selectedLessonId}
+              moduleProfessors={cohort.module_professors}
+              onSelectLesson={(lessonId) => setSelectedLessonId(lessonId)}
+            />
+          ) : (
+            <PlaygroundContextPanel
+              cohortId={cohortId}
+              lessonId={selectedLessonId}
+              refreshKey={contextRefreshKey}
+            />
+          )}
         </aside>
       )}
 

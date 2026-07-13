@@ -27,6 +27,10 @@ class Track(Base):
     material_storage_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     material_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     material_content_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    material_extracted_text: Mapped[str] = mapped_column(Text, default="")  # raw material text
+    material_guide: Mapped[str] = mapped_column(Text, default="")  # AI macro guide for the whole track
+    # None (no ingestion yet) | pending | processing | done | failed | unsupported
+    material_ingestion_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     modules: Mapped[list["Module"]] = relationship(
         back_populates="track", order_by="Module.position", cascade="all, delete-orphan"

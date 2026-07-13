@@ -15,8 +15,12 @@ from app.schemas import (
     AgentResponse,
     MessageIn,
     MessageOut,
+    PlaygroundContextOut,
+    PlaygroundLessonNoteContextOut,
+    PlaygroundTrackMaterialOut,
     TranscriptionOut,
 )
+from app.services.playground_context_service import build_playground_context
 from app.services.conversation_service import student_lesson_message
 from app.services.lesson_completion_service import complete_lesson
 from app.services.transcription_service import transcribe_audio
@@ -118,6 +122,39 @@ async def _current_lesson_id(db: AsyncSession, cohort: Cohort) -> uuid.UUID | No
             if lesson.id not in completed:
                 return lesson.id
     return None
+
+
+@router.get(
+    "/cohorts/{cohort_id}/lessons/{lesson_id}/context",
+    response_model=PlaygroundContextOut,
+)
+async def get_lesson_context(
+    cohort_id: uuid.UUID,
+    lesson_id: uuid.UUID,
+    user: Annotated[User, Depends(admin_only)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Snapshot of the context bundle and ingestions the Lira receives for this lesson."""
+    await _get_cohort_or_404(db, cohort_id)
+    if await db.get(Lesson, lesson_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Aula não encontrada")
+
+    try:
+        data = await build_playground_context(db, cohort_id, lesson_id)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(e)) from e
+
+    return PlaygroundContextOut(
+        scope=data["scope"],
+        current_position=data["current_position"],
+        track_map=data["track_map"],
+        unlocked_content=data["unlocked_content"],
+        cohort_notes_in_bundle=data["cohort_notes_in_bundle"],
+        track_guide_in_bundle=data["track_guide_in_bundle"],
+        system_blocks=data["system_blocks"],
+        track_material=PlaygroundTrackMaterialOut(**data["track_material"]),
+        lesson_notes=[PlaygroundLessonNoteContextOut(**n) for n in data["lesson_notes"]],
+    )
 
 
 @router.get(
@@ -254,6 +291,5 @@ async def complete_lesson_as_professor(
 
     return {
         "status": "aula encerrada, turma avançada",
-        "summary": note.summary,
-        "unclear_points": note.unclear_points,
+        "ingestion_status": note.ingestion_status,
     }

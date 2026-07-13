@@ -36,6 +36,8 @@ celery_app.conf.update(
         "app.workers.tasks.plan_dispatch": {"queue": "whatsapp"},
         "app.workers.tasks.process_whatsapp_inbound": {"queue": "whatsapp"},
         "app.workers.tasks.evaluate_cohort_gaps": {"queue": "evaluation"},
+        "app.workers.tasks.ingest_lesson_completion": {"queue": "evaluation"},
+        "app.workers.tasks.ingest_track_material": {"queue": "evaluation"},
     },
 )
 

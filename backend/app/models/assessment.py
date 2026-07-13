@@ -55,5 +55,9 @@ class CohortLessonNote(Base):
     attachment_storage_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     attachment_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     attachment_content_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    attachment_extracted_text: Mapped[str] = mapped_column(Text, default="")  # raw attachment text
+    attachment_knowledge_base: Mapped[str] = mapped_column(Text, default="")  # AI consolidation
     audio_storage_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     audio_content_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # pending -> processing -> done | failed. Dispatch to students only after done.
+    ingestion_status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
