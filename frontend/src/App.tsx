@@ -14,6 +14,7 @@ import { Playground } from "./pages/Playground";
 import { Professors } from "./pages/Professors";
 import { TrackEditor } from "./pages/TrackEditor";
 import { Tracks } from "./pages/Tracks";
+import { VoiceSession } from "./pages/VoiceSession";
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
         <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/voice-poc" element={<VoiceSession />} />
 
           <Route
             element={

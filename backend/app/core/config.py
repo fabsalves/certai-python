@@ -46,6 +46,13 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     GROQ_TRANSCRIBE_MODEL: str = "whisper-large-v3"
 
+    # --- OpenAI Realtime (voz ao vivo) ---
+    OPENAI_REALTIME_MODEL: str = "gpt-realtime-2"
+    OPENAI_REALTIME_VOICE: str = "coral"
+    OPENAI_REALTIME_REASONING_EFFORT: str = "low"
+    OPENAI_REALTIME_TRANSCRIPTION_MODEL: str = "gpt-4o-mini-transcribe"
+    OPENAI_REALTIME_TRANSCRIPTION_LANGUAGE: str = "pt"
+
     # --- Storage (local em dev; S3 em staging/prod) ---
     STORAGE_BACKEND: Literal["local", "s3"] = "local"
     STORAGE_LOCAL_ROOT: str = "./media"
