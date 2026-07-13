@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   endVoiceSession,
   fetchRealtimeToken,
+  invokeRealtimeTool,
   relayTurns,
   sendHeartbeat,
   type RealtimeTokenResponse,
@@ -15,8 +16,79 @@ import {
 
 const REALTIME_CALLS_URL = "https://api.openai.com/v1/realtime/calls";
 const HEARTBEAT_INTERVAL_MS = 30_000;
+const SERVER_TOOLS = new Set(["score_understanding", "escalate_scope"]);
 
 export type RealtimeVoiceStatus = "" | "connecting" | "connected" | "error";
+
+function parseFunctionCallArgs(call: { arguments?: unknown }): Record<string, unknown> {
+  try {
+    const raw = call.arguments;
+    return typeof raw === "string" ? JSON.parse(raw || "{}") : (raw as Record<string, unknown>) || {};
+  } catch {
+    return {};
+  }
+}
+
+function pushNormalizedFunctionCall(
+  out: Array<{ name: string; call_id: string; arguments: string }>,
+  raw: Record<string, unknown>,
+) {
+  const name = (raw.name || (raw.function as { name?: string } | undefined)?.name) as string | undefined;
+  if (!name) return;
+  const call_id = String(raw.call_id || raw.id || "");
+  const args = raw.arguments ?? (raw.function as { arguments?: unknown } | undefined)?.arguments ?? "{}";
+  out.push({
+    name,
+    call_id,
+    arguments: typeof args === "string" ? args : JSON.stringify(args),
+  });
+}
+
+function collectFunctionCallsFromOutput(output: unknown[]): Array<{
+  name: string;
+  call_id: string;
+  arguments: string;
+}> {
+  const out: Array<{ name: string; call_id: string; arguments: string }> = [];
+  for (const item of output) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+
+    if (row.type === "function" && row.function) {
+      pushNormalizedFunctionCall(out, row);
+      continue;
+    }
+    if (row.type === "function_call") {
+      pushNormalizedFunctionCall(out, row);
+      continue;
+    }
+    if (row.type === "message" && Array.isArray(row.content)) {
+      for (const part of row.content) {
+        if (part && typeof part === "object" && (part as { type?: string }).type === "function_call") {
+          pushNormalizedFunctionCall(out, part as Record<string, unknown>);
+        }
+      }
+    }
+    if (row.type === "message" && Array.isArray(row.tool_calls)) {
+      for (const tc of row.tool_calls) {
+        pushNormalizedFunctionCall(out, tc as Record<string, unknown>);
+      }
+    }
+  }
+  return out;
+}
+
+async function awaitTranscriptIfEmpty(
+  transcriptRef: React.MutableRefObject<string>,
+  { maxMs = 800, stepMs = 40 } = {},
+) {
+  if (transcriptRef.current.trim()) return;
+  const start = Date.now();
+  while (Date.now() - start < maxMs) {
+    await new Promise((resolve) => setTimeout(resolve, stepMs));
+    if (transcriptRef.current.trim()) return;
+  }
+}
 
 function normalizeRealtimeResponseOutput(response: { output?: unknown } | undefined): unknown[] {
   const raw = response?.output;
@@ -105,6 +177,50 @@ export function useRealtimeVoice(handoffToken: string) {
       console.error("[realtime] turn relay failed", err);
     }
   }, []);
+
+  const handleServerToolRoundtrip = useCallback(
+    async (
+      dc: RTCDataChannel,
+      functionCalls: Array<{ name: string; call_id: string; arguments: string }>,
+    ) => {
+      const voiceSessionId = voiceSessionIdRef.current;
+      const lockToken = lockTokenRef.current;
+      const serverCalls = functionCalls.filter((call) => SERVER_TOOLS.has(call.name));
+      if (!voiceSessionId || !lockToken || serverCalls.length === 0) return;
+
+      for (const call of serverCalls) {
+        try {
+          const result = await invokeRealtimeTool(
+            call.name,
+            voiceSessionId,
+            lockToken,
+            call.call_id,
+            parseFunctionCallArgs(call),
+          );
+          dc.send(
+            JSON.stringify({
+              type: "conversation.item.create",
+              item: {
+                type: "function_call_output",
+                call_id: result.call_id,
+                output: result.output,
+              },
+            }),
+          );
+          console.log("[realtime] tool bridge", call.name, result.output);
+        } catch (err) {
+          console.error("[realtime] tool bridge failed", call.name, err);
+        }
+      }
+
+      try {
+        dc.send(JSON.stringify({ type: "response.create" }));
+      } catch {
+        /* ignore */
+      }
+    },
+    [],
+  );
 
   const endSession = useCallback(async () => {
     const voiceSessionId = voiceSessionIdRef.current;
@@ -229,12 +345,15 @@ export function useRealtimeVoice(handoffToken: string) {
             }
 
             if (type === "response.done") {
+              await awaitTranscriptIfEmpty(lastUserTranscriptRef);
+
               const output = normalizeRealtimeResponseOutput(
                 payload.response as { output?: unknown },
               );
               const assistantText = extractAssistantText(output);
               const userTranscript = lastUserTranscriptRef.current;
               lastUserTranscriptRef.current = "";
+              const functionCalls = collectFunctionCallsFromOutput(output);
 
               const itemId = responseId(payload.response);
               const turns: TurnRelayItem[] = [];
@@ -269,6 +388,15 @@ export function useRealtimeVoice(handoffToken: string) {
               }
 
               await persistTurns(turns);
+
+              if (functionCalls.some((call) => call.name === "end_conversation")) {
+                disconnect();
+                return;
+              }
+
+              if (functionCalls.some((call) => SERVER_TOOLS.has(call.name))) {
+                await handleServerToolRoundtrip(dc, functionCalls);
+              }
             }
           } catch (err) {
             console.error("[realtime] datachannel parse error", err);
@@ -315,7 +443,7 @@ export function useRealtimeVoice(handoffToken: string) {
       setError(message);
       setStatus("error");
     }
-  }, [endSession, handoffToken, persistTurns, startHeartbeat, status, stopHeartbeat]);
+  }, [disconnect, endSession, handoffToken, handleServerToolRoundtrip, persistTurns, startHeartbeat, status, stopHeartbeat]);
 
   useEffect(() => () => {
     stopHeartbeat();

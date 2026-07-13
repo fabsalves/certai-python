@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 
 import httpx
@@ -35,11 +36,16 @@ class OpenaiRealtimeService:
         self.model = model or settings.OPENAI_REALTIME_MODEL or DEFAULT_MODEL
         self.voice = voice or settings.OPENAI_REALTIME_VOICE or DEFAULT_VOICE
 
+    @staticmethod
+    def safety_identifier_for_user(user_id: str) -> str:
+        return hashlib.sha256(user_id.encode()).hexdigest()
+
     async def create_client_secret(
         self,
         *,
         instructions: str | None = None,
         tools: list[dict[str, Any]] | None = None,
+        safety_identifier: str | None = None,
     ) -> dict[str, Any]:
         turn_detection = {"type": "server_vad", "silence_duration_ms": SILENCE_DURATION_MS}
         session_config: dict[str, Any] = {
@@ -69,6 +75,8 @@ class OpenaiRealtimeService:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+        if safety_identifier:
+            headers["OpenAI-Safety-Identifier"] = safety_identifier
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(

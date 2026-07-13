@@ -21,6 +21,14 @@ from app.schemas import AgentResponse
 logger = logging.getLogger(__name__)
 
 
+def agent_source_for_channel(channel: ConversationChannel) -> MessageSource:
+    if channel == ConversationChannel.WHATSAPP:
+        return MessageSource.WHATSAPP_TEXT
+    if channel == ConversationChannel.REALTIME_VOICE:
+        return MessageSource.REALTIME_VOICE
+    return MessageSource.IN_APP_TEXT
+
+
 async def get_or_create_conversation(
     db: AsyncSession,
     cohort_id: uuid.UUID,
@@ -156,7 +164,13 @@ async def generate_lesson_reply(
     raw = await respond(bundle, history, tool_ctx)
     final = await humanize(raw)
 
-    await record_message(db, conversation, Author.AGENT, final)
+    await record_message(
+        db,
+        conversation,
+        Author.AGENT,
+        final,
+        source=agent_source_for_channel(conversation.channel),
+    )
     return final
 
 
@@ -173,7 +187,9 @@ async def student_lesson_message(
     conversation = await get_or_create_conversation(
         db, cohort_id, student_id, lesson_id, channel=ConversationChannel.IN_APP
     )
-    await record_message(db, conversation, Author.STUDENT, content)
+    await record_message(
+        db, conversation, Author.STUDENT, content, source=MessageSource.IN_APP_TEXT
+    )
     final = await generate_lesson_reply(
         db,
         conversation,

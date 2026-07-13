@@ -1,15 +1,16 @@
-"""Realtime voice endpoints — Etapa C: persistência de turnos + lifecycle VoiceSession."""
+"""Realtime voice endpoints — Etapa D: contexto cross-channel + tool bridge."""
 
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.engine import SYSTEM_BASE
+from app.ai.tools import ToolContext, dispatch
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import require_roles
@@ -18,7 +19,9 @@ from app.models.conversation import Author, Conversation, ConversationChannel
 from app.models.track import Lesson, Track
 from app.models.user import Role, User
 from app.services.realtime.handoff_token_service import HandoffClaims, HandoffTokenError, HandoffTokenService
+from app.services.realtime.instructions_builder import RealtimeInstructionsBuilder
 from app.services.realtime.openai_realtime_service import OpenaiRealtimeError, OpenaiRealtimeService
+from app.services.realtime.realtime_tools import SERVER_TOOL_NAMES, realtime_tool_schemas
 from app.services.realtime.voice_session_service import (
     TurnInput,
     VoiceSessionError,
@@ -129,6 +132,18 @@ class EndSessionOut(BaseModel):
     turn_count: int
 
 
+class ToolBridgeIn(BaseModel):
+    voice_session_id: uuid.UUID
+    lock_token: str
+    call_id: str
+    arguments: dict[str, Any] = Field(default_factory=dict)
+
+
+class ToolBridgeOut(BaseModel):
+    call_id: str
+    output: str
+
+
 async def _load_session_context(
     db: AsyncSession,
     claims: HandoffClaims,
@@ -152,27 +167,6 @@ async def _load_session_context(
         track_title or "",
         settings.ASSISTANT_NAME,
     )
-
-
-def _handoff_instructions(
-    *,
-    student_first_name: str,
-    lesson_title: str,
-    track_title: str,
-) -> str:
-    return f"""{SYSTEM_BASE}
-
-## Modo de conversa
-Você está em uma chamada de voz ao vivo. Respostas curtas e naturais para fala.
-Não use markdown, listas longas ou formatação. Uma ideia por vez.
-
-## Contexto da aula
-Aula: {lesson_title}
-Trilha: {track_title}
-
-## Abertura
-Cumprimente o aluno pelo nome ({student_first_name}) e retome de onde a conversa parou.
-Não recomece do zero se já houve troca de mensagens."""
 
 
 def _lock_http_error(exc: VoiceSessionLockInvalid) -> HTTPException:
@@ -267,18 +261,24 @@ async def create_realtime_token(
     except VoiceSessionLockedByOther as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
 
-    student_first_name, lesson_title, track_title, _assistant = await _load_session_context(
+    student_first_name, _lesson_title, _track_title, _assistant = await _load_session_context(
         db, claims
     )
-    instructions = _handoff_instructions(
+    instructions = await RealtimeInstructionsBuilder(db).build(
+        cohort_id=claims.cohort_id,
+        lesson_id=claims.lesson_id,
+        student_id=claims.user_id,
         student_first_name=student_first_name,
-        lesson_title=lesson_title,
-        track_title=track_title,
     )
+    tools = realtime_tool_schemas()
 
     try:
         service = OpenaiRealtimeService()
-        secret = await service.create_client_secret(instructions=instructions)
+        secret = await service.create_client_secret(
+            instructions=instructions,
+            tools=tools,
+            safety_identifier=OpenaiRealtimeService.safety_identifier_for_user(str(claims.user_id)),
+        )
     except OpenaiRealtimeError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
 
@@ -368,3 +368,36 @@ async def end_session(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
 
     return EndSessionOut(status=result.status.value, turn_count=result.turn_count)
+
+
+@router.post("/tools/{tool_name}", response_model=ToolBridgeOut)
+async def invoke_tool(
+    tool_name: str,
+    body: ToolBridgeIn,
+    db: AsyncSession = Depends(get_db),
+) -> ToolBridgeOut:
+    """Executa score_understanding ou escalate_scope server-side durante a call."""
+    if tool_name not in SERVER_TOOL_NAMES:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Tool não suportada: {tool_name}")
+
+    try:
+        session = await _voice_session_service.assert_lock(
+            db,
+            body.voice_session_id,
+            body.lock_token,
+        )
+    except VoiceSessionLockInvalid as exc:
+        raise _lock_http_error(exc) from exc
+
+    conversation = await db.get(Conversation, session.conversation_id)
+    if conversation is None or conversation.lesson_id is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Conversa não encontrada")
+
+    tool_ctx = ToolContext(
+        db,
+        conversation.cohort_id,
+        conversation.user_id,
+        conversation.lesson_id,
+    )
+    output = await dispatch(tool_name, body.arguments, tool_ctx)
+    return ToolBridgeOut(call_id=body.call_id, output=output)

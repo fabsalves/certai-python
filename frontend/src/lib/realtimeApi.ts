@@ -41,6 +41,11 @@ export interface EndSessionResponse {
   turn_count: number;
 }
 
+export interface ToolBridgeResponse {
+  call_id: string;
+  output: string;
+}
+
 export async function validateSession(handoffToken: string): Promise<SessionValidateResponse> {
   const { data } = await realtimeHttp.post<SessionValidateResponse>("/session/validate", {
     handoff_token: handoffToken,
@@ -93,6 +98,22 @@ export async function endVoiceSession(
     lock_token: lockToken,
     reason: options?.reason ?? "explicit",
     final_sequence: options?.finalSequence ?? null,
+  });
+  return data;
+}
+
+export async function invokeRealtimeTool(
+  toolName: string,
+  voiceSessionId: string,
+  lockToken: string,
+  callId: string,
+  args: Record<string, unknown>,
+): Promise<ToolBridgeResponse> {
+  const { data } = await realtimeHttp.post<ToolBridgeResponse>(`/tools/${toolName}`, {
+    voice_session_id: voiceSessionId,
+    lock_token: lockToken,
+    call_id: callId,
+    arguments: args,
   });
   return data;
 }

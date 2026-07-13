@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.core.phone import normalize_br_phone, phone_lookup_variants
-from app.models.conversation import Author, Conversation, ConversationChannel, Message
+from app.models.conversation import Author, Conversation, ConversationChannel, Message, MessageSource
 from app.models.user import Role, User
 from app.services.cinndi.types import CinndiParseResult
 from app.services.conversation_service import record_message
@@ -75,6 +75,15 @@ async def _latest_whatsapp_conversation(db, student_id: uuid.UUID) -> Conversati
         .limit(1)
     )
     return await db.scalar(stmt)
+
+
+def _message_source(parsed: CinndiParseResult) -> MessageSource:
+    if parsed.message is None:
+        return MessageSource.WHATSAPP_TEXT
+    msg_type = parsed.message.message_type.lower()
+    if msg_type in {"audio", "ptt"}:
+        return MessageSource.WHATSAPP_AUDIO
+    return MessageSource.WHATSAPP_TEXT
 
 
 async def _resolve_text(parsed: CinndiParseResult) -> str:
@@ -158,5 +167,6 @@ async def persist_inbound(db, parsed: CinndiParseResult) -> InboundResult:
         Author.STUDENT,
         text.strip(),
         provider_message_id=message.message_id or None,
+        source=_message_source(parsed),
     )
     return InboundResult(conversation_id=conversation.id, detail="ok")

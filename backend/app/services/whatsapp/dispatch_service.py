@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.models.cohort import Cohort, Enrollment
-from app.models.conversation import Author, ConversationChannel, Message
+from app.models.conversation import Author, ConversationChannel, Message, MessageSource
 from app.models.track import Lesson, Module, Track
 from app.models.user import Role, User
 from app.services.cinndi.outbound import CinndiOutboundError, send_template_message
@@ -136,6 +136,7 @@ async def dispatch_lesson_invites(
             body_text,
             provider_message_id=provider_id,
             delivery_status="sent",
+            source=MessageSource.WHATSAPP_TEXT,
         )
         sent += 1
 

@@ -184,6 +184,7 @@ async def _process_whatsapp_inbound(conversation_id: UUID, task_id: str) -> dict
                 conversation.cohort_id,
                 conversation.lesson_id,
                 conversation.user_id,
+                merge_channels=True,
             )
             provider_id = send_text_message(to_phone=student.whatsapp, body=final)
 
