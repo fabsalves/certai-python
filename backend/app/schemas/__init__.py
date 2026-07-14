@@ -267,6 +267,7 @@ class MessageOut(BaseModel):
     author: str
     content: str
     created_at: datetime
+    source: str | None = None
 
 
 class AgentResponse(BaseModel):

@@ -1670,6 +1670,7 @@ html.modal-scroll-lock body {
   z-index: 1;
   display: flex;
   align-items: center;
+  gap: 8px;
 }
 
 .playground-session-head__title {
@@ -1705,6 +1706,8 @@ html.modal-scroll-lock body {
 .playground-chat__log {
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -1717,6 +1720,7 @@ html.modal-scroll-lock body {
   flex-direction: column;
   gap: 16px;
   min-height: 100%;
+  min-width: 0;
 }
 
 .playground-chat__intro {
@@ -1735,10 +1739,14 @@ html.modal-scroll-lock body {
 
 .playground-chat__bubble {
   max-width: 88%;
-  padding: 12px 14px;
+  min-width: 0;
+  padding: 12px 14px 8px;
   border-radius: var(--radius);
   background: var(--surface);
   border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-wrap: anywhere;
 }
 
 .playground-chat__bubble--student {
@@ -1755,6 +1763,10 @@ html.modal-scroll-lock body {
   align-self: flex-end;
 }
 
+.playground-chat__refresh {
+  pointer-events: auto;
+}
+
 .playground-chat__author {
   display: block;
   font-size: 11px;
@@ -1765,10 +1777,62 @@ html.modal-scroll-lock body {
   margin-bottom: 4px;
 }
 
+.playground-chat__meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 4px;
+  align-self: flex-end;
+  max-width: 100%;
+}
+
+.playground-chat__source {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border-radius: 0;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+}
+
+.playground-chat__source::after {
+  content: "·";
+  margin-left: 6px;
+  color: var(--text-subtle);
+}
+
+.playground-chat__time {
+  font-size: 10px;
+  line-height: 1;
+  color: var(--text-subtle);
+  white-space: nowrap;
+}
+
 .playground-chat__bubble p {
   margin: 0;
   white-space: pre-wrap;
   line-height: 1.55;
+  padding-right: 4px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.playground-chat__link {
+  color: var(--brand);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.playground-chat__link:hover {
+  color: var(--brand-700);
 }
 
 .playground-composer {

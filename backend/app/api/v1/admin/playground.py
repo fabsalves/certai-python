@@ -207,7 +207,12 @@ async def list_student_messages(
 
     messages = await list_lesson_messages(db, cohort_id, student_id, lesson_id)
     return [
-        MessageOut(author=m.author.value, content=m.content, created_at=m.created_at)
+        MessageOut(
+            author=m.author.value,
+            content=m.content,
+            created_at=m.created_at,
+            source=m.source.value if m.source else None,
+        )
         for m in messages
     ]
 
