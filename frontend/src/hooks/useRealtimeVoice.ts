@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import axios from "axios";
 import {
   endVoiceSession,
   fetchRealtimeToken,
@@ -9,16 +10,29 @@ import {
   type TurnRelayItem,
 } from "../lib/realtimeApi";
 import {
+  isRealtimeVoiceSupported,
+  isRealtimeMobileDevice,
+  micPermissionErrorMessage,
+} from "../lib/realtimeSupport";
+import {
+  hasRelayableTranscriptContent,
+  logMicTrackDiagnostics,
+  REALTIME_MIC_CONSTRAINTS,
+  setMicInputEnabled,
+} from "../lib/realtimeMic";
+import { AssistantPlaybackGate } from "../lib/realtimePlayback";
+import {
   clearStoredVoiceSession,
   getStoredReconnectSessionId,
   setStoredVoiceSession,
 } from "../lib/sessionRealtimeLock";
+import { apiErrorMessage } from "../lib/api";
 
 const REALTIME_CALLS_URL = "https://api.openai.com/v1/realtime/calls";
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const SERVER_TOOLS = new Set(["score_understanding", "escalate_scope"]);
 
-export type RealtimeVoiceStatus = "" | "connecting" | "connected" | "error";
+export type RealtimeVoiceStatus = "" | "connecting" | "connected" | "ended" | "error";
 
 function parseFunctionCallArgs(call: { arguments?: unknown }): Record<string, unknown> {
   try {
@@ -78,18 +92,6 @@ function collectFunctionCallsFromOutput(output: unknown[]): Array<{
   return out;
 }
 
-async function awaitTranscriptIfEmpty(
-  transcriptRef: React.MutableRefObject<string>,
-  { maxMs = 800, stepMs = 40 } = {},
-) {
-  if (transcriptRef.current.trim()) return;
-  const start = Date.now();
-  while (Date.now() - start < maxMs) {
-    await new Promise((resolve) => setTimeout(resolve, stepMs));
-    if (transcriptRef.current.trim()) return;
-  }
-}
-
 function normalizeRealtimeResponseOutput(response: { output?: unknown } | undefined): unknown[] {
   const raw = response?.output;
   if (Array.isArray(raw)) return raw;
@@ -141,14 +143,54 @@ function responseId(response: unknown): string {
   return typeof id === "string" && id ? id : `turn-${Date.now()}`;
 }
 
+function configureRemoteAudio(audioElement: HTMLAudioElement, stream: MediaStream) {
+  audioElement.srcObject = stream;
+  audioElement.autoplay = true;
+  audioElement.setAttribute("playsinline", "true");
+  void audioElement.play().catch(() => {
+    /* autoplay policy — user gesture already happened on connect */
+  });
+}
+
 export function useRealtimeVoice(handoffToken: string) {
   const pcRef = useRef<RTCPeerConnection | null>(null);
+  const dcRef = useRef<RTCDataChannel | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const lastUserTranscriptRef = useRef("");
   const sequenceRef = useRef(0);
   const voiceSessionIdRef = useRef("");
   const lockTokenRef = useRef("");
+  const assistantSpeakingRef = useRef(false);
+  const muteWhileSpeakingRef = useRef(false);
+  const relayedStudentKeysRef = useRef(new Set<string>());
+  const pendingGracefulEndRef = useRef(false);
+  const playbackGateRef = useRef<AssistantPlaybackGate | null>(null);
+
+  const setAssistantSpeaking = useCallback((speaking: boolean) => {
+    assistantSpeakingRef.current = speaking;
+    if (muteWhileSpeakingRef.current) {
+      setMicInputEnabled(micStreamRef.current, !speaking);
+    }
+  }, []);
+
+  const teardownMedia = useCallback(() => {
+    if (pcRef.current) {
+      pcRef.current.getSenders().forEach((sender) => sender.track?.stop());
+      pcRef.current.close();
+      pcRef.current = null;
+    }
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach((track) => track.stop());
+      micStreamRef.current = null;
+    }
+    playbackGateRef.current?.cancel();
+    playbackGateRef.current = null;
+    dcRef.current = null;
+    relayedStudentKeysRef.current.clear();
+    assistantSpeakingRef.current = false;
+    pendingGracefulEndRef.current = false;
+    setStreamReady(false);
+  }, []);
 
   const [status, setStatus] = useState<RealtimeVoiceStatus>("");
   const [error, setError] = useState("");
@@ -239,36 +281,45 @@ export function useRealtimeVoice(handoffToken: string) {
     }
   }, [handoffToken]);
 
-  const disconnect = useCallback(() => {
-    stopHeartbeat();
-    void endSession();
+  const finishCall = useCallback(
+    async (options?: { skipEndApi?: boolean }) => {
+      stopHeartbeat();
+      if (!options?.skipEndApi) {
+        await endSession();
+      }
+      teardownMedia();
+      setError("");
+      setStatus("ended");
+    },
+    [endSession, stopHeartbeat, teardownMedia],
+  );
 
-    if (pcRef.current) {
-      pcRef.current.getSenders().forEach((sender) => sender.track?.stop());
-      pcRef.current.close();
-      pcRef.current = null;
+  const handleAssistantPlaybackEnded = useCallback(() => {
+    setAssistantSpeaking(false);
+    if (pendingGracefulEndRef.current) {
+      pendingGracefulEndRef.current = false;
+      void finishCall();
     }
-    if (micStreamRef.current) {
-      micStreamRef.current.getTracks().forEach((track) => track.stop());
-      micStreamRef.current = null;
-    }
-    lastUserTranscriptRef.current = "";
-    setStreamReady(false);
-    setStatus("");
-    setError("");
-  }, [endSession, stopHeartbeat]);
+  }, [finishCall, setAssistantSpeaking]);
+
+  const disconnect = useCallback(() => {
+    void finishCall();
+  }, [finishCall]);
+
+  const pingHeartbeat = useCallback(() => {
+    const voiceSessionId = voiceSessionIdRef.current;
+    const lockToken = lockTokenRef.current;
+    if (!voiceSessionId || !lockToken) return;
+    void sendHeartbeat(voiceSessionId, lockToken).catch((err) => {
+      console.error("[realtime] heartbeat failed", err);
+    });
+  }, []);
 
   const startHeartbeat = useCallback(() => {
     stopHeartbeat();
-    heartbeatRef.current = setInterval(() => {
-      const voiceSessionId = voiceSessionIdRef.current;
-      const lockToken = lockTokenRef.current;
-      if (!voiceSessionId || !lockToken) return;
-      void sendHeartbeat(voiceSessionId, lockToken).catch((err) => {
-        console.error("[realtime] heartbeat failed", err);
-      });
-    }, HEARTBEAT_INTERVAL_MS);
-  }, [stopHeartbeat]);
+    pingHeartbeat();
+    heartbeatRef.current = setInterval(pingHeartbeat, HEARTBEAT_INTERVAL_MS);
+  }, [pingHeartbeat, stopHeartbeat]);
 
   const connect = useCallback(async (audioElement: HTMLAudioElement | null) => {
     if (!handoffToken) {
@@ -276,7 +327,16 @@ export function useRealtimeVoice(handoffToken: string) {
       setStatus("error");
       return;
     }
+    if (!isRealtimeVoiceSupported()) {
+      setError("Seu navegador não suporta chamada de voz ao vivo.");
+      setStatus("error");
+      return;
+    }
     if (status === "connecting" || status === "connected") return;
+
+    pendingGracefulEndRef.current = false;
+    playbackGateRef.current?.cancel();
+    playbackGateRef.current = new AssistantPlaybackGate(handleAssistantPlaybackEnded);
 
     setStatus("connecting");
     setError("");
@@ -284,14 +344,19 @@ export function useRealtimeVoice(handoffToken: string) {
 
     try {
       const reconnectFromSessionId = getStoredReconnectSessionId(handoffToken);
+      const deviceProfile = isRealtimeMobileDevice() ? "mobile" : "desktop";
+      console.log("[realtime] device_profile:", deviceProfile);
       const tokenData: RealtimeTokenResponse = await fetchRealtimeToken(
         handoffToken,
         reconnectFromSessionId,
+        deviceProfile,
       );
       const ephemeralToken = tokenData.ephemeral_token;
 
       voiceSessionIdRef.current = tokenData.voice_session_id;
       lockTokenRef.current = tokenData.lock_token;
+      muteWhileSpeakingRef.current = tokenData.mute_while_speaking;
+      relayedStudentKeysRef.current.clear();
       setStoredVoiceSession(tokenData.voice_session_id, tokenData.lock_token, handoffToken);
       startHeartbeat();
 
@@ -299,24 +364,22 @@ export function useRealtimeVoice(handoffToken: string) {
       pcRef.current = pc;
 
       pc.ontrack = (event) => {
-        if (audioElement && audioElement.srcObject !== event.streams[0]) {
-          audioElement.srcObject = event.streams[0];
-          audioElement.autoplay = true;
-          void audioElement.play().catch(() => {
-            /* autoplay policy — user gesture already happened on connect */
-          });
+        if (audioElement && event.streams[0]) {
+          configureRemoteAudio(audioElement, event.streams[0]);
           setStreamReady(true);
         }
       };
 
       const micStream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true },
+        audio: REALTIME_MIC_CONSTRAINTS,
       });
       micStreamRef.current = micStream;
+      logMicTrackDiagnostics(micStream);
       pc.addTrack(micStream.getTracks()[0]);
 
       const voiceSessionId = tokenData.voice_session_id;
       const dc = pc.createDataChannel("oai-events");
+      dcRef.current = dc;
       dc.onopen = () => {
         if (!tokenData.play_session_opener) return;
         try {
@@ -334,40 +397,98 @@ export function useRealtimeVoice(handoffToken: string) {
               type?: string;
               transcript?: string;
               response?: unknown;
+              response_id?: string;
+              item_id?: string;
             };
             const type = payload.type;
+            const eventResponseId =
+              typeof payload.response_id === "string"
+                ? payload.response_id
+                : responseId(payload.response as { id?: unknown } | undefined);
+
+            if (type === "input_audio_buffer.speech_started") {
+              const hadActiveResponse = assistantSpeakingRef.current;
+              console.log("[realtime] speech_started", {
+                at: new Date().toISOString(),
+                hadActiveResponse,
+                pendingGracefulEnd: pendingGracefulEndRef.current,
+              });
+              if (!pendingGracefulEndRef.current && hadActiveResponse) {
+                try {
+                  dc.send(JSON.stringify({ type: "output_audio_buffer.clear" }));
+                } catch {
+                  /* ignore */
+                }
+                playbackGateRef.current?.cancel();
+                setAssistantSpeaking(false);
+                console.log("[realtime] barge-in: output_audio_buffer.clear sent");
+              }
+              return;
+            }
+
+            if (type === "response.created") {
+              playbackGateRef.current?.beginResponse(eventResponseId);
+              setAssistantSpeaking(true);
+              return;
+            }
+
+            if (type === "output_audio_buffer.started") {
+              playbackGateRef.current?.markPlaybackStarted(eventResponseId);
+              setAssistantSpeaking(true);
+              return;
+            }
+
+            if (type === "output_audio_buffer.stopped") {
+              playbackGateRef.current?.markPlaybackStopped(eventResponseId);
+              return;
+            }
+
+            if (type === "response.cancelled") {
+              playbackGateRef.current?.cancel();
+              handleAssistantPlaybackEnded();
+              return;
+            }
 
             if (type === "conversation.item.input_audio_transcription.completed") {
               const transcript = (payload.transcript ?? "").trim();
-              lastUserTranscriptRef.current = transcript;
+              if (!hasRelayableTranscriptContent(transcript)) {
+                console.log("[realtime] student transcript skipped (noise):", JSON.stringify(transcript));
+                return;
+              }
+
+              const itemId = payload.item_id || `student-${Date.now()}`;
+              const idempotencyKey = `${voiceSessionId}:${itemId}:student`;
+              if (relayedStudentKeysRef.current.has(idempotencyKey)) return;
+              relayedStudentKeysRef.current.add(idempotencyKey);
+
               console.log("[realtime] student transcript:", transcript);
+              sequenceRef.current += 1;
+              await persistTurns([
+                {
+                  idempotency_key: idempotencyKey,
+                  author: "student",
+                  content: transcript,
+                  realtime_item_id: `${itemId}:student`,
+                  sequence: sequenceRef.current,
+                },
+              ]);
               return;
             }
 
             if (type === "response.done") {
-              await awaitTranscriptIfEmpty(lastUserTranscriptRef);
+              const doneResponseId = responseId(payload.response);
+              playbackGateRef.current?.beginResponse(doneResponseId);
 
               const output = normalizeRealtimeResponseOutput(
                 payload.response as { output?: unknown },
               );
               const assistantText = extractAssistantText(output);
-              const userTranscript = lastUserTranscriptRef.current;
-              lastUserTranscriptRef.current = "";
               const functionCalls = collectFunctionCallsFromOutput(output);
+              const shouldEndConversation = functionCalls.some((call) => call.name === "end_conversation");
 
-              const itemId = responseId(payload.response);
+              const itemId = doneResponseId;
               const turns: TurnRelayItem[] = [];
 
-              if (userTranscript) {
-                sequenceRef.current += 1;
-                turns.push({
-                  idempotency_key: `${voiceSessionId}:${itemId}:student`,
-                  author: "student",
-                  content: userTranscript,
-                  realtime_item_id: `${itemId}:student`,
-                  sequence: sequenceRef.current,
-                });
-              }
               if (assistantText) {
                 sequenceRef.current += 1;
                 turns.push({
@@ -380,19 +501,19 @@ export function useRealtimeVoice(handoffToken: string) {
               }
 
               console.log("[realtime] response.done", payload.response);
-              if (userTranscript) {
-                console.log("[realtime] turn student:", userTranscript);
-              }
               if (assistantText) {
                 console.log("[realtime] turn agent:", assistantText);
               }
 
               await persistTurns(turns);
 
-              if (functionCalls.some((call) => call.name === "end_conversation")) {
-                disconnect();
+              if (shouldEndConversation) {
+                pendingGracefulEndRef.current = true;
+                playbackGateRef.current?.scheduleFallback(assistantText);
                 return;
               }
+
+              playbackGateRef.current?.scheduleFallback(assistantText);
 
               if (functionCalls.some((call) => SERVER_TOOLS.has(call.name))) {
                 await handleServerToolRoundtrip(dc, functionCalls);
@@ -424,29 +545,56 @@ export function useRealtimeVoice(handoffToken: string) {
       const answerSdp = await sdpRes.text();
       await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
       setStatus("connected");
+      pingHeartbeat();
     } catch (err) {
       stopHeartbeat();
+      playbackGateRef.current?.cancel();
       if (voiceSessionIdRef.current && lockTokenRef.current) {
         void endSession();
       }
       voiceSessionIdRef.current = "";
       lockTokenRef.current = "";
-      if (pcRef.current) {
-        pcRef.current.close();
-        pcRef.current = null;
+      teardownMedia();
+
+      const micMessage = micPermissionErrorMessage(err);
+      if (micMessage) {
+        setError(micMessage);
+        setStatus("error");
+        return;
       }
-      if (micStreamRef.current) {
-        micStreamRef.current.getTracks().forEach((track) => track.stop());
-        micStreamRef.current = null;
+      if (axios.isAxiosError(err) && err.response?.status === 409) {
+        setError(
+          apiErrorMessage(
+            err,
+            "Sessão aberta em outro dispositivo ou aba. Encerre a outra chamada e tente de novo.",
+          ),
+        );
+        setStatus("error");
+        return;
       }
+
       const message = err instanceof Error ? err.message : "Erro ao conectar Realtime";
       setError(message);
       setStatus("error");
     }
-  }, [disconnect, endSession, handoffToken, handleServerToolRoundtrip, persistTurns, startHeartbeat, status, stopHeartbeat]);
+  }, [
+    endSession,
+    finishCall,
+    handoffToken,
+    handleAssistantPlaybackEnded,
+    handleServerToolRoundtrip,
+    persistTurns,
+    pingHeartbeat,
+    setAssistantSpeaking,
+    startHeartbeat,
+    status,
+    stopHeartbeat,
+    teardownMedia,
+  ]);
 
   useEffect(() => () => {
     stopHeartbeat();
+    playbackGateRef.current?.cancel();
     if (pcRef.current) {
       pcRef.current.close();
       pcRef.current = null;

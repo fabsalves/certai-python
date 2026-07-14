@@ -132,6 +132,7 @@ class VoiceSessionService:
         now = _utcnow()
         session.lock_expires_at = now + timedelta(seconds=LOCK_TTL_SECONDS)
         session.last_heartbeat_at = now
+        self._activate_if_needed(session)
         await db.flush()
         return session
 
@@ -290,6 +291,21 @@ class VoiceSessionService:
         session.ended_at = now
         session.end_reason = reason
         await db.flush()
+
+    async def sweep_abandoned_sessions(self, db: AsyncSession) -> int:
+        """Marca sessões ativas sem heartbeat dentro do TTL como abandoned."""
+        now = _utcnow()
+        sessions = (
+            await db.scalars(
+                select(VoiceSession).where(
+                    VoiceSession.status.in_(_ACTIVE_STATUSES),
+                    VoiceSession.lock_expires_at < now,
+                )
+            )
+        ).all()
+        for session in sessions:
+            await self._mark_abandoned(db, session)
+        return len(sessions)
 
     async def _mark_abandoned(self, db: AsyncSession, session: VoiceSession) -> None:
         now = _utcnow()

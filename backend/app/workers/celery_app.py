@@ -47,6 +47,10 @@ celery_app.conf.beat_schedule = {
         "task": "app.workers.tasks.sweep_evaluations",
         "schedule": crontab(hour=3, minute=0),  # every day at 03:00
     },
+    "voice-session-abandon-sweep": {
+        "task": "app.workers.tasks.sweep_abandoned_voice_sessions",
+        "schedule": 30.0,  # 90s lock TTL; sweep a cada 30s
+    },
 }
 
 # Registers worker_process_init/shutdown for the persistent asyncio loop.

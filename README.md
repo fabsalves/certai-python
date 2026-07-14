@@ -149,7 +149,7 @@ Na raiz do projeto:
 bin/dev
 ```
 
-O Foreman sobe API, worker, beat, flower e frontend de uma vez (`Procfile.dev`).
+O Foreman sobe API, worker (com Beat embutido `-B`), flower e frontend de uma vez (`Procfile.dev`). O sweep de sessões de voz abandonadas roda a cada 30s via Beat.
 
 | Serviço | URL |
 |---|---|

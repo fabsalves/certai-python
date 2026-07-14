@@ -1,22 +1,26 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useParams } from "react-router-dom";
 import axios from "axios";
+import { VoiceCallUI } from "../components/voice/VoiceCallUI";
 import { useRealtimeVoice } from "../hooks/useRealtimeVoice";
 import { apiErrorMessage } from "../lib/api";
+import { realtimeUnsupportedReason } from "../lib/realtimeSupport";
 import { validateSession, type SessionValidateResponse } from "../lib/realtimeApi";
 
 type PageState = "loading" | "ready" | "expired" | "error";
 
 const pageLayout: CSSProperties = {
-  minHeight: "100vh",
+  minHeight: "100dvh",
   display: "flex",
   flexDirection: "column",
   alignItems: "center",
   justifyContent: "center",
-  padding: 24,
+  padding: "max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom))",
   gap: 20,
   background: "var(--surface-50, #f3f7f6)",
 };
+
+const DEFAULT_WHATSAPP_URL = "https://wa.me/5519982863180";
 
 export function VoiceSession() {
   const { handoffToken = "" } = useParams<{ handoffToken: string }>();
@@ -66,9 +70,6 @@ export function VoiceSession() {
     };
   }, [handoffToken]);
 
-  const busy = status === "connecting";
-  const connected = status === "connected";
-
   if (pageState === "loading") {
     return (
       <div style={pageLayout}>
@@ -81,99 +82,39 @@ export function VoiceSession() {
     return (
       <div style={pageLayout}>
         <h1 style={{ fontSize: 24, marginBottom: 12 }}>Chamada de voz</h1>
-        <p style={{ color: "var(--danger)", maxWidth: 420, textAlign: "center" }}>{pageError}</p>
+        <p style={{ color: "var(--danger)", maxWidth: 420, textAlign: "center", lineHeight: 1.45 }}>
+          {pageError}
+        </p>
+        <a
+          href={sessionInfo?.whatsapp_support_url ?? DEFAULT_WHATSAPP_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn"
+          style={{ minHeight: 48, minWidth: 200, textDecoration: "none" }}
+        >
+          Voltar ao WhatsApp
+        </a>
       </div>
     );
   }
 
   return (
-    <div style={pageLayout}>
-      <div style={{ textAlign: "center", maxWidth: 420 }}>
-        <h1 style={{ fontSize: 28, marginBottom: 4 }}>
-          {sessionInfo?.assistant_name ?? "Lira"}
-        </h1>
-        <p className="muted" style={{ fontSize: 14, marginBottom: 8 }}>
-          Chamada ao vivo
-        </p>
-        <p className="muted" style={{ fontSize: 15 }}>
-          Olá, {sessionInfo?.student_first_name}! Vamos conversar sobre{" "}
-          <strong>{sessionInfo?.lesson_title}</strong>
-          {sessionInfo?.track_title ? (
-            <>
-              {" "}
-              da trilha <strong>{sessionInfo.track_title}</strong>
-            </>
-          ) : null}
-          .
-        </p>
-      </div>
-
-      <div
-        style={{
-          width: 120,
-          height: 120,
-          borderRadius: "50%",
-          background: connected ? "var(--brand, #0d6b5c)" : "var(--ink-muted, #6b7c78)",
-          opacity: connected && streamReady ? 1 : 0.65,
-          transition: "opacity 0.3s",
-          boxShadow: connected ? "0 0 0 12px rgba(13,107,92,0.15)" : "none",
-        }}
-        aria-hidden
-      />
-
-      <p style={{ fontSize: 14, color: "var(--ink-muted, #6b7c78)" }}>
-        {status === "connecting" && "Conectando…"}
-        {status === "connected" && (streamReady ? "Conectado. Pode falar." : "Conectado. Aguardando áudio…")}
-        {status === "error" && "Erro na conexão"}
-        {!status && "Toque para iniciar a chamada"}
-      </p>
-
-      {connected && turnCount > 0 && (
-        <p style={{ fontSize: 12, color: "var(--ink-muted, #6b7c78)" }}>
-          {turnCount} mensagem{turnCount === 1 ? "" : "ns"} salva{turnCount === 1 ? "" : "s"}
-        </p>
-      )}
-
-      {error && (
-        <div
-          style={{
-            color: "var(--danger)",
-            background: "var(--danger-50, #fdecea)",
-            padding: "10px 14px",
-            borderRadius: 8,
-            fontSize: 14,
-            maxWidth: 420,
-            textAlign: "center",
-          }}
-        >
-          {error}
-        </div>
-      )}
-
-      <div style={{ display: "flex", gap: 12 }}>
-        {!connected ? (
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={busy}
-            onClick={() => void connect(audioRef.current)}
-            style={{ minWidth: 160, minHeight: 48, fontSize: 16 }}
-          >
-            {busy ? "Conectando…" : "Iniciar chamada"}
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="btn"
-            onClick={disconnect}
-            style={{ minWidth: 160, minHeight: 48, fontSize: 16 }}
-          >
-            Encerrar
-          </button>
-        )}
-      </div>
-
-      <audio ref={audioRef} autoPlay playsInline style={{ display: "none" }} />
-    </div>
+    <VoiceCallUI
+      assistantName={sessionInfo?.assistant_name ?? "Lira"}
+      studentFirstName={sessionInfo?.student_first_name ?? ""}
+      lessonTitle={sessionInfo?.lesson_title ?? ""}
+      trackTitle={sessionInfo?.track_title}
+      status={status}
+      streamReady={streamReady}
+      turnCount={turnCount}
+      error={error}
+      whatsappSupportUrl={sessionInfo?.whatsapp_support_url ?? DEFAULT_WHATSAPP_URL}
+      unsupportedReason={realtimeUnsupportedReason() ?? undefined}
+      onConnect={() => void connect(audioRef.current)}
+      onDisconnect={disconnect}
+      audioElement={
+        <audio ref={audioRef} autoPlay playsInline style={{ display: "none" }} />
+      }
+    />
   );
 }

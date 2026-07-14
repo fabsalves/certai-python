@@ -9,6 +9,7 @@ export interface SessionValidateResponse {
   track_title: string;
   assistant_name: string;
   expires_at: number;
+  whatsapp_support_url: string;
 }
 
 export interface RealtimeTokenResponse {
@@ -19,6 +20,7 @@ export interface RealtimeTokenResponse {
   realtime_model: string;
   realtime_voice: string;
   play_session_opener: boolean;
+  mute_while_speaking: boolean;
 }
 
 export interface TurnRelayItem {
@@ -56,10 +58,12 @@ export async function validateSession(handoffToken: string): Promise<SessionVali
 export async function fetchRealtimeToken(
   handoffToken: string,
   reconnectFromSessionId?: string | null,
+  deviceProfile: "mobile" | "desktop" = "desktop",
 ): Promise<RealtimeTokenResponse> {
   const { data } = await realtimeHttp.post<RealtimeTokenResponse>("/token", {
     handoff_token: handoffToken,
     reconnect_from_session_id: reconnectFromSessionId ?? null,
+    device_profile: deviceProfile,
   });
   return data;
 }

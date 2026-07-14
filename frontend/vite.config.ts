@@ -5,6 +5,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: Number(process.env.FRONTEND_PORT || 5173),
+    allowedHosts: [".trycloudflare.com"],
     proxy: {
       "/api": {
         target: `http://localhost:${process.env.API_PORT || 8000}`,

@@ -82,6 +82,12 @@ def sweep_evaluations() -> dict:
     return run_async(_sweep_evaluations())
 
 
+@celery_app.task
+def sweep_abandoned_voice_sessions() -> dict:
+    """Scheduled job (Beat): marca sessões de voz sem heartbeat há 90s como abandoned."""
+    return run_async(_sweep_abandoned_voice_sessions())
+
+
 # --- async implementations ---
 
 async def _transcribe_audio(audio_path: str, conversation_id: UUID) -> dict:
@@ -258,3 +264,13 @@ async def _sweep_evaluations() -> dict:
     for cid in cohorts:
         evaluate_cohort_gaps.delay(str(cid))
     return {"cohorts_enqueued": len(cohorts)}
+
+
+async def _sweep_abandoned_voice_sessions() -> dict:
+    from app.core.database import SessionLocal
+    from app.services.realtime.voice_session_service import VoiceSessionService
+
+    async with SessionLocal() as db:
+        abandoned = await VoiceSessionService().sweep_abandoned_sessions(db)
+        await db.commit()
+    return {"abandoned": abandoned}

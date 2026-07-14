@@ -551,6 +551,30 @@ Doc: atualizar [`docs/whatsapp-template-certai_convite_aula.md`](certai-python/d
 
 ---
 
+## Addendum pós-Etapa F (teste mobile real)
+
+### VAD em viva-voz
+
+| Item | Decisão |
+|------|---------|
+| Default produção | `server_vad` com `threshold=0.8`, `prefix_padding_ms=500`, `silence_duration_ms=1200`, `interrupt_response=true` |
+| `semantic_vad` | Disponível via env; em teste real em viva-voz mobile realimentava eco do alto-falante como fala fantasma |
+| Eco / fantasma | VAD + `echoCancellation` — **não** filtrar transcrição do aluno pós-evento |
+| Mute físico do mic | `OPENAI_REALTIME_MUTE_WHILE_SPEAKING=false` por padrão; válvula de escape via env |
+| Unmute / encerramento | Gate de reprodução (`output_audio_buffer.stopped`) só para fim de fala e `end_conversation` gracioso |
+
+### Barge-in
+
+- `interrupt_response=true`: servidor trunca resposta preservando contexto
+- `input_audio_buffer.speech_started` durante resposta: cliente envia `output_audio_buffer.clear` (sem `pause()` no `<audio>` — WebRTC usa track contínua; pausar mata áudio futuro)
+- Turno `agent` persistido pode conter texto além do que o aluno ouviu após truncamento — aceitável na v1
+
+### Encerramento `end_conversation`
+
+Cliente aguarda `output_audio_buffer.stopped` (fallback: timeout proporcional ao texto) antes de `POST /realtime/end` e teardown WebRTC. UI mostra estado `ended` com CTA WhatsApp, distinto de erro.
+
+---
+
 ## Arquivos principais a criar/alterar
 
 **Criar:**
