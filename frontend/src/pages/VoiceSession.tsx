@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useParams } from "react-router-dom";
 import axios from "axios";
 import { VoiceCallUI } from "../components/voice/VoiceCallUI";
@@ -6,6 +6,7 @@ import { useRealtimeVoice } from "../hooks/useRealtimeVoice";
 import { apiErrorMessage } from "../lib/api";
 import { realtimeUnsupportedReason } from "../lib/realtimeSupport";
 import { validateSession, type SessionValidateResponse } from "../lib/realtimeApi";
+import { createCertaiVoiceBackend } from "../voice/certaiVoiceBackend";
 
 type PageState = "loading" | "ready" | "expired" | "error";
 
@@ -30,7 +31,11 @@ export function VoiceSession() {
   const [sessionInfo, setSessionInfo] = useState<SessionValidateResponse | null>(null);
   const [pageError, setPageError] = useState("");
 
-  const { status, error, streamReady, turnCount, connect, disconnect } = useRealtimeVoice(handoffToken);
+  const voiceBackend = useMemo(
+    () => (handoffToken ? createCertaiVoiceBackend(handoffToken) : null),
+    [handoffToken],
+  );
+  const { status, error, streamReady, turnCount, connect, disconnect } = useRealtimeVoice(voiceBackend);
 
   useEffect(() => {
     if (!handoffToken) {
