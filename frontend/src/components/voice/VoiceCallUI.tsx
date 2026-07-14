@@ -14,9 +14,14 @@ const pageLayout: CSSProperties = {
 };
 
 const actionButton: CSSProperties = {
-  minWidth: 200,
-  minHeight: 52,
+  width: 240,
+  height: 52,
+  padding: "0 24px",
   fontSize: 17,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  boxSizing: "border-box",
   touchAction: "manipulation",
 };
 
@@ -27,9 +32,7 @@ export interface VoiceCallUIProps {
   trackTitle?: string;
   status: RealtimeVoiceStatus;
   streamReady: boolean;
-  turnCount: number;
   error: string;
-  whatsappSupportUrl: string;
   unsupportedReason?: string;
   onConnect: () => void;
   onDisconnect: () => void;
@@ -43,9 +46,7 @@ export function VoiceCallUI({
   trackTitle,
   status,
   streamReady,
-  turnCount,
   error,
-  whatsappSupportUrl,
   unsupportedReason,
   onConnect,
   onDisconnect,
@@ -64,25 +65,9 @@ export function VoiceCallUI({
             Conversa encerrada
           </h1>
           <p className="muted" style={{ fontSize: 16, lineHeight: 1.5 }}>
-            Até a próxima! Você pode continuar pelo WhatsApp quando quiser.
+            Até a próxima! Volte quando quiser continuar.
           </p>
         </div>
-
-        <a
-          href={whatsappSupportUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="btn btn-primary"
-          style={{
-            ...actionButton,
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            textDecoration: "none",
-          }}
-        >
-          Continuar no WhatsApp
-        </a>
 
         {audioElement}
       </div>
@@ -129,12 +114,6 @@ export function VoiceCallUI({
         {!blocked && status === "error" && "Erro na conexão"}
         {!blocked && !status && "Toque para iniciar a chamada"}
       </p>
-
-      {connected && turnCount > 0 && (
-        <p style={{ fontSize: 12, color: "var(--ink-muted, #6b7c78)" }}>
-          {turnCount} mensagem{turnCount === 1 ? "" : "ns"} salva{turnCount === 1 ? "" : "s"}
-        </p>
-      )}
 
       {error && !blocked && (
         <div
@@ -186,47 +165,9 @@ export function VoiceCallUI({
             Encerrar
           </button>
         ) : null}
-
-        {!ended && (
-          <WhatsAppFallback url={whatsappSupportUrl} prominent={blocked || Boolean(error)} />
-        )}
       </div>
 
       {audioElement}
-    </div>
-  );
-}
-
-function WhatsAppFallback({ url, prominent }: { url: string; prominent: boolean }) {
-  return (
-    <div
-      style={{
-        textAlign: "center",
-        maxWidth: 420,
-        padding: prominent ? "14px 16px" : "8px 0 0",
-        borderRadius: prominent ? 10 : 0,
-        background: prominent ? "var(--surface-100, #e8efed)" : "transparent",
-        width: "100%",
-      }}
-    >
-      <p className="muted" style={{ fontSize: 14, marginBottom: 10, lineHeight: 1.45 }}>
-        Sem microfone ou prefere texto? Continue pelo WhatsApp.
-      </p>
-      <a
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="btn"
-        style={{
-          ...actionButton,
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          textDecoration: "none",
-        }}
-      >
-        Continuar no WhatsApp
-      </a>
     </div>
   );
 }

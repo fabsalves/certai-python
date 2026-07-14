@@ -21,7 +21,10 @@ const pageLayout: CSSProperties = {
   background: "var(--surface-50, #f3f7f6)",
 };
 
-const DEFAULT_WHATSAPP_URL = "https://wa.me/5519982863180";
+const retryButton: CSSProperties = {
+  minHeight: 48,
+  minWidth: 200,
+};
 
 export function VoiceSession() {
   const { handoffToken = "" } = useParams<{ handoffToken: string }>();
@@ -35,7 +38,7 @@ export function VoiceSession() {
     () => (handoffToken ? createCertaiVoiceBackend(handoffToken) : null),
     [handoffToken],
   );
-  const { status, error, streamReady, turnCount, connect, disconnect } = useRealtimeVoice(voiceBackend);
+  const { status, error, streamReady, connect, disconnect } = useRealtimeVoice(voiceBackend);
 
   useEffect(() => {
     if (!handoffToken) {
@@ -61,7 +64,7 @@ export function VoiceSession() {
           setPageError(
             apiErrorMessage(
               err,
-              "Este link de voz expirou. Volte ao WhatsApp e peça um novo convite."
+              "Este link de voz expirou. Você precisará de um novo convite para continuar."
             )
           );
           return;
@@ -83,22 +86,32 @@ export function VoiceSession() {
     );
   }
 
-  if (pageState === "expired" || pageState === "error") {
+  if (pageState === "expired") {
     return (
       <div style={pageLayout}>
         <h1 style={{ fontSize: 24, marginBottom: 12 }}>Chamada de voz</h1>
         <p style={{ color: "var(--danger)", maxWidth: 420, textAlign: "center", lineHeight: 1.45 }}>
           {pageError}
         </p>
-        <a
-          href={sessionInfo?.whatsapp_support_url ?? DEFAULT_WHATSAPP_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="btn"
-          style={{ minHeight: 48, minWidth: 200, textDecoration: "none" }}
+      </div>
+    );
+  }
+
+  if (pageState === "error") {
+    return (
+      <div style={pageLayout}>
+        <h1 style={{ fontSize: 24, marginBottom: 12 }}>Chamada de voz</h1>
+        <p style={{ color: "var(--danger)", maxWidth: 420, textAlign: "center", lineHeight: 1.45 }}>
+          {pageError}
+        </p>
+        <button
+          type="button"
+          className="btn btn-primary"
+          style={retryButton}
+          onClick={() => window.location.reload()}
         >
-          Voltar ao WhatsApp
-        </a>
+          Tentar novamente
+        </button>
       </div>
     );
   }
@@ -111,9 +124,7 @@ export function VoiceSession() {
       trackTitle={sessionInfo?.track_title}
       status={status}
       streamReady={streamReady}
-      turnCount={turnCount}
       error={error}
-      whatsappSupportUrl={sessionInfo?.whatsapp_support_url ?? DEFAULT_WHATSAPP_URL}
       unsupportedReason={realtimeUnsupportedReason() ?? undefined}
       onConnect={() => void connect(audioRef.current)}
       onDisconnect={disconnect}

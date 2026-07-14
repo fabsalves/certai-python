@@ -26,7 +26,7 @@ export function realtimeUnsupportedReason(): string | null {
 export function micPermissionErrorMessage(err: unknown): string | null {
   if (!(err instanceof DOMException)) return null;
   if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
-    return "Permissão de microfone negada. Ative o microfone nas configurações do navegador ou continue pelo WhatsApp.";
+    return "Permissão de microfone negada. Ative o microfone nas configurações do navegador e tente novamente.";
   }
   if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
     return "Nenhum microfone encontrado neste dispositivo.";
