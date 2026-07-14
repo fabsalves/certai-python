@@ -13,8 +13,15 @@ END_CONVERSATION_TOOL: dict[str, Any] = {
     "type": "function",
     "name": "end_conversation",
     "description": (
-        "When the student says goodbye or wants to hang up: say a brief farewell first, "
-        "then call this tool so the app disconnects the call."
+        "Sinal técnico para o app encerrar a call. NÃO é despedida — nunca use esta ferramenta "
+        "como veículo de despedida.\n"
+        "Ordem obrigatória: (1) pelo menos duas insistências acolhedoras se o aluno quiser sair; "
+        "(2) se ele mantiver a decisão, conduza o fechamento, avise que vai encerrar e fale a "
+        "despedida completa em voz num turno só de conversa, SEM chamar esta ferramenta; "
+        "(3) somente no movimento SEGUINTE, depois de já ter falado a despedida em voz, "
+        "chame end_conversation (tool only, sem nova fala longa).\n"
+        "Chamar esta ferramenta antes de ter falado a despedida em voz, ou no mesmo turno "
+        "em que ainda não despediu de fato, é incorreto."
     ),
     "parameters": {"type": "object", "properties": {}, "required": []},
 }
