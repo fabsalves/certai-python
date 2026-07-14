@@ -18,7 +18,11 @@ def _utcnow() -> datetime:
 
 
 async def is_session_window_open(db: AsyncSession, student_id: uuid.UUID) -> bool:
-    """True when the student sent a WhatsApp message within the last 24 hours."""
+    """True when the student sent a WhatsApp message within the last 24 hours.
+
+    Returns False when the student has never sent a WhatsApp message (NULL MAX);
+    Meta window is closed and only template messages are allowed.
+    """
     last_student_at = await db.scalar(
         select(func.max(Message.created_at))
         .select_from(Message)
