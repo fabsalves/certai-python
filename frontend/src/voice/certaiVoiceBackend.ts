@@ -12,7 +12,7 @@ import {
 } from "../lib/sessionRealtimeLock";
 import type { VoiceBackend, VoiceSessionCredentials, VoiceTurnPayload } from "./types";
 
-const SERVER_TOOLS = new Set(["score_understanding", "escalate_scope"]);
+const SERVER_TOOLS = new Set(["score_understanding", "escalate_scope", "request_session_link"]);
 
 export function createCertaiVoiceBackend(handoffToken: string): VoiceBackend {
   let voiceSessionId = "";

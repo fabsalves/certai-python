@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.context_builder import ContextBuilder
 from app.models.assessment import Level, MicroScore
+from app.models.conversation import ConversationChannel
 
 # Schemas expostos à OpenAI (function calling). Descrições enxutas, sem "regras".
 TOOL_SCHEMAS: list[dict[str, Any]] = [
@@ -64,6 +65,20 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "request_session_link",
+            "description": (
+                "Quando o aluno pedir o link da sessão de voz (em linguagem natural). "
+                "O backend envia o link pelo WhatsApp com botão clicável. "
+                "Por voz: confirme verbalmente que enviou — nunca invente ou fale a URL. "
+                "Por WhatsApp: o botão já é a resposta nesta conversa — não repita nem "
+                "confirme o envio em outra mensagem."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
 ]
 
 
@@ -76,11 +91,16 @@ class ToolContext:
         cohort_id: uuid.UUID,
         student_id: uuid.UUID | None,
         lesson_id: uuid.UUID | None,
+        *,
+        conversation_id: uuid.UUID | None = None,
+        channel: ConversationChannel | None = None,
     ):
         self.db = db
         self.cohort_id = cohort_id
         self.student_id = student_id
         self.lesson_id = lesson_id
+        self.conversation_id = conversation_id
+        self.channel = channel
         self.builder = ContextBuilder(db)
 
 
@@ -90,6 +110,8 @@ async def dispatch(name: str, args: dict[str, Any], ctx: ToolContext) -> str:
         return await _escalate_scope(args, ctx)
     if name == "score_understanding":
         return await _score_understanding(args, ctx)
+    if name == "request_session_link":
+        return await _request_session_link(args, ctx)
     return f"Unknown tool: {name}"
 
 
@@ -116,3 +138,10 @@ async def _score_understanding(args: dict[str, Any], ctx: ToolContext) -> str:
     ctx.db.add(score)
     await ctx.db.flush()
     return f"Micro-score recorded: {args['competency']} = {args['level']}."
+
+
+async def _request_session_link(args: dict[str, Any], ctx: ToolContext) -> str:
+    del args
+    from app.services.realtime.voice_link_service import VoiceLinkService
+
+    return await VoiceLinkService().generate_and_deliver(ctx)

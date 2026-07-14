@@ -159,7 +159,14 @@ async def generate_lesson_reply(
     else:
         history = await conversation_history(conversation.id, db)
     bundle = await ContextBuilder(db).build_lesson(cohort_id, lesson_id)
-    tool_ctx = ToolContext(db, cohort_id, student_id, lesson_id)
+    tool_ctx = ToolContext(
+        db,
+        cohort_id,
+        student_id,
+        lesson_id,
+        conversation_id=conversation.id,
+        channel=conversation.channel,
+    )
 
     raw = await respond(bundle, history, tool_ctx)
     final = await humanize(raw)

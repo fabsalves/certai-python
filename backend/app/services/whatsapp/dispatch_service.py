@@ -15,11 +15,11 @@ from app.models.track import Lesson, Module, Track
 from app.models.user import Role, User
 from app.services.cinndi.outbound import CinndiOutboundError, send_template_message
 from app.services.conversation_service import get_or_create_conversation, record_message
-from app.services.realtime.handoff_token_service import HandoffTokenService
+from app.services.realtime.voice_link_service import VoiceLinkService
 
 logger = logging.getLogger(__name__)
 
-_handoff_service = HandoffTokenService()
+_voice_link_service = VoiceLinkService()
 
 INVITE_TEMPLATE_BODY = (
     "Oi {first_name}! Aqui é a {assistant}, sua parceira de estudos no CertAI.\n"
@@ -134,12 +134,13 @@ async def dispatch_lesson_invites(
         button_suffix: str | None = None
 
         if use_voice_template:
-            handoff_token, _expires_at = _handoff_service.generate(
+            link = _voice_link_service.generate_token(
                 user_id=student.id,
                 cohort_id=cohort_id,
                 lesson_id=lesson_id,
                 conversation_id=conversation.id,
             )
+            handoff_token = link.token
             body_text = render_voice_invite_body(
                 first_name=first_name,
                 lesson_title=lesson.title,

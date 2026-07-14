@@ -405,6 +405,8 @@ async def invoke_tool(
         conversation.cohort_id,
         conversation.user_id,
         conversation.lesson_id,
+        conversation_id=conversation.id,
+        channel=conversation.channel,
     )
     output = await dispatch(tool_name, body.arguments, tool_ctx)
     return ToolBridgeOut(call_id=body.call_id, output=output)

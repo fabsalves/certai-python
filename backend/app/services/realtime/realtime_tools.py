@@ -7,7 +7,7 @@ from typing import Any
 from app.ai.tools import TOOL_SCHEMAS
 
 # Server-executed via POST /realtime/tools/{name}
-SERVER_TOOL_NAMES = frozenset({"score_understanding", "escalate_scope"})
+SERVER_TOOL_NAMES = frozenset({"score_understanding", "escalate_scope", "request_session_link"})
 
 END_CONVERSATION_TOOL: dict[str, Any] = {
     "type": "function",
