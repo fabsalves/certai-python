@@ -5,7 +5,6 @@ export interface VoiceSessionCredentials {
   voice_session_id: string;
   lock_token: string;
   play_session_opener: boolean;
-  mute_while_speaking: boolean;
 }
 
 export interface VoiceTurnPayload {
@@ -28,7 +27,7 @@ export interface VoiceTurnPersistResult {
 export interface VoiceBackend {
   serverTools: ReadonlySet<string>;
   getReconnectSessionId(): string | null;
-  fetchSession(deviceProfile: "mobile" | "desktop"): Promise<VoiceSessionCredentials>;
+  fetchSession(): Promise<VoiceSessionCredentials>;
   persistTurns(turns: VoiceTurnPayload[]): Promise<VoiceTurnPersistResult>;
   handleToolCall(
     name: string,

@@ -45,9 +45,8 @@ class OpenaiRealtimeService:
         instructions: str | None = None,
         tools: list[dict[str, Any]] | None = None,
         safety_identifier: str | None = None,
-        mobile: bool = False,
     ) -> dict[str, Any]:
-        turn_detection = self._turn_detection_config(mobile=mobile)
+        turn_detection = self._turn_detection_config()
         session_config: dict[str, Any] = {
             "type": "realtime",
             "model": self.model,
@@ -115,8 +114,8 @@ class OpenaiRealtimeService:
             effort = DEFAULT_REASONING_EFFORT
         return {"effort": effort}
 
-    def _turn_detection_config(self, *, mobile: bool = False) -> dict[str, Any]:
-        """server_vad; threshold mais alto em mobile (viva-voz) para reduzir eco."""
+    def _turn_detection_config(self) -> dict[str, Any]:
+        """server_vad with interrupt_response — OpenAI handles barge-in on WebRTC."""
         mode = settings.OPENAI_REALTIME_TURN_DETECTION
         cfg: dict[str, Any] = {
             "create_response": True,
@@ -128,11 +127,7 @@ class OpenaiRealtimeService:
             return cfg
 
         cfg["type"] = "server_vad"
-        cfg["threshold"] = (
-            settings.OPENAI_REALTIME_VAD_THRESHOLD_MOBILE
-            if mobile
-            else settings.OPENAI_REALTIME_VAD_THRESHOLD
-        )
+        cfg["threshold"] = settings.OPENAI_REALTIME_VAD_THRESHOLD
         cfg["prefix_padding_ms"] = settings.OPENAI_REALTIME_VAD_PREFIX_PADDING_MS
         cfg["silence_duration_ms"] = settings.OPENAI_REALTIME_VAD_SILENCE_DURATION_MS
         return cfg

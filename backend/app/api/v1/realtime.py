@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any, Literal
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -79,7 +79,6 @@ class SessionValidateOut(BaseModel):
 class RealtimeTokenIn(BaseModel):
     handoff_token: str
     reconnect_from_session_id: uuid.UUID | None = None
-    device_profile: Literal["mobile", "desktop"] = "desktop"
 
 
 class RealtimeTokenOut(BaseModel):
@@ -90,7 +89,6 @@ class RealtimeTokenOut(BaseModel):
     realtime_model: str
     realtime_voice: str
     play_session_opener: bool = True
-    mute_while_speaking: bool = False
 
 
 class TurnItemIn(BaseModel):
@@ -287,7 +285,6 @@ async def create_realtime_token(
             instructions=instructions,
             tools=tools,
             safety_identifier=OpenaiRealtimeService.safety_identifier_for_user(str(claims.user_id)),
-            mobile=body.device_profile == "mobile",
         )
     except OpenaiRealtimeError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
@@ -304,7 +301,6 @@ async def create_realtime_token(
         realtime_model=secret.get("model") or settings.OPENAI_REALTIME_MODEL,
         realtime_voice=secret.get("voice") or settings.OPENAI_REALTIME_VOICE,
         play_session_opener=True,
-        mute_while_speaking=settings.OPENAI_REALTIME_MUTE_WHILE_SPEAKING,
     )
 
 

@@ -25,11 +25,10 @@ export function createCertaiVoiceBackend(handoffToken: string): VoiceBackend {
       return getStoredReconnectSessionId(handoffToken);
     },
 
-    async fetchSession(deviceProfile) {
+    async fetchSession() {
       const tokenData = await fetchRealtimeToken(
         handoffToken,
         getStoredReconnectSessionId(handoffToken),
-        deviceProfile,
       );
       voiceSessionId = tokenData.voice_session_id;
       lockToken = tokenData.lock_token;

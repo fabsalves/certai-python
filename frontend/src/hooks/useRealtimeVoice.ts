@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { RealtimeWebRTCClient } from "../realtime/RealtimeWebRTCClient";
 import { apiErrorMessage } from "../lib/api";
-import { isRealtimeMobileDevice, isRealtimeVoiceSupported, micPermissionErrorMessage } from "../lib/realtimeSupport";
+import { isRealtimeVoiceSupported, micPermissionErrorMessage } from "../lib/realtimeSupport";
 import type { RealtimeVoiceStatus, VoiceBackend } from "../voice/types";
 
 export type { RealtimeVoiceStatus } from "../voice/types";
@@ -74,9 +74,7 @@ export function useRealtimeVoice(backend: VoiceBackend | null) {
       setStreamReady(false);
 
       try {
-        const deviceProfile = isRealtimeMobileDevice() ? "mobile" : "desktop";
-        console.log("[realtime] device_profile:", deviceProfile);
-        const tokenData = await backend.fetchSession(deviceProfile);
+        const tokenData = await backend.fetchSession();
         startHeartbeat();
 
         await client.connect(audioElement, backend, {

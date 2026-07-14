@@ -56,16 +56,13 @@ class Settings(BaseSettings):
     OPENAI_REALTIME_REASONING_EFFORT: str = "low"
     OPENAI_REALTIME_TRANSCRIPTION_MODEL: str = "gpt-4o-mini-transcribe"
     OPENAI_REALTIME_TRANSCRIPTION_LANGUAGE: str = "pt"
-    # VAD: server_vad; desktop 0.8, mobile 0.9 (client informa perfil no /token).
+    # VAD: server_vad; tunable via ENV (prefix_padding, silence_duration, threshold).
     OPENAI_REALTIME_TURN_DETECTION: Literal["semantic_vad", "server_vad"] = "server_vad"
     OPENAI_REALTIME_VAD_EAGERNESS: Literal["auto", "low", "medium", "high"] = "low"
-    OPENAI_REALTIME_VAD_THRESHOLD: float = 0.8
-    OPENAI_REALTIME_VAD_THRESHOLD_MOBILE: float = 0.9
+    OPENAI_REALTIME_VAD_THRESHOLD: float = 0.9
     OPENAI_REALTIME_VAD_PREFIX_PADDING_MS: int = 500
     OPENAI_REALTIME_VAD_SILENCE_DURATION_MS: int = 1200
     OPENAI_REALTIME_INTERRUPT_RESPONSE: bool = True
-    # Mute físico do mic enquanto Lira fala — escape hatch; default off (server_vad 0.8 + AEC).
-    OPENAI_REALTIME_MUTE_WHILE_SPEAKING: bool = False
 
     # --- Storage (local em dev; S3 em staging/prod) ---
     STORAGE_BACKEND: Literal["local", "s3"] = "local"

@@ -6,16 +6,11 @@ import {
   parseFunctionCallArgs,
   responseId,
 } from "./responseParsing";
-import { AssistantPlaybackGate } from "../lib/realtimePlayback";
-import {
-  hasRelayableTranscriptContent,
-  logMicTrackDiagnostics,
-  REALTIME_MIC_CONSTRAINTS,
-  setMicInputEnabled,
-} from "../lib/realtimeMic";
+import { REALTIME_MIC_CONSTRAINTS } from "../lib/realtimeMic";
 import type { VoiceBackend, VoiceTurnPayload } from "../voice/types";
 
 const REALTIME_CALLS_URL = "https://api.openai.com/v1/realtime/calls";
+const GRACEFUL_END_FALLBACK_MS = 5_000;
 
 export interface RealtimeWebRTCCallbacks {
   onStreamReady: () => void;
@@ -32,11 +27,9 @@ export class RealtimeWebRTCClient {
   private micStream: MediaStream | null = null;
   private sequence = 0;
   private voiceSessionId = "";
-  private assistantSpeaking = false;
-  private muteWhileSpeaking = false;
   private relayedStudentKeys = new Set<string>();
   private pendingGracefulEnd = false;
-  private playbackGate: AssistantPlaybackGate | null = null;
+  private gracefulEndTimer: ReturnType<typeof setTimeout> | null = null;
 
   private backend: VoiceBackend | null = null;
   private callbacks: RealtimeWebRTCCallbacks | null = null;
@@ -54,11 +47,9 @@ export class RealtimeWebRTCClient {
     this.backend = backend;
     this.callbacks = callbacks;
     this.voiceSessionId = tokenData.voice_session_id;
-    this.muteWhileSpeaking = tokenData.mute_while_speaking;
     this.relayedStudentKeys.clear();
+    this.clearGracefulEndTimer();
     this.pendingGracefulEnd = false;
-    this.playbackGate?.cancel();
-    this.playbackGate = new AssistantPlaybackGate(() => this.handleAssistantPlaybackEnded());
 
     const pc = new RTCPeerConnection();
     this.pc = pc;
@@ -74,7 +65,6 @@ export class RealtimeWebRTCClient {
       audio: REALTIME_MIC_CONSTRAINTS,
     });
     this.micStream = micStream;
-    logMicTrackDiagnostics(micStream);
     pc.addTrack(micStream.getTracks()[0]);
 
     const dc = pc.createDataChannel("oai-events");
@@ -115,6 +105,8 @@ export class RealtimeWebRTCClient {
   }
 
   disconnect(): void {
+    this.clearGracefulEndTimer();
+    this.pendingGracefulEnd = false;
     if (this.pc) {
       this.pc.getSenders().forEach((sender) => sender.track?.stop());
       this.pc.close();
@@ -124,30 +116,34 @@ export class RealtimeWebRTCClient {
       this.micStream.getTracks().forEach((track) => track.stop());
       this.micStream = null;
     }
-    this.playbackGate?.cancel();
-    this.playbackGate = null;
     this.dc = null;
     this.relayedStudentKeys.clear();
-    this.assistantSpeaking = false;
-    this.pendingGracefulEnd = false;
     this.callbacks?.onStreamCleared();
     this.backend = null;
     this.callbacks = null;
   }
 
-  private setAssistantSpeaking(speaking: boolean): void {
-    this.assistantSpeaking = speaking;
-    if (this.muteWhileSpeaking) {
-      setMicInputEnabled(this.micStream, !speaking);
+  private clearGracefulEndTimer(): void {
+    if (this.gracefulEndTimer) {
+      clearTimeout(this.gracefulEndTimer);
+      this.gracefulEndTimer = null;
     }
   }
 
-  private handleAssistantPlaybackEnded(): void {
-    this.setAssistantSpeaking(false);
-    if (this.pendingGracefulEnd) {
-      this.pendingGracefulEnd = false;
-      this.callbacks?.onGracefulEnd();
-    }
+  private scheduleGracefulEndFallback(): void {
+    this.clearGracefulEndTimer();
+    this.gracefulEndTimer = setTimeout(() => {
+      this.gracefulEndTimer = null;
+      this.completeGracefulEnd("fallback");
+    }, GRACEFUL_END_FALLBACK_MS);
+  }
+
+  private completeGracefulEnd(source: string): void {
+    if (!this.pendingGracefulEnd) return;
+    this.clearGracefulEndTimer();
+    this.pendingGracefulEnd = false;
+    console.log("[realtime] graceful end", source);
+    this.callbacks?.onGracefulEnd();
   }
 
   private async persistTurns(turns: VoiceTurnPayload[]): Promise<void> {
@@ -210,64 +206,18 @@ export class RealtimeWebRTCClient {
         type?: string;
         transcript?: string;
         response?: unknown;
-        response_id?: string;
         item_id?: string;
       };
       const type = payload.type;
-      const eventResponseId =
-        typeof payload.response_id === "string"
-          ? payload.response_id
-          : responseId(payload.response as { id?: unknown } | undefined);
-
-      if (type === "input_audio_buffer.speech_started") {
-        const hadActiveResponse = this.assistantSpeaking;
-        console.log("[realtime] speech_started", {
-          at: new Date().toISOString(),
-          hadActiveResponse,
-          pendingGracefulEnd: this.pendingGracefulEnd,
-        });
-        if (!this.pendingGracefulEnd && hadActiveResponse) {
-          try {
-            dc.send(JSON.stringify({ type: "output_audio_buffer.clear" }));
-          } catch {
-            /* ignore */
-          }
-          this.playbackGate?.cancel();
-          this.setAssistantSpeaking(false);
-          console.log("[realtime] barge-in: output_audio_buffer.clear sent");
-        }
-        return;
-      }
-
-      if (type === "response.created") {
-        this.playbackGate?.beginResponse(eventResponseId);
-        this.setAssistantSpeaking(true);
-        return;
-      }
-
-      if (type === "output_audio_buffer.started") {
-        this.playbackGate?.markPlaybackStarted(eventResponseId);
-        this.setAssistantSpeaking(true);
-        return;
-      }
 
       if (type === "output_audio_buffer.stopped") {
-        this.playbackGate?.markPlaybackStopped(eventResponseId);
-        return;
-      }
-
-      if (type === "response.cancelled") {
-        this.playbackGate?.cancel();
-        this.handleAssistantPlaybackEnded();
+        this.completeGracefulEnd("output_audio_buffer.stopped");
         return;
       }
 
       if (type === "conversation.item.input_audio_transcription.completed") {
         const transcript = (payload.transcript ?? "").trim();
-        if (!hasRelayableTranscriptContent(transcript)) {
-          console.log("[realtime] student transcript skipped (noise):", JSON.stringify(transcript));
-          return;
-        }
+        if (!transcript) return;
 
         const itemId = payload.item_id || `student-${Date.now()}`;
         const idempotencyKey = `${this.voiceSessionId}:${itemId}:student`;
@@ -290,23 +240,20 @@ export class RealtimeWebRTCClient {
 
       if (type === "response.done") {
         const doneResponseId = responseId(payload.response);
-        this.playbackGate?.beginResponse(doneResponseId);
-
         const output = normalizeRealtimeResponseOutput(payload.response as { output?: unknown });
         const assistantText = extractAssistantText(output);
         const functionCalls = collectFunctionCallsFromOutput(output);
         const shouldEndConversation = functionCalls.some((call) => call.name === "end_conversation");
 
-        const itemId = doneResponseId;
         const turns: VoiceTurnPayload[] = [];
 
         if (assistantText) {
           this.sequence += 1;
           turns.push({
-            idempotency_key: `${this.voiceSessionId}:${itemId}:agent`,
+            idempotency_key: `${this.voiceSessionId}:${doneResponseId}:agent`,
             author: "agent",
             content: assistantText,
-            realtime_item_id: itemId,
+            realtime_item_id: doneResponseId,
             sequence: this.sequence,
           });
         }
@@ -320,11 +267,9 @@ export class RealtimeWebRTCClient {
 
         if (shouldEndConversation) {
           this.pendingGracefulEnd = true;
-          this.playbackGate?.scheduleFallback(assistantText);
+          this.scheduleGracefulEndFallback();
           return;
         }
-
-        this.playbackGate?.scheduleFallback(assistantText);
 
         if (functionCalls.some((call) => backend.serverTools.has(call.name))) {
           await this.handleServerToolRoundtrip(dc, functionCalls);

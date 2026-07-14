@@ -107,31 +107,23 @@ def test_whatsapp_support_url_helper() -> None:
     assert url.replace("https://wa.me/", "").isdigit()
 
 
-def test_turn_detection_defaults_to_server_vad_threshold_08() -> None:
+def test_turn_detection_defaults_to_server_vad_threshold_09() -> None:
     from app.services.realtime.openai_realtime_service import OpenaiRealtimeService
 
     cfg = OpenaiRealtimeService()._turn_detection_config()
     assert cfg["type"] == "server_vad"
-    assert cfg["threshold"] == 0.8
+    assert cfg["threshold"] == 0.9
     assert cfg["prefix_padding_ms"] == 500
     assert cfg["silence_duration_ms"] == 1200
     assert cfg["interrupt_response"] is True
     assert cfg["create_response"] is True
 
 
-def test_turn_detection_mobile_uses_higher_threshold() -> None:
-    from app.services.realtime.openai_realtime_service import OpenaiRealtimeService
-
-    cfg = OpenaiRealtimeService()._turn_detection_config(mobile=True)
-    assert cfg["threshold"] == 0.9
-
-
 def main() -> None:
     test_beat_schedule_registers_abandon_sweep()
     test_lock_ttl_is_90_seconds()
     test_whatsapp_support_url_helper()
-    test_turn_detection_defaults_to_server_vad_threshold_08()
-    test_turn_detection_mobile_uses_higher_threshold()
+    test_turn_detection_defaults_to_server_vad_threshold_09()
     asyncio.run(_test_sweep_marks_stale_sessions_abandoned())
     asyncio.run(_test_assert_lock_activates_created_session())
     asyncio.run(_test_sweep_ignores_already_ended_sessions())
