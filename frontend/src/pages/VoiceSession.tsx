@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import axios from "axios";
 import { VoiceCallUI } from "../components/voice/VoiceCallUI";
 import { useRealtimeVoice } from "../hooks/useRealtimeVoice";
+import { useVoicePresenceState } from "../hooks/useVoicePresenceState";
 import { apiErrorMessage } from "../lib/api";
 import { realtimeUnsupportedReason } from "../lib/realtimeSupport";
 import { validateSession, type SessionValidateResponse } from "../lib/realtimeApi";
@@ -38,7 +39,13 @@ export function VoiceSession() {
     () => (handoffToken ? createCertaiVoiceBackend(handoffToken) : null),
     [handoffToken],
   );
-  const { status, error, streamReady, connect, disconnect } = useRealtimeVoice(voiceBackend);
+  const { status, error, streamReady, assistantSpeaking, connect, disconnect } =
+    useRealtimeVoice(voiceBackend);
+  const { presence, label: presenceLabel } = useVoicePresenceState({
+    status,
+    streamReady,
+    assistantSpeaking,
+  });
 
   useEffect(() => {
     if (!handoffToken) {
@@ -64,8 +71,8 @@ export function VoiceSession() {
           setPageError(
             apiErrorMessage(
               err,
-              "Este link de voz expirou. Você precisará de um novo convite para continuar."
-            )
+              "Este link de voz expirou. Você precisará de um novo convite para continuar.",
+            ),
           );
           return;
         }
@@ -123,14 +130,13 @@ export function VoiceSession() {
       lessonTitle={sessionInfo?.lesson_title ?? ""}
       trackTitle={sessionInfo?.track_title}
       status={status}
-      streamReady={streamReady}
+      presence={presence}
+      presenceLabel={presenceLabel}
       error={error}
       unsupportedReason={realtimeUnsupportedReason() ?? undefined}
+      audioRef={audioRef}
       onConnect={() => void connect(audioRef.current)}
       onDisconnect={disconnect}
-      audioElement={
-        <audio ref={audioRef} autoPlay playsInline style={{ display: "none" }} />
-      }
     />
   );
 }

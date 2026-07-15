@@ -106,3 +106,24 @@ export function responseId(response: unknown): string {
   const id = (response as { id?: unknown }).id;
   return typeof id === "string" && id ? id : `turn-${Date.now()}`;
 }
+
+const AUDIO_OUTPUT_PART_TYPES = new Set(["output_audio", "audio", "audio_output"]);
+
+export function responseHasAudioOutput(output: unknown[]): boolean {
+  for (const item of output) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    if (row.type === "output_audio" || row.type === "audio" || row.type === "audio_output") {
+      return true;
+    }
+    if (!Array.isArray(row.content)) continue;
+    for (const part of row.content) {
+      if (!part || typeof part !== "object") continue;
+      const partType = (part as { type?: string }).type;
+      if (partType && AUDIO_OUTPUT_PART_TYPES.has(partType)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}

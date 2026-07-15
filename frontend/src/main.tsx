@@ -5,6 +5,7 @@ import "./styles/tokens.css";
 import "./styles/shell.css";
 import "./styles/track-path.css";
 import "./styles/track-structure.css";
+import "./styles/voice-call.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

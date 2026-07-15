@@ -1,29 +1,6 @@
-import type { CSSProperties, ReactNode } from "react";
-import type { RealtimeVoiceStatus } from "../../hooks/useRealtimeVoice";
-
-const pageLayout: CSSProperties = {
-  minHeight: "100dvh",
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom))",
-  gap: 20,
-  background: "var(--surface-50, #f3f7f6)",
-  boxSizing: "border-box",
-};
-
-const actionButton: CSSProperties = {
-  width: 240,
-  height: 52,
-  padding: "0 24px",
-  fontSize: 17,
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  boxSizing: "border-box",
-  touchAction: "manipulation",
-};
+import type { RefObject } from "react";
+import type { RealtimeVoiceStatus } from "../../voice/types";
+import type { VoicePresence } from "../../hooks/useVoicePresenceState";
 
 export interface VoiceCallUIProps {
   assistantName: string;
@@ -31,12 +8,37 @@ export interface VoiceCallUIProps {
   lessonTitle: string;
   trackTitle?: string;
   status: RealtimeVoiceStatus;
-  streamReady: boolean;
+  presence: VoicePresence;
+  presenceLabel: string;
   error: string;
   unsupportedReason?: string;
+  audioRef: RefObject<HTMLAudioElement | null>;
   onConnect: () => void;
   onDisconnect: () => void;
-  audioElement: ReactNode;
+}
+
+function VoicePresenceCircle({ presence }: { presence: VoicePresence }) {
+  return (
+    <div className={`voice-presence voice-presence--${presence}`} aria-hidden>
+      <div className="voice-presence__halo" />
+      <div className="voice-presence__core" />
+    </div>
+  );
+}
+
+function VoiceStatusPill({ presence, label }: { presence: VoicePresence; label: string }) {
+  if (!label) return null;
+
+  return (
+    <div
+      className={`voice-status-pill voice-status-pill--${presence}`}
+      role="status"
+      aria-live="polite"
+    >
+      <span className="voice-status-pill__dot" aria-hidden />
+      <span className="voice-status-pill__label">{label}</span>
+    </div>
+  );
 }
 
 export function VoiceCallUI({
@@ -45,12 +47,13 @@ export function VoiceCallUI({
   lessonTitle,
   trackTitle,
   status,
-  streamReady,
+  presence,
+  presenceLabel,
   error,
   unsupportedReason,
+  audioRef,
   onConnect,
   onDisconnect,
-  audioElement,
 }: VoiceCallUIProps) {
   const busy = status === "connecting";
   const connected = status === "connected";
@@ -59,29 +62,22 @@ export function VoiceCallUI({
 
   if (ended) {
     return (
-      <div style={pageLayout}>
+      <div className="voice-call voice-call--ended">
         <div style={{ textAlign: "center", maxWidth: 420, width: "100%" }}>
-          <h1 style={{ fontSize: 28, marginBottom: 8, color: "var(--brand, #0d6b5c)" }}>
-            Conversa encerrada
-          </h1>
-          <p className="muted" style={{ fontSize: 16, lineHeight: 1.5 }}>
-            Até a próxima! Volte quando quiser continuar.
-          </p>
+          <h1 className="voice-call__name">Conversa encerrada</h1>
+          <p className="voice-call__farewell">Até a próxima! Volte quando quiser continuar.</p>
         </div>
-
-        {audioElement}
+        <audio ref={audioRef} autoPlay playsInline className="voice-call__audio" />
       </div>
     );
   }
 
   return (
-    <div style={pageLayout}>
-      <div style={{ textAlign: "center", maxWidth: 420, width: "100%" }}>
-        <h1 style={{ fontSize: 28, marginBottom: 4 }}>{assistantName}</h1>
-        <p className="muted" style={{ fontSize: 14, marginBottom: 8 }}>
-          Chamada ao vivo
-        </p>
-        <p className="muted" style={{ fontSize: 15, lineHeight: 1.5 }}>
+    <div className="voice-call">
+      <header className="voice-call__context">
+        <h1 className="voice-call__name">{assistantName}</h1>
+        <p className="voice-call__subtitle">Chamada ao vivo</p>
+        <p className="voice-call__greeting">
           Olá, {studentFirstName}! Vamos conversar sobre <strong>{lessonTitle}</strong>
           {trackTitle ? (
             <>
@@ -91,83 +87,43 @@ export function VoiceCallUI({
           ) : null}
           .
         </p>
-      </div>
+      </header>
 
-      <div
-        style={{
-          width: 120,
-          height: 120,
-          borderRadius: "50%",
-          background: connected ? "var(--brand, #0d6b5c)" : "var(--ink-muted, #6b7c78)",
-          opacity: connected && streamReady ? 1 : 0.65,
-          transition: "opacity 0.3s",
-          boxShadow: connected ? "0 0 0 12px rgba(13,107,92,0.15)" : "none",
-          flexShrink: 0,
-        }}
-        aria-hidden
-      />
+      <main className="voice-call__stage">
+        <VoicePresenceCircle presence={presence} />
+        {!blocked && <VoiceStatusPill presence={presence} label={presenceLabel} />}
+      </main>
 
-      <p style={{ fontSize: 15, color: "var(--ink-muted, #6b7c78)", textAlign: "center" }}>
-        {blocked && unsupportedReason}
-        {!blocked && status === "connecting" && "Conectando…"}
-        {!blocked && status === "connected" && (streamReady ? "Conectado. Pode falar." : "Conectado. Aguardando áudio…")}
-        {!blocked && status === "error" && "Erro na conexão"}
-        {!blocked && !status && "Toque para iniciar a chamada"}
-      </p>
+      <footer className="voice-call__footer">
+        {error && !blocked && (
+          <div className="voice-call__alert" role="alert">
+            {error}
+          </div>
+        )}
 
-      {error && !blocked && (
-        <div
-          style={{
-            color: "var(--danger)",
-            background: "var(--danger-50, #fdecea)",
-            padding: "12px 16px",
-            borderRadius: 8,
-            fontSize: 14,
-            maxWidth: 420,
-            textAlign: "center",
-            lineHeight: 1.45,
-          }}
-        >
-          {error}
-        </div>
-      )}
+        {blocked && (
+          <div className="voice-call__alert" role="alert">
+            {unsupportedReason}
+          </div>
+        )}
 
-      {blocked && (
-        <div
-          style={{
-            color: "var(--danger)",
-            background: "var(--danger-50, #fdecea)",
-            padding: "12px 16px",
-            borderRadius: 8,
-            fontSize: 14,
-            maxWidth: 420,
-            textAlign: "center",
-            lineHeight: 1.45,
-          }}
-        >
-          {unsupportedReason}
-        </div>
-      )}
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 12, alignItems: "center", width: "100%" }}>
         {!connected && !blocked ? (
           <button
             type="button"
-            className="btn btn-primary"
+            className="btn btn-primary voice-call__action"
             disabled={busy}
             onClick={onConnect}
-            style={actionButton}
           >
             {busy ? "Conectando…" : "Iniciar chamada"}
           </button>
         ) : connected ? (
-          <button type="button" className="btn" onClick={onDisconnect} style={actionButton}>
+          <button type="button" className="btn voice-call__action" onClick={onDisconnect}>
             Encerrar
           </button>
         ) : null}
-      </div>
+      </footer>
 
-      {audioElement}
+      <audio ref={audioRef} autoPlay playsInline className="voice-call__audio" />
     </div>
   );
 }

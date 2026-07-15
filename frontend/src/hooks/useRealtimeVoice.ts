@@ -9,15 +9,30 @@ export type { RealtimeVoiceStatus } from "../voice/types";
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
+function logAssistantSpeaking(event: string, speaking: boolean) {
+  console.log(`[voice-presence] ${event} → assistantSpeaking=${speaking}`);
+}
+
 /** Thin hook — orchestrates VoiceBackend + RealtimeWebRTCClient. */
 export function useRealtimeVoice(backend: VoiceBackend | null) {
   const [status, setStatus] = useState<RealtimeVoiceStatus>("");
   const [error, setError] = useState("");
   const [streamReady, setStreamReady] = useState(false);
   const [turnCount, setTurnCount] = useState(0);
+  const [assistantSpeaking, setAssistantSpeaking] = useState(false);
 
   const clientRef = useRef<RealtimeWebRTCClient | null>(null);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const markAssistantSpeaking = useCallback((event: string) => {
+    logAssistantSpeaking(event, true);
+    setAssistantSpeaking(true);
+  }, []);
+
+  const clearAssistantSpeaking = useCallback((event: string) => {
+    logAssistantSpeaking(event, false);
+    setAssistantSpeaking(false);
+  }, []);
 
   const client = useMemo(() => {
     const instance = new RealtimeWebRTCClient();
@@ -53,10 +68,11 @@ export function useRealtimeVoice(backend: VoiceBackend | null) {
       }
       client.disconnect();
       setStreamReady(false);
+      clearAssistantSpeaking("call.finished");
       setError("");
       setStatus("ended");
     },
-    [backend, client, stopHeartbeat],
+    [backend, clearAssistantSpeaking, client, stopHeartbeat],
   );
 
   const connect = useCallback(
@@ -72,6 +88,7 @@ export function useRealtimeVoice(backend: VoiceBackend | null) {
       setStatus("connecting");
       setError("");
       setStreamReady(false);
+      clearAssistantSpeaking("connect.reset");
 
       try {
         const tokenData = await backend.fetchSession();
@@ -87,7 +104,28 @@ export function useRealtimeVoice(backend: VoiceBackend | null) {
           onGracefulEnd: () => {
             void finishCall();
           },
-          onStreamCleared: () => setStreamReady(false),
+          onStreamCleared: () => {
+            setStreamReady(false);
+            clearAssistantSpeaking("stream.cleared");
+          },
+          onResponseStarted: () => {
+            markAssistantSpeaking("response.created");
+          },
+          onResponseDone: ({ hasAudioOutput }) => {
+            if (!hasAudioOutput) {
+              clearAssistantSpeaking("response.done (no-audio)");
+              return;
+            }
+            console.log(
+              "[voice-presence] response.done (has-audio) → ignored, waiting for output_audio_buffer.stopped",
+            );
+          },
+          onOutputAudioStopped: () => {
+            clearAssistantSpeaking("output_audio_buffer.stopped");
+          },
+          onResponseInterrupted: () => {
+            clearAssistantSpeaking("response.interrupted");
+          },
         }, tokenData);
       } catch (err) {
         stopHeartbeat();
@@ -120,7 +158,17 @@ export function useRealtimeVoice(backend: VoiceBackend | null) {
         setStatus("error");
       }
     },
-    [backend, client, finishCall, pingHeartbeat, startHeartbeat, status, stopHeartbeat],
+    [
+      backend,
+      clearAssistantSpeaking,
+      client,
+      finishCall,
+      markAssistantSpeaking,
+      pingHeartbeat,
+      startHeartbeat,
+      status,
+      stopHeartbeat,
+    ],
   );
 
   const disconnect = useCallback(() => {
@@ -140,6 +188,7 @@ export function useRealtimeVoice(backend: VoiceBackend | null) {
     error,
     streamReady,
     turnCount,
+    assistantSpeaking,
     connect,
     disconnect,
   };

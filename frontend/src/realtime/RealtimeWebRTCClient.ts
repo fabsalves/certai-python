@@ -4,6 +4,7 @@ import {
   extractAssistantText,
   normalizeRealtimeResponseOutput,
   parseFunctionCallArgs,
+  responseHasAudioOutput,
   responseId,
 } from "./responseParsing";
 import { REALTIME_MIC_CONSTRAINTS } from "../lib/realtimeMic";
@@ -12,12 +13,20 @@ import type { VoiceBackend, VoiceTurnPayload } from "../voice/types";
 const REALTIME_CALLS_URL = "https://api.openai.com/v1/realtime/calls";
 const GRACEFUL_END_FALLBACK_MS = 5_000;
 
+export interface ResponseDoneInfo {
+  hasAudioOutput: boolean;
+}
+
 export interface RealtimeWebRTCCallbacks {
   onStreamReady: () => void;
   onConnected: () => void;
   onTurnsAccepted: (count: number) => void;
   onGracefulEnd: () => void;
   onStreamCleared: () => void;
+  onResponseStarted?: () => void;
+  onResponseDone?: (info: ResponseDoneInfo) => void;
+  onOutputAudioStopped?: () => void;
+  onResponseInterrupted?: () => void;
 }
 
 /** WebRTC transport for OpenAI Realtime voice (data channel + remote audio track). */
@@ -210,7 +219,27 @@ export class RealtimeWebRTCClient {
       };
       const type = payload.type;
 
+      if (type === "response.created") {
+        this.callbacks?.onResponseStarted?.();
+        return;
+      }
+
+      if (
+        type === "response.cancel"
+        || type === "response.cancelled"
+        || type === "output_audio_buffer.cleared"
+      ) {
+        this.callbacks?.onResponseInterrupted?.();
+        return;
+      }
+
+      if (type === "input_audio_buffer.speech_started") {
+        this.callbacks?.onResponseInterrupted?.();
+        return;
+      }
+
       if (type === "output_audio_buffer.stopped") {
+        this.callbacks?.onOutputAudioStopped?.();
         this.completeGracefulEnd("output_audio_buffer.stopped");
         return;
       }
@@ -241,6 +270,9 @@ export class RealtimeWebRTCClient {
       if (type === "response.done") {
         const doneResponseId = responseId(payload.response);
         const output = normalizeRealtimeResponseOutput(payload.response as { output?: unknown });
+        this.callbacks?.onResponseDone?.({
+          hasAudioOutput: responseHasAudioOutput(output),
+        });
         const assistantText = extractAssistantText(output);
         const functionCalls = collectFunctionCallsFromOutput(output);
         const shouldEndConversation = functionCalls.some((call) => call.name === "end_conversation");
