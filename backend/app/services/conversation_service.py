@@ -11,7 +11,6 @@ from app.ai.tools import ToolContext
 from app.models.conversation import (
     Author,
     Conversation,
-    ConversationChannel,
     ConversationScope,
     Message,
     MessageSource,
@@ -21,10 +20,10 @@ from app.schemas import AgentResponse
 logger = logging.getLogger(__name__)
 
 
-def agent_source_for_channel(channel: ConversationChannel) -> MessageSource:
-    if channel == ConversationChannel.WHATSAPP:
+def agent_source_for_entry(entry_source: MessageSource | None) -> MessageSource:
+    if entry_source in (MessageSource.WHATSAPP_TEXT, MessageSource.WHATSAPP_AUDIO):
         return MessageSource.WHATSAPP_TEXT
-    if channel == ConversationChannel.REALTIME_VOICE:
+    if entry_source == MessageSource.REALTIME_VOICE:
         return MessageSource.REALTIME_VOICE
     return MessageSource.IN_APP_TEXT
 
@@ -34,15 +33,12 @@ async def get_or_create_conversation(
     cohort_id: uuid.UUID,
     user_id: uuid.UUID,
     lesson_id: uuid.UUID,
-    *,
-    channel: ConversationChannel = ConversationChannel.IN_APP,
 ) -> Conversation:
     conversation = await db.scalar(
         select(Conversation).where(
             Conversation.cohort_id == cohort_id,
             Conversation.user_id == user_id,
             Conversation.lesson_id == lesson_id,
-            Conversation.channel == channel,
         )
     )
     if conversation is None:
@@ -51,7 +47,6 @@ async def get_or_create_conversation(
             user_id=user_id,
             lesson_id=lesson_id,
             scope=ConversationScope.STUDENT_LESSON,
-            channel=channel,
         )
         db.add(conversation)
         await db.flush()
@@ -88,6 +83,17 @@ async def record_message(
     )
     db.add(message)
     await db.flush()
+
+    if author == Author.STUDENT and conversation.lesson_id is not None:
+        from app.services.student_progress_service import StudentProgressService
+
+        await StudentProgressService.activate_on_first_interaction(
+            db,
+            conversation.cohort_id,
+            conversation.user_id,
+            conversation.lesson_id,
+        )
+
     return message, True
 
 
@@ -97,38 +103,42 @@ async def list_lesson_messages(
     student_id: uuid.UUID,
     lesson_id: uuid.UUID,
 ) -> list[Message]:
-    """All messages for a student in a lesson, across channels (WhatsApp + in-app)."""
-    conversation_ids = (
-        await db.scalars(
-            select(Conversation.id).where(
-                Conversation.cohort_id == cohort_id,
-                Conversation.user_id == student_id,
-                Conversation.lesson_id == lesson_id,
-            )
+    """All messages for a student in a lesson (unified conversation, mixed sources)."""
+    conversation = await db.scalar(
+        select(Conversation).where(
+            Conversation.cohort_id == cohort_id,
+            Conversation.user_id == student_id,
+            Conversation.lesson_id == lesson_id,
         )
-    ).all()
-    if not conversation_ids:
+    )
+    if conversation is None:
         return []
     return (
         await db.scalars(
             select(Message)
-            .where(Message.conversation_id.in_(conversation_ids))
+            .where(Message.conversation_id == conversation.id)
             .order_by(Message.created_at)
         )
     ).all()
 
 
-async def merged_lesson_history(
+async def lesson_conversation_history(
     db: AsyncSession,
     cohort_id: uuid.UUID,
     student_id: uuid.UUID,
     lesson_id: uuid.UUID,
 ) -> list[dict]:
-    """Conversation history for the AI — merged across channels."""
-    return [
-        {"role": "user" if m.author == Author.STUDENT else "assistant", "content": m.content}
-        for m in await list_lesson_messages(db, cohort_id, student_id, lesson_id)
-    ]
+    """Conversation history for the AI — single unified conversation per lesson."""
+    conversation = await db.scalar(
+        select(Conversation).where(
+            Conversation.cohort_id == cohort_id,
+            Conversation.user_id == student_id,
+            Conversation.lesson_id == lesson_id,
+        )
+    )
+    if conversation is None:
+        return []
+    return await conversation_history(conversation.id, db)
 
 
 async def conversation_history(conversation_id: uuid.UUID, db: AsyncSession) -> list[dict]:
@@ -152,12 +162,9 @@ async def generate_lesson_reply(
     lesson_id: uuid.UUID,
     student_id: uuid.UUID,
     *,
-    merge_channels: bool = False,
+    entry_source: MessageSource = MessageSource.IN_APP_TEXT,
 ) -> str:
-    if merge_channels:
-        history = await merged_lesson_history(db, cohort_id, student_id, lesson_id)
-    else:
-        history = await conversation_history(conversation.id, db)
+    history = await conversation_history(conversation.id, db)
     bundle = await ContextBuilder(db).build_lesson(cohort_id, lesson_id)
     tool_ctx = ToolContext(
         db,
@@ -165,7 +172,7 @@ async def generate_lesson_reply(
         student_id,
         lesson_id,
         conversation_id=conversation.id,
-        channel=conversation.channel,
+        entry_source=entry_source,
     )
 
     raw = await respond(bundle, history, tool_ctx)
@@ -176,7 +183,7 @@ async def generate_lesson_reply(
         conversation,
         Author.AGENT,
         final,
-        source=agent_source_for_channel(conversation.channel),
+        source=agent_source_for_entry(entry_source),
     )
     return final
 
@@ -187,13 +194,24 @@ async def student_lesson_message(
     lesson_id: uuid.UUID,
     student_id: uuid.UUID,
     content: str,
-    *,
-    merge_channels: bool = False,
 ) -> AgentResponse:
     """Persiste a mensagem do aluno e devolve a resposta da Lira."""
-    conversation = await get_or_create_conversation(
-        db, cohort_id, student_id, lesson_id, channel=ConversationChannel.IN_APP
+    from app.services.student_progress_service import (
+        LessonNotInteractiveError,
+        StudentProgressService,
     )
+
+    if not await StudentProgressService.is_lesson_interactive_for(
+        db, cohort_id, student_id, lesson_id
+    ):
+        row = await StudentProgressService._get_progress(
+            db, cohort_id, student_id, lesson_id
+        )
+        raise LessonNotInteractiveError(
+            "lesson_closed" if row is not None else "no_active_lesson"
+        )
+
+    conversation = await get_or_create_conversation(db, cohort_id, student_id, lesson_id)
     await record_message(
         db, conversation, Author.STUDENT, content, source=MessageSource.IN_APP_TEXT
     )
@@ -203,6 +221,6 @@ async def student_lesson_message(
         cohort_id,
         lesson_id,
         student_id,
-        merge_channels=merge_channels,
+        entry_source=MessageSource.IN_APP_TEXT,
     )
     return AgentResponse(conversation_id=conversation.id, response=final)

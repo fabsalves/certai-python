@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.conversation import Author, Conversation, ConversationChannel, Message, MessageSource
+from app.models.conversation import Author, Conversation, Message, MessageSource
 from app.models.voice_session import VoiceSession, VoiceSessionStatus
 from app.services.conversation_service import get_or_create_conversation, record_message
 from app.services.realtime.handoff_token_service import HandoffClaims
@@ -78,7 +78,6 @@ class VoiceSessionService:
             claims.cohort_id,
             claims.user_id,
             claims.lesson_id,
-            channel=ConversationChannel.REALTIME_VOICE,
         )
 
         await self._close_stale_sessions(db, conversation.id)

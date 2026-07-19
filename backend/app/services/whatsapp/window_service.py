@@ -8,9 +8,11 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.conversation import Author, Conversation, ConversationChannel, Message
+from app.models.conversation import Author, Conversation, Message, MessageSource
 
 SESSION_WINDOW_HOURS = 24
+
+_WHATSAPP_SOURCES = (MessageSource.WHATSAPP_TEXT, MessageSource.WHATSAPP_AUDIO)
 
 
 def _utcnow() -> datetime:
@@ -29,8 +31,8 @@ async def is_session_window_open(db: AsyncSession, student_id: uuid.UUID) -> boo
         .join(Conversation, Message.conversation_id == Conversation.id)
         .where(
             Conversation.user_id == student_id,
-            Conversation.channel == ConversationChannel.WHATSAPP,
             Message.author == Author.STUDENT,
+            Message.source.in_(_WHATSAPP_SOURCES),
         )
     )
     if last_student_at is None:

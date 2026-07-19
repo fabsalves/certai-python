@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.context_builder import ContextBuilder
 from app.models.assessment import Level, MicroScore
-from app.models.conversation import ConversationChannel
+from app.models.conversation import MessageSource
 
 # Schemas expostos à OpenAI (function calling). Descrições enxutas, sem "regras".
 TOOL_SCHEMAS: list[dict[str, Any]] = [
@@ -79,6 +79,27 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "conclude_lesson",
+            "description": (
+                "Marca a aula atual como concluída para este aluno após você julgar "
+                "suficiente o estudo desta aula e ter feito a despedida final definitiva "
+                "em um turno anterior. Não use em toda mensagem positiva do aluno."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "reason": {
+                        "type": "string",
+                        "description": "Motivo livre opcional para registro interno.",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
 ]
 
 
@@ -93,14 +114,14 @@ class ToolContext:
         lesson_id: uuid.UUID | None,
         *,
         conversation_id: uuid.UUID | None = None,
-        channel: ConversationChannel | None = None,
+        entry_source: MessageSource | None = None,
     ):
         self.db = db
         self.cohort_id = cohort_id
         self.student_id = student_id
         self.lesson_id = lesson_id
         self.conversation_id = conversation_id
-        self.channel = channel
+        self.entry_source = entry_source
         self.builder = ContextBuilder(db)
 
 
@@ -112,6 +133,8 @@ async def dispatch(name: str, args: dict[str, Any], ctx: ToolContext) -> str:
         return await _score_understanding(args, ctx)
     if name == "request_session_link":
         return await _request_session_link(args, ctx)
+    if name == "conclude_lesson":
+        return await _conclude_lesson(args, ctx)
     return f"Unknown tool: {name}"
 
 
@@ -145,3 +168,23 @@ async def _request_session_link(args: dict[str, Any], ctx: ToolContext) -> str:
     from app.services.realtime.voice_link_service import VoiceLinkService
 
     return await VoiceLinkService().generate_and_deliver(ctx)
+
+
+async def _conclude_lesson(args: dict[str, Any], ctx: ToolContext) -> str:
+    del args
+    if ctx.student_id is None or ctx.lesson_id is None:
+        return "Não foi possível concluir: contexto de aluno ou aula ausente."
+
+    from app.services.student_progress_service import StudentProgressService
+
+    try:
+        await StudentProgressService.conclude(
+            ctx.db,
+            ctx.cohort_id,
+            ctx.student_id,
+            ctx.lesson_id,
+        )
+    except ValueError:
+        return "Progresso não está ATIVA para conclusão."
+
+    return "Aula marcada como concluída para este aluno."

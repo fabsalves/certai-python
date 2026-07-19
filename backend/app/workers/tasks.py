@@ -163,7 +163,7 @@ async def _mark_track_ingestion_failed(track_id: UUID) -> None:
 
 async def _process_whatsapp_inbound(conversation_id: UUID, task_id: str) -> dict:
     from app.core.database import SessionLocal
-    from app.models.conversation import Author, Conversation, Message
+    from app.models.conversation import Author, Conversation, Message, MessageSource
     from app.models.user import User
     from app.services.cinndi.outbound import CinndiOutboundError, send_text_message
     from app.services.conversation_service import generate_lesson_reply
@@ -178,6 +178,17 @@ async def _process_whatsapp_inbound(conversation_id: UUID, task_id: str) -> dict
             await clear_debounce(conversation_id)
             return {"status": "missing_conversation"}
 
+        from app.services.student_progress_service import StudentProgressService
+
+        if not await StudentProgressService.is_lesson_interactive_for(
+            db,
+            conversation.cohort_id,
+            conversation.user_id,
+            conversation.lesson_id,
+        ):
+            await clear_debounce(conversation_id)
+            return {"status": "lesson_closed"}
+
         student = await db.get(User, conversation.user_id)
         if student is None or not student.whatsapp:
             await clear_debounce(conversation_id)
@@ -190,7 +201,7 @@ async def _process_whatsapp_inbound(conversation_id: UUID, task_id: str) -> dict
                 conversation.cohort_id,
                 conversation.lesson_id,
                 conversation.user_id,
-                merge_channels=True,
+                entry_source=MessageSource.WHATSAPP_TEXT,
             )
             provider_id = send_text_message(to_phone=student.whatsapp, body=final)
 

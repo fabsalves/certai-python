@@ -153,6 +153,10 @@ async def complete_lesson(
 
     await db.flush()
 
+    from app.services.student_progress_service import StudentProgressService
+
+    await StudentProgressService.on_professor_complete_lesson(db, cohort_id, lesson_id)
+
     # AI ingestion runs after commit; the WhatsApp dispatch is chained at the
     # end of the ingestion task (never before the ingestion is done).
     from app.workers.tasks import ingest_lesson_completion

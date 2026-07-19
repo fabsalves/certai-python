@@ -9,13 +9,14 @@ from dataclasses import dataclass
 
 import httpx
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 
 from app.core.phone import normalize_br_phone, phone_lookup_variants
-from app.models.conversation import Author, Conversation, ConversationChannel, Message, MessageSource
+from app.models.conversation import Author, Message, MessageSource
+from app.models.student_progress import StudentLessonProgress
 from app.models.user import Role, User
 from app.services.cinndi.types import CinndiParseResult
-from app.services.conversation_service import record_message
+from app.services.conversation_service import get_or_create_conversation, record_message
+from app.services.student_progress_service import StudentProgressService
 from app.services.transcription_service import transcribe_audio
 
 logger = logging.getLogger(__name__)
@@ -61,20 +62,6 @@ async def _find_student_by_phone(db, raw_phone: str) -> User | None:
         if user is not None:
             return user
     return None
-
-
-async def _latest_whatsapp_conversation(db, student_id: uuid.UUID) -> Conversation | None:
-    stmt = (
-        select(Conversation)
-        .where(
-            Conversation.user_id == student_id,
-            Conversation.channel == ConversationChannel.WHATSAPP,
-        )
-        .options(selectinload(Conversation.messages))
-        .order_by(Conversation.updated_at.desc())
-        .limit(1)
-    )
-    return await db.scalar(stmt)
 
 
 def _message_source(parsed: CinndiParseResult) -> MessageSource:
@@ -153,14 +140,29 @@ async def persist_inbound(db, parsed: CinndiParseResult) -> InboundResult:
         logger.info("inbound whatsapp from unknown phone=%s", message.from_phone)
         return InboundResult(conversation_id=None, detail="unknown_student")
 
-    conversation = await _latest_whatsapp_conversation(db, student.id)
-    if conversation is None:
-        return InboundResult(conversation_id=None, detail="no_conversation")
+    route = await StudentProgressService.resolve_routable_route(db, student.id)
+    if route is None:
+        has_progress = await db.scalar(
+            select(StudentLessonProgress.id)
+            .where(StudentLessonProgress.student_id == student.id)
+            .limit(1)
+        )
+        detail = "lesson_closed" if has_progress else "no_active_lesson"
+        return InboundResult(conversation_id=None, detail=detail)
+
+    cohort_id, lesson_id = route
+    if not await StudentProgressService.is_lesson_interactive_for(
+        db, cohort_id, student.id, lesson_id
+    ):
+        return InboundResult(conversation_id=None, detail="lesson_closed")
 
     text = await _resolve_text(parsed)
     if not text.strip():
         return InboundResult(conversation_id=None, detail="empty_message")
 
+    conversation = await get_or_create_conversation(
+        db, cohort_id, student.id, lesson_id
+    )
     await record_message(
         db,
         conversation,

@@ -26,6 +26,7 @@ from app.services.playground_context_service import build_playground_context
 from app.services.playground_scores_service import build_playground_scores
 from app.services.conversation_service import list_lesson_messages, student_lesson_message
 from app.services.lesson_completion_service import complete_lesson
+from app.services.student_progress_service import LessonNotInteractiveError
 from app.services.transcription_service import transcribe_audio
 from app.services.upload_validation import (
     AUDIO_MAX_BYTES,
@@ -232,9 +233,17 @@ async def send_student_message(
     """Envia mensagem como aluno matriculado — sessão segregada por turma e aluno."""
     await _get_cohort_or_404(db, cohort_id)
     await _ensure_enrolled_student(db, cohort_id, student_id)
-    return await student_lesson_message(
-        db, cohort_id, lesson_id, student_id, body.content, merge_channels=True
-    )
+    try:
+        return await student_lesson_message(
+            db, cohort_id, lesson_id, student_id, body.content
+        )
+    except LessonNotInteractiveError as exc:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Esta aula foi encerrada e não aceita novas interações."
+            if exc.reason == "lesson_closed"
+            else "Nenhuma aula ativa disponível para conversa.",
+        ) from exc
 
 
 @router.post(

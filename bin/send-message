@@ -104,8 +104,11 @@ case "$detail" in
   duplicate)
     echo "↷ duplicate — mesmo message_id já recebido."
     ;;
-  no_conversation)
-    echo "✗ no_conversation — encerre a aula antes (cria conversation WhatsApp + convite)."
+  no_conversation|no_active_lesson)
+    echo "✗ ${detail} — encerre a aula antes (cria progress DISPARADA + convite)."
+    ;;
+  lesson_closed)
+    echo "↷ lesson_closed — aula encerrada/concluída; inbound ignorado (sem LLM)."
     ;;
   unknown_student)
     echo "✗ unknown_student — SEED_STUDENT_PHONE não bate com users.whatsapp do seed."

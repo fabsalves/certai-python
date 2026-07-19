@@ -16,6 +16,7 @@ from app.services.ingestion import (
     INGESTION_DONE,
     INGESTION_FAILED,
     INGESTION_PROCESSING,
+    coerce_llm_text_field,
 )
 from app.services.ingestion.extraction import UnsupportedFormatError, extract_text
 from app.services.lesson_completion_service import consolidate_notes
@@ -47,9 +48,11 @@ async def ingest_lesson_note(db: AsyncSession, note_id: uuid.UUID) -> CohortLess
     consolidated = await consolidate_notes(note.professor_transcript, attachment_text)
 
     note.attachment_extracted_text = attachment_text
-    note.summary = consolidated.get("summary", "")
-    note.unclear_points = consolidated.get("unclear_points", "")
-    note.attachment_knowledge_base = consolidated.get("knowledge_base", "")
+    note.summary = coerce_llm_text_field(consolidated.get("summary", ""))
+    note.unclear_points = coerce_llm_text_field(consolidated.get("unclear_points", ""))
+    note.attachment_knowledge_base = coerce_llm_text_field(
+        consolidated.get("knowledge_base", "")
+    )
     note.ingestion_status = INGESTION_DONE
     await db.flush()
     return note

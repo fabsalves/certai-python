@@ -5,13 +5,13 @@ from app.models.cohort import Cohort, CohortModuleProfessor, CohortProgress, Enr
 from app.models.conversation import (
     Author,
     Conversation,
-    ConversationChannel,
     ConversationScope,
     Message,
     MessageSource,
 )
 from app.models.voice_session import VoiceSession, VoiceSessionStatus
 from app.models.assessment import CohortLessonNote, Level, MicroScore
+from app.models.student_progress import StudentLessonProgress, StudentLessonProgressStatus
 
 __all__ = [
     "Base",
@@ -26,7 +26,6 @@ __all__ = [
     "Enrollment",
     "CohortProgress",
     "Conversation",
-    "ConversationChannel",
     "Message",
     "MessageSource",
     "Author",
@@ -36,4 +35,6 @@ __all__ = [
     "MicroScore",
     "CohortLessonNote",
     "Level",
+    "StudentLessonProgress",
+    "StudentLessonProgressStatus",
 ]

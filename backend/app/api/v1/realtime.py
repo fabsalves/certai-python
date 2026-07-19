@@ -15,7 +15,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import require_roles
 from app.models.cohort import Cohort
-from app.models.conversation import Author, Conversation, ConversationChannel
+from app.models.conversation import Author, Conversation, MessageSource
 from app.models.track import Lesson, Track
 from app.models.user import Role, User
 from app.services.realtime.handoff_token_service import HandoffClaims, HandoffTokenError, HandoffTokenService
@@ -29,6 +29,7 @@ from app.services.realtime.voice_session_service import (
     VoiceSessionLockedByOther,
     VoiceSessionService,
 )
+from app.services.student_progress_service import LessonNotInteractiveError, StudentProgressService
 
 router = APIRouter(prefix="/realtime", tags=["realtime"])
 
@@ -39,6 +40,18 @@ _voice_session_service = VoiceSessionService()
 def _first_name(full_name: str) -> str:
     parts = full_name.strip().split()
     return parts[0] if parts else full_name
+
+
+def _lesson_access_http_error(exc: LessonNotInteractiveError) -> HTTPException:
+    if exc.reason == "no_active_lesson":
+        return HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Nenhuma aula ativa disponível para voz.",
+        )
+    return HTTPException(
+        status.HTTP_403_FORBIDDEN,
+        "Esta aula foi encerrada e não aceita novas chamadas.",
+    )
 
 
 def _handoff_http_error(exc: HandoffTokenError) -> HTTPException:
@@ -207,7 +220,6 @@ async def generate_handoff_token(
             Conversation.cohort_id == body.cohort_id,
             Conversation.user_id == body.user_id,
             Conversation.lesson_id == body.lesson_id,
-            Conversation.channel == ConversationChannel.WHATSAPP,
         )
     )
 
@@ -235,6 +247,16 @@ async def validate_session(
     except HandoffTokenError as exc:
         raise _handoff_http_error(exc) from exc
 
+    try:
+        await StudentProgressService.validate_voice_handoff(
+            db,
+            cohort_id=claims.cohort_id,
+            student_id=claims.user_id,
+            lesson_id=claims.lesson_id,
+        )
+    except LessonNotInteractiveError as exc:
+        raise _lesson_access_http_error(exc) from exc
+
     student_first_name, lesson_title, track_title, assistant_name = await _load_session_context(
         db, claims
     )
@@ -258,6 +280,16 @@ async def create_realtime_token(
         claims = _handoff_service.validate_readonly(body.handoff_token)
     except HandoffTokenError as exc:
         raise _handoff_http_error(exc) from exc
+
+    try:
+        await StudentProgressService.validate_voice_handoff(
+            db,
+            cohort_id=claims.cohort_id,
+            student_id=claims.user_id,
+            lesson_id=claims.lesson_id,
+        )
+    except LessonNotInteractiveError as exc:
+        raise _lesson_access_http_error(exc) from exc
 
     try:
         voice_session = await _voice_session_service.begin_session(
@@ -383,7 +415,7 @@ async def invoke_tool(
     body: ToolBridgeIn,
     db: AsyncSession = Depends(get_db),
 ) -> ToolBridgeOut:
-    """Executa score_understanding ou escalate_scope server-side durante a call."""
+    """Executa tools server-side durante a call (score, escalate, link, conclude_lesson)."""
     if tool_name not in SERVER_TOOL_NAMES:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Tool não suportada: {tool_name}")
 
@@ -406,7 +438,7 @@ async def invoke_tool(
         conversation.user_id,
         conversation.lesson_id,
         conversation_id=conversation.id,
-        channel=conversation.channel,
+        entry_source=MessageSource.REALTIME_VOICE,
     )
     output = await dispatch(tool_name, body.arguments, tool_ctx)
     return ToolBridgeOut(call_id=body.call_id, output=output)

@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 sys.path.insert(0, ".")
 
 from app.core.config import settings
-from app.models.conversation import Author, Conversation, ConversationChannel, ConversationScope
+from app.models.conversation import Author, Conversation, ConversationScope
 from app.models.track import Lesson
 from app.models.user import Role, User
 from app.services.realtime.handoff_token_service import HandoffTokenService
@@ -82,7 +82,6 @@ async def _test_dispatch_voice_invite_sends_template_with_jwt_button() -> None:
         user_id=student_id,
         lesson_id=lesson_id,
         scope=ConversationScope.STUDENT_LESSON,
-        channel=ConversationChannel.WHATSAPP,
     )
 
     db = MagicMock()

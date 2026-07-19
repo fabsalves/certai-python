@@ -10,7 +10,7 @@ from app.ai.client import get_openai
 from app.ai.context_builder import ContextBuilder
 from app.ai.engine import SYSTEM_BASE
 from app.core.config import settings
-from app.services.conversation_service import merged_lesson_history
+from app.services.conversation_service import lesson_conversation_history
 
 INSTRUCTIONS_CHAR_LIMIT = 25_000
 MAX_HISTORY_TURNS = 20
@@ -42,6 +42,25 @@ Separe o ato conversacional do sinal técnico — ordem obrigatória em três mo
     chame end_conversation — é só o marcador de fim da call, nunca o veículo da despedida.
 Anunciar que vai encerrar, preparar o encerramento ou falar sobre a tool NÃO substitui a
 despedida falada. end_conversation sem despedida prévia em voz é incorreto."""
+
+LESSON_CLOSURE_BLOCK = """## Encerramento da aula (definitivo)
+Distinto do encerramento da chamada acima: este bloco fecha a AULA, não só a sessão de voz.
+A call pode ser retomada depois; a aula concluída não volta a aceitar novas interações.
+
+Quando você julgar suficiente o estudo desta aula ATUAL — com base livre no que o aluno
+demonstrou na conversa, sem checklist, sem reler micro-scores — conduza o encerramento em
+dois movimentos obrigatórios:
+(a) Despedida final em conversa: num turno completo, comunique que o estudo desta aula
+    terminou para o aluno, feche o assunto pedagógico com naturalidade, agradeça e despeça-se
+    de verdade. Não chame conclude_lesson neste turno.
+    Exemplo: "Acho que fechamos bem o que importava nesta aula. O estudo dela termina aqui
+    para você. Foi ótimo conversar — até a próxima etapa da trilha!"
+(b) Registro: somente no movimento SEGUINTE, depois da despedida já falada ao aluno,
+    chame conclude_lesson — é só o registro de conclusão, nunca o veículo da despedida.
+
+Anunciar que vai concluir, preparar o encerramento ou falar sobre a tool NÃO substitui a
+despedida falada. conclude_lesson sem despedida prévia na conversa é incorreto.
+Não crie nem antecipe a próxima aula — o professor libera o material seguinte."""
 
 RESUMPTION_BLOCK = """## Retomada após despedida recente
 Ao iniciar esta chamada, leia o histórico acima com atenção.
@@ -107,7 +126,7 @@ class RealtimeInstructionsBuilder:
     ) -> str:
         bundle = await ContextBuilder(self._db).build_lesson(cohort_id, lesson_id)
         system_blocks = bundle.to_system_blocks()
-        history = await merged_lesson_history(self._db, cohort_id, student_id, lesson_id)
+        history = await lesson_conversation_history(self._db, cohort_id, student_id, lesson_id)
 
         return await self._assemble(
             system_blocks=system_blocks,
@@ -129,6 +148,7 @@ class RealtimeInstructionsBuilder:
         base_prefix = (
             f"{SYSTEM_BASE}\n\n{system_blocks}\n\n"
             f"{VOICE_MODE_BLOCK}\n\n{PERSUASION_BLOCK}\n\n{CLOSURE_BLOCK}\n\n"
+            f"{LESSON_CLOSURE_BLOCK}\n\n"
         )
 
         def render(hist_block: str, summary: str = "") -> str:

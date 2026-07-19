@@ -1,7 +1,7 @@
 import enum
 import uuid
 
-from sqlalchemy import Enum, ForeignKey, String, Text
+from sqlalchemy import Enum, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -17,12 +17,6 @@ class Author(str, enum.Enum):
 class ConversationScope(str, enum.Enum):
     STUDENT_LESSON = "student_lesson"            # student talking inside a lesson
     PROFESSOR_COMPLETION = "professor_completion"  # professor completing a lesson
-
-
-class ConversationChannel(str, enum.Enum):
-    IN_APP = "in_app"
-    WHATSAPP = "whatsapp"
-    REALTIME_VOICE = "realtime_voice"
 
 
 class MessageSource(str, enum.Enum):
@@ -41,6 +35,11 @@ class Conversation(Base):
     """Conversation session. Always tied to a cohort (segregation)."""
 
     __tablename__ = "conversations"
+    __table_args__ = (
+        UniqueConstraint(
+            "cohort_id", "user_id", "lesson_id", name="uq_conversation_cohort_user_lesson"
+        ),
+    )
 
     cohort_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("cohorts.id", ondelete="CASCADE"), index=True
@@ -53,11 +52,6 @@ class Conversation(Base):
     )
     scope: Mapped[ConversationScope] = mapped_column(
         Enum(ConversationScope, values_callable=_enum_values, native_enum=False, length=30)
-    )
-    channel: Mapped[ConversationChannel] = mapped_column(
-        Enum(ConversationChannel, values_callable=_enum_values, native_enum=False, length=20),
-        default=ConversationChannel.IN_APP,
-        nullable=False,
     )
 
     messages: Mapped[list["Message"]] = relationship(

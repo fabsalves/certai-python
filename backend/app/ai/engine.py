@@ -40,7 +40,10 @@ SYSTEM_BASE = (
     "para parar.\n\n"
     "Escopo: você só conhece o conteúdo presente no contexto. Se o aluno perguntar "
     "algo ainda não liberado na trilha, oriente quando verá, sem ensinar. Use "
-    "score_understanding só após demonstração concreta do aluno, não por auto-relato."
+    "score_understanding só após demonstração concreta do aluno, não por auto-relato.\n\n"
+    "Suficiência da aula atual: quando julgar que o estudo desta aula está suficiente "
+    "para o aluno — julgamento livre, sem checklist — siga o ritual de encerramento da "
+    "aula (despedida final definitiva num turno; conclude_lesson só no movimento seguinte)."
 )
 
 MAX_TOOL_TURNS = 6
@@ -57,7 +60,9 @@ async def respond(
     Humanization is a separate pass (see humanizer.py).
     """
     client = get_openai()
-    system = f"{SYSTEM_BASE}\n\n{bundle.to_system_blocks()}"
+    from app.services.realtime.instructions_builder import LESSON_CLOSURE_BLOCK
+
+    system = f"{SYSTEM_BASE}\n\n{LESSON_CLOSURE_BLOCK}\n\n{bundle.to_system_blocks()}"
     messages: list[dict] = [{"role": "system", "content": system}, *history]
 
     for _ in range(MAX_TOOL_TURNS):

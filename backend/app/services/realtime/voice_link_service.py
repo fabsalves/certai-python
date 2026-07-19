@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.tools import ToolContext
 from app.core.config import settings
-from app.models.conversation import Author, ConversationChannel, MessageSource
+from app.models.conversation import Author, MessageSource
 from app.models.user import User
 from app.services.cinndi.outbound import CinndiOutboundError, send_interactive_url_message
 from app.services.conversation_service import get_or_create_conversation, record_message
@@ -65,6 +65,10 @@ _LINK_DELIVERED_WHATSAPP = (
 )
 
 
+def _is_whatsapp_entry(entry_source: MessageSource | None) -> bool:
+    return entry_source in (MessageSource.WHATSAPP_TEXT, MessageSource.WHATSAPP_AUDIO)
+
+
 class VoiceLinkService:
     def __init__(self, handoff_service: HandoffTokenService | None = None) -> None:
         self._handoff = handoff_service or HandoffTokenService()
@@ -112,7 +116,6 @@ class VoiceLinkService:
             cohort_id,
             student.id,
             lesson_id,
-            channel=ConversationChannel.WHATSAPP,
         )
         body = render_session_link_body(first_name=_first_name(student.name), url=url)
         message = render_session_link_message(first_name=_first_name(student.name))
@@ -155,18 +158,17 @@ class VoiceLinkService:
         if not student.whatsapp:
             return "Não foi possível enviar o link: aluno sem número de WhatsApp cadastrado."
 
-        whatsapp_conversation = await get_or_create_conversation(
+        conversation = await get_or_create_conversation(
             ctx.db,
             ctx.cohort_id,
             ctx.student_id,
             ctx.lesson_id,
-            channel=ConversationChannel.WHATSAPP,
         )
         link = self.generate_token(
             user_id=ctx.student_id,
             cohort_id=ctx.cohort_id,
             lesson_id=ctx.lesson_id,
-            conversation_id=whatsapp_conversation.id,
+            conversation_id=conversation.id,
         )
 
         try:
@@ -194,6 +196,6 @@ class VoiceLinkService:
                 "Informe gentilmente e sugira tentar novamente."
             )
 
-        if ctx.channel == ConversationChannel.WHATSAPP:
+        if _is_whatsapp_entry(ctx.entry_source):
             return _LINK_DELIVERED_WHATSAPP
         return _LINK_DELIVERED_VOICE
