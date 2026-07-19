@@ -5,6 +5,7 @@ __pycache__/
 venv/
 *.egg-info/
 backend/.celerybeat-schedule-dev
+backend/.celerybeat-schedule-dev.db
 backend/.celerybeat-dev.pid
 
 # Node
