@@ -112,13 +112,20 @@ export function CohortProgressPanel({
 
   async function downloadAudio() {
     if (!activeLessonId || !note?.has_audio) return;
+    const audioName = note.audio_filename || "relato-aula.webm";
     setDownloading("audio");
     await runAction({
       run: () =>
-        downloadApiFile(`/cohorts/${cohortId}/lessons/${activeLessonId}/audio`, "relato-aula.webm"),
+        downloadApiFile(`/cohorts/${cohortId}/lessons/${activeLessonId}/audio`, audioName),
       errorMessage: "Não foi possível baixar o áudio.",
     });
     setDownloading(null);
+  }
+
+  function audioMetaLabel(source: CohortLessonNote["audio_source"]): string {
+    if (source === "recording") return "Áudio gravado";
+    if (source === "file") return "Áudio anexado";
+    return "Áudio do relato";
   }
 
   if (allDone && !selected) {
@@ -193,9 +200,9 @@ export function CohortProgressPanel({
           )}
           {note.has_audio && (
             <FileChip
-              filename="relato-aula.webm"
+              filename={note.audio_filename || "relato-aula.webm"}
               kind="audio"
-              meta="Áudio gravado"
+              meta={audioMetaLabel(note.audio_source)}
               onDownload={downloadAudio}
               downloading={downloading === "audio"}
             />

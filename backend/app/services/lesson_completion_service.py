@@ -79,6 +79,19 @@ async def consolidate_notes(transcript: str, attachment_text: str = "") -> dict[
         return {**empty, "summary": text}
 
 
+AUDIO_SOURCES = frozenset({"recording", "file"})
+
+
+def normalize_audio_source(value: str | None, *, has_audio: bool) -> str | None:
+    """Persist only known origins; omit when there is no audio file."""
+    if not has_audio:
+        return None
+    source = (value or "").strip().lower()
+    if source in AUDIO_SOURCES:
+        return source
+    return None
+
+
 async def complete_lesson(
     db: AsyncSession,
     cohort_id: uuid.UUID,
@@ -87,6 +100,7 @@ async def complete_lesson(
     *,
     attachment: StoredFile | None = None,
     audio: StoredFile | None = None,
+    audio_source: str | None = None,
 ) -> CohortLessonNote:
     lesson = await db.get(Lesson, lesson_id)
     if lesson is None:
@@ -97,6 +111,7 @@ async def complete_lesson(
     attachment_filename = None
     attachment_content_type = None
     audio_key = None
+    audio_filename = None
     audio_content_type = None
 
     if attachment is not None:
@@ -114,6 +129,7 @@ async def complete_lesson(
             f"{uuid.uuid4()}{audio.extension or '.webm'}"
         )
         await storage.save(audio.content, audio_key, content_type=audio.content_type)
+        audio_filename = audio.filename
         audio_content_type = audio.content_type
 
     note = CohortLessonNote(
@@ -126,7 +142,9 @@ async def complete_lesson(
         attachment_filename=attachment_filename,
         attachment_content_type=attachment_content_type,
         audio_storage_key=audio_key,
+        audio_filename=audio_filename,
         audio_content_type=audio_content_type,
+        audio_source=normalize_audio_source(audio_source, has_audio=audio is not None),
         ingestion_status="pending",
     )
     db.add(note)

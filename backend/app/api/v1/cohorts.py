@@ -34,7 +34,7 @@ from app.services.storage.download import file_response
 from app.services.transcription_service import transcribe_audio
 from app.services.upload_validation import (
     AUDIO_MAX_BYTES,
-    is_audio_content_type,
+    is_allowed_report_audio,
     parse_report_attachment,
     parse_report_audio,
 )
@@ -514,6 +514,8 @@ async def list_lesson_notes(
             attachment_filename=note.attachment_filename,
             has_attachment=bool(note.attachment_storage_key),
             has_audio=bool(note.audio_storage_key),
+            audio_filename=note.audio_filename,
+            audio_source=note.audio_source,
             ingestion_status=note.ingestion_status,
         )
         for note in by_lesson.values()
@@ -559,7 +561,7 @@ async def download_lesson_audio(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Relato não encontrado")
     return await file_response(
         storage_key=note.audio_storage_key,
-        filename="relato-aula.webm",
+        filename=note.audio_filename or "relato-aula.webm",
         content_type=note.audio_content_type or "audio/webm",
     )
 
@@ -576,7 +578,7 @@ async def transcribe_lesson_report(
     cohort = await _get_cohort_or_404(db, cohort_id)
     await _assert_lesson_professor(db, user, cohort, lesson_id)
 
-    if not is_audio_content_type(audio.content_type):
+    if not is_allowed_report_audio(audio.content_type, audio.filename):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Arquivo deve ser de áudio")
 
     content = await audio.read()
@@ -608,6 +610,7 @@ async def complete(
     transcript: Annotated[str, Form()] = "",
     attachment: Annotated[UploadFile | None, File()] = None,
     audio: Annotated[UploadFile | None, File()] = None,
+    audio_source: Annotated[str, Form()] = "",
 ):
     """The professor signals the cohort studied the lesson. Advances the cohort and
     unlocks context. The AI ingestion (and only then the WhatsApp dispatch) runs
@@ -633,6 +636,7 @@ async def complete(
             transcript,
             attachment=stored_attachment,
             audio=stored_audio,
+            audio_source=audio_source or None,
         )
     except ValueError as e:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(e))

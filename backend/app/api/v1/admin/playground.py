@@ -30,7 +30,7 @@ from app.services.student_progress_service import LessonNotInteractiveError
 from app.services.transcription_service import transcribe_audio
 from app.services.upload_validation import (
     AUDIO_MAX_BYTES,
-    is_audio_content_type,
+    is_allowed_report_audio,
     parse_report_attachment,
     parse_report_audio,
 )
@@ -262,7 +262,7 @@ async def transcribe_lesson_report(
     cohort = await _get_cohort_or_404(db, cohort_id)
     await _ensure_module_professor(db, cohort_id, professor_id, lesson_id)
 
-    if not is_audio_content_type(audio.content_type):
+    if not is_allowed_report_audio(audio.content_type, audio.filename):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Arquivo deve ser de áudio")
 
     content = await audio.read()
@@ -295,6 +295,7 @@ async def complete_lesson_as_professor(
     transcript: Annotated[str, Form()] = "",
     attachment: Annotated[UploadFile | None, File()] = None,
     audio: Annotated[UploadFile | None, File()] = None,
+    audio_source: Annotated[str, Form()] = "",
 ):
     """Encerra aula como professor do módulo — somente admin."""
     cohort = await _get_cohort_or_404(db, cohort_id)
@@ -318,6 +319,7 @@ async def complete_lesson_as_professor(
             transcript,
             attachment=stored_attachment,
             audio=stored_audio,
+            audio_source=audio_source or None,
         )
     except ValueError as e:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(e))

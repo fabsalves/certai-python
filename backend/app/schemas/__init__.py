@@ -261,6 +261,8 @@ class CohortLessonNoteOut(BaseModel):
     attachment_filename: str | None = None
     has_attachment: bool = False
     has_audio: bool = False
+    audio_filename: str | None = None
+    audio_source: str | None = None  # "recording" | "file"
     ingestion_status: str = "done"
 
 
