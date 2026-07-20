@@ -88,7 +88,7 @@ export function LessonReportCapture({
           headers: { "Content-Type": "multipart/form-data" },
         }),
       successMessage:
-        "Aula encerrada. Estamos processando o relato; os convites saem para os alunos quando terminar.",
+        "Aula encerrada. Estamos processando o relato. Os convites saem para os alunos quando terminar.",
       errorMessage: "Não foi possível encerrar a aula. Tente novamente.",
       onSuccess: () => {
         reset();

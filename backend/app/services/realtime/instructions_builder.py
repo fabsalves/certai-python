@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.client import get_openai
 from app.ai.context_builder import ContextBuilder
 from app.ai.engine import SYSTEM_BASE
+from app.ai.persona import LIRA_TONE
 from app.core.config import settings
 from app.services.conversation_service import lesson_conversation_history
 
@@ -22,7 +23,7 @@ Não use markdown, listas longas ou formatação. Uma ideia por vez."""
 PERSUASION_BLOCK = """## Quando o aluno quer sair
 Se o aluno sinalizar que quer encerrar, sair ou desligar, acolha — não encerre de imediato e
 não chame end_conversation.
-Insista pelo menos duas vezes, de forma calorosa e respeitosa, mostrando o impacto de parar agora:
+Insista pelo menos duas vezes, de forma respeitosa, mostrando o impacto de parar agora:
 interromper deixa esta etapa da aula incompleta e prejudica a avaliação do entendimento dele
 sobre o tema; ainda falta fechar o assunto com clareza.
 Cada tentativa deve ser acolhedora e concreta (falta pouco, pode ser breve, vale um passo a mais).
@@ -62,16 +63,40 @@ Anunciar que vai concluir, preparar o encerramento ou falar sobre a tool NÃO su
 despedida falada. conclude_lesson sem despedida prévia na conversa é incorreto.
 Não crie nem antecipe a próxima aula — o professor libera o material seguinte."""
 
-RESUMPTION_BLOCK = """## Retomada após despedida recente
-Ao iniciar esta chamada, leia o histórico acima com atenção.
-Se as últimas mensagens forem uma despedida ou encerramento, não repita a despedida nem trate
-a conversa como encerrada definitivamente.
+RESUMPTION_BLOCK = """## Retomada após despedida recente (só se houver histórico)
+Este bloco só vale quando o histórico acima contém mensagens anteriores. Se o histórico
+estiver vazio — "(nenhuma mensagem anterior)" — ignore este bloco e siga a Abertura (a).
+
+Se as últimas mensagens forem uma despedida ou encerramento de sessão (não o encerramento
+definitivo da aula), não repita a despedida nem trate a conversa como encerrada de vez.
 Faça uma saudação nova e retome o ponto pedagógico em andamento anterior à despedida
 (o exercício, tema ou pergunta que estavam abertos)."""
 
 OPENING_BLOCK = """## Abertura
-Cumprimente o aluno pelo nome e retome de onde a conversa parou.
-Não recomece do zero se já houve troca de mensagens."""
+Leia o histórico da conversa desta aula acima antes de falar. Sua abertura depende do que
+estiver lá — decida com base no contexto; não assuma retomada por padrão.
+
+(a) Primeira interação — histórico vazio ou "(nenhuma mensagem anterior)":
+    Na primeira fala desta chamada, este caso tem precedência sobre a conduta pedagógica
+    geral — inclusive "conduza com perguntas de aplicação" e uso da pergunta-guia do material.
+    Ainda não aplique exercícios nem cobrança de resposta; primeiro complete apresentação,
+    enquadramento e gancho.
+    Sua primeira fala deve ser completa — no espírito do convite por WhatsApp. Formule com
+    suas palavras; o prompt define enquadramento e limites, não roteiro. Percorra estes três
+    movimentos num turno de voz:
+    (1) Apresentação: diga seu nome (Lira) e apresente-se ao aluno.
+        NÃO mencione "avaliação", "avaliar", "acompanhar o que absorveu", "ver o que fixou"
+        nem qualquer coisa que sinalize prova ou teste — a avaliação acontece nos bastidores.
+    (2) Enquadramento: deixe claro sobre o que vão conversar — cite naturalmente trilha,
+        módulo e aula (título/tema do material no contexto). É um bate-papo de estudo sobre
+        aquele conteúdo, não uma avaliação declarada ao aluno.
+    (3) Convite/gancho: só então convide a conversar sobre o tema — pergunta ou convite curto,
+        não interrogatório. Ainda não é hora de puxar exercício ou cobrar resposta certa.
+    Não diga "vamos retomar", "de onde paramos" nem trate como continuação.
+
+(b) Retomada — já há mensagens anteriores no histórico:
+    Faça uma saudação breve e retome de onde a conversa parou, sem recomeçar do zero.
+    Não repita o que já foi dito; avance a partir do último ponto em aberto."""
 
 
 def format_history(history: list[dict]) -> str:
@@ -141,15 +166,12 @@ class RealtimeInstructionsBuilder:
         history: list[dict],
         student_first_name: str,
     ) -> str:
-        opening = OPENING_BLOCK.replace(
-            "Cumprimente o aluno pelo nome",
-            f"Cumprimente o aluno pelo nome ({student_first_name})",
-        )
         base_prefix = (
-            f"{SYSTEM_BASE}\n\n{system_blocks}\n\n"
+            f"{SYSTEM_BASE}\n\n{LIRA_TONE}\n\n{system_blocks}\n\n"
             f"{VOICE_MODE_BLOCK}\n\n{PERSUASION_BLOCK}\n\n{CLOSURE_BLOCK}\n\n"
             f"{LESSON_CLOSURE_BLOCK}\n\n"
         )
+        student_block = f"## Aluno\nPrimeiro nome: {student_first_name}\n\n"
 
         def render(hist_block: str, summary: str = "") -> str:
             summary_block = ""
@@ -157,9 +179,10 @@ class RealtimeInstructionsBuilder:
                 summary_block = f"## Resumo da conversa anterior\n{summary}\n\n"
             return (
                 f"{base_prefix}"
+                f"{student_block}"
                 f"{summary_block}"
                 f"## Histórico da conversa desta aula\n{hist_block}\n\n"
-                f"{opening}\n\n"
+                f"{OPENING_BLOCK}\n\n"
                 f"{RESUMPTION_BLOCK}"
             )
 
