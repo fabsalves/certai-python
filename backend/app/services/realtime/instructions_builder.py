@@ -20,6 +20,11 @@ VOICE_MODE_BLOCK = """## Modo de conversa
 Você está em uma chamada de voz ao vivo. Respostas curtas e naturais para fala.
 Não use markdown, listas longas ou formatação. Uma ideia por vez."""
 
+VOICE_CONVERSATION_ORDER_BLOCK = """## Ordem da conversa por voz
+A conduta pedagógica acima — conduzir com exercícios e perguntas de aplicação — vale
+quando a conversa já está em andamento. Na primeira fala desta chamada, siga o bloco
+Abertura mais abaixo; só depois dela entram exercícios e cobrança de resposta."""
+
 PERSUASION_BLOCK = """## Quando o aluno quer sair
 Se o aluno sinalizar que quer encerrar, sair ou desligar, acolha — não encerre de imediato e
 não chame end_conversation.
@@ -77,10 +82,6 @@ Leia o histórico da conversa desta aula acima antes de falar. Sua abertura depe
 estiver lá — decida com base no contexto; não assuma retomada por padrão.
 
 (a) Primeira interação — histórico vazio ou "(nenhuma mensagem anterior)":
-    Na primeira fala desta chamada, este caso tem precedência sobre a conduta pedagógica
-    geral — inclusive "conduza com perguntas de aplicação" e uso da pergunta-guia do material.
-    Ainda não aplique exercícios nem cobrança de resposta; primeiro complete apresentação,
-    enquadramento e gancho.
     Sua primeira fala deve ser completa — no espírito do convite por WhatsApp. Formule com
     suas palavras; o prompt define enquadramento e limites, não roteiro. Percorra estes três
     movimentos num turno de voz:
@@ -167,7 +168,8 @@ class RealtimeInstructionsBuilder:
         student_first_name: str,
     ) -> str:
         base_prefix = (
-            f"{SYSTEM_BASE}\n\n{LIRA_TONE}\n\n{system_blocks}\n\n"
+            f"{SYSTEM_BASE}\n\n{VOICE_CONVERSATION_ORDER_BLOCK}\n\n{LIRA_TONE}\n\n"
+            f"{system_blocks}\n\n"
             f"{VOICE_MODE_BLOCK}\n\n{PERSUASION_BLOCK}\n\n{CLOSURE_BLOCK}\n\n"
             f"{LESSON_CLOSURE_BLOCK}\n\n"
         )
