@@ -507,8 +507,12 @@ export function CohortEditor() {
                 </EditorTabPanel>
 
                 <EditorTabPanel id="students" labelledBy="track-tab-students" hidden={tab !== "students" || !cohort}>
-                  {cohort && (
-                    <CohortEnrollments cohortId={cohort.id} onChanged={reloadCohort} />
+                  {cohort && track && (
+                    <CohortEnrollments
+                      cohortId={cohort.id}
+                      track={track}
+                      onChanged={reloadCohort}
+                    />
                   )}
                 </EditorTabPanel>
 
@@ -527,25 +531,56 @@ export function CohortEditor() {
                 </EditorTabPanel>
               </EditorTabs>
             ) : (
-              <div className="editor-tabs__panel cohort-editor__professor-panel">
-                <div className="cohort-editor__professor-head">
-                  <h2 style={{ margin: 0 }}>{cohort?.name}</h2>
-                  <p className="muted" style={{ marginTop: 6 }}>
-                    {cohort?.track_title} · confirme quando a turma terminar cada aula do seu módulo.
-                  </p>
-                </div>
-                {cohort && track && progress && (
-                  <CohortProgressPanel
-                    cohortId={cohort.id}
-                    track={track}
-                    progress={progress}
-                    selectedLessonId={selectedLessonId}
-                    canComplete={canCompleteLesson}
-                    professorName={activeModuleAssignment?.professor_name}
-                    onCompleted={onProgressChanged}
-                  />
-                )}
-              </div>
+              <EditorTabs
+                tabs={[
+                  {
+                    id: "students",
+                    label: "Alunos",
+                    disabled: !cohort,
+                    count: cohort?.enrollment_count,
+                  },
+                  {
+                    id: "progress",
+                    label: "Andamento",
+                    disabled: !cohort,
+                    count: cohort ? completedCount : undefined,
+                  },
+                ]}
+                active={tab === "students" || tab === "progress" ? tab : "progress"}
+                onChange={handleTabChange}
+              >
+                <EditorTabPanel
+                  id="students"
+                  labelledBy="track-tab-students"
+                  hidden={tab !== "students" || !cohort}
+                >
+                  {cohort && track && (
+                    <CohortEnrollments
+                      cohortId={cohort.id}
+                      track={track}
+                      onChanged={reloadCohort}
+                    />
+                  )}
+                </EditorTabPanel>
+
+                <EditorTabPanel
+                  id="progress"
+                  labelledBy="track-tab-progress"
+                  hidden={tab !== "progress" || !cohort}
+                >
+                  {cohort && track && progress && (
+                    <CohortProgressPanel
+                      cohortId={cohort.id}
+                      track={track}
+                      progress={progress}
+                      selectedLessonId={selectedLessonId}
+                      canComplete={canCompleteLesson}
+                      professorName={activeModuleAssignment?.professor_name}
+                      onCompleted={onProgressChanged}
+                    />
+                  )}
+                </EditorTabPanel>
+              </EditorTabs>
             )}
           </div>
         </div>

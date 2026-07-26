@@ -2,27 +2,31 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { maskPhoneBR } from "../../lib/validation";
 import { api } from "../../lib/api";
 import type { Enrollment } from "../../lib/cohorts";
+import type { Track } from "../../lib/tracks";
 import { useAuth } from "../../lib/auth";
 import { useConfirm } from "../../lib/confirm";
 import { useApiAction } from "../../lib/useApiAction";
+import { StudentAssessmentsPanel } from "./StudentAssessmentsPanel";
 import { StudentEnrollModal } from "./StudentEnrollModal";
 
 interface Props {
   cohortId: string;
+  track: Track;
   onChanged: () => void;
 }
 
-export function CohortEnrollments({ cohortId, onChanged }: Props) {
+export function CohortEnrollments({ cohortId, track, onChanged }: Props) {
   const { user } = useAuth();
   const confirm = useConfirm();
   const runAction = useApiAction();
-  const canCreate = user?.role === "admin" || user?.role === "designer";
+  const canManageEnrollments = user?.role === "admin" || user?.role === "designer";
 
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -61,6 +65,20 @@ export function CohortEnrollments({ cohortId, onChanged }: Props) {
     );
   }, [sortedEnrollments, query]);
 
+  const selectedEnrollment = useMemo(
+    () => sortedEnrollments.find((e) => e.student_id === selectedStudentId) ?? null,
+    [sortedEnrollments, selectedStudentId],
+  );
+
+  useEffect(() => {
+    if (
+      selectedStudentId &&
+      !sortedEnrollments.some((e) => e.student_id === selectedStudentId)
+    ) {
+      setSelectedStudentId(null);
+    }
+  }, [sortedEnrollments, selectedStudentId]);
+
   async function removeEnrollment(studentIdToRemove: string) {
     const enrollment = sortedEnrollments.find((e) => e.student_id === studentIdToRemove);
     const ok = await confirm({
@@ -91,19 +109,23 @@ export function CohortEnrollments({ cohortId, onChanged }: Props) {
     <section className="cohort-students">
       <div className="cohort-students__toolbar">
         <p className="muted cohort-students__hint">
-          Alunos matriculados nesta turma. O andamento na trilha é compartilhado por todos.
+          Alunos matriculados nesta turma. Clique em um aluno para ver as avaliações.
         </p>
-        <button type="button" className="btn btn-primary" onClick={() => setModalOpen(true)}>
-          Adicionar alunos
-        </button>
+        {canManageEnrollments && (
+          <button type="button" className="btn btn-primary" onClick={() => setModalOpen(true)}>
+            Adicionar alunos
+          </button>
+        )}
       </div>
 
       {sortedEnrollments.length === 0 ? (
         <div className="empty-state cohort-students__empty">
           <p>Nenhum aluno matriculado ainda.</p>
-          <p className="muted" style={{ marginTop: 6 }}>
-            Use o botão acima para matricular ou cadastrar alunos.
-          </p>
+          {canManageEnrollments && (
+            <p className="muted" style={{ marginTop: 6 }}>
+              Use o botão acima para matricular ou cadastrar alunos.
+            </p>
+          )}
         </div>
       ) : (
         <>
@@ -122,43 +144,71 @@ export function CohortEnrollments({ cohortId, onChanged }: Props) {
             <p className="muted cohort-students__filter-empty">Nenhum aluno encontrado.</p>
           ) : (
             <ul className="cohort-students__list">
-              {filteredEnrollments.map((e) => (
-                <li key={e.id} className="cohort-students__item">
-                  <div className="cohort-students__item-main">
-                    <span className="cohort-students__name">{e.student_name}</span>
-                    <span className="muted cohort-students__email">{e.student_email}</span>
-                    {e.student_whatsapp && (
-                      <span className="muted cohort-students__email">
-                        WhatsApp: {maskPhoneBR(e.student_whatsapp.replace(/^55/, ""))}
-                      </span>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    disabled={removingId === e.student_id}
-                    onClick={() => removeEnrollment(e.student_id)}
+              {filteredEnrollments.map((e) => {
+                const selected = e.student_id === selectedStudentId;
+                return (
+                  <li
+                    key={e.id}
+                    className={`cohort-students__item${selected ? " is-selected" : ""}`}
                   >
-                    {removingId === e.student_id ? "Removendo…" : "Remover"}
-                  </button>
-                </li>
-              ))}
+                    <button
+                      type="button"
+                      className="cohort-students__select"
+                      onClick={() =>
+                        setSelectedStudentId((current) =>
+                          current === e.student_id ? null : e.student_id,
+                        )
+                      }
+                    >
+                      <span className="cohort-students__name">{e.student_name}</span>
+                      <span className="muted cohort-students__email">{e.student_email}</span>
+                      {e.student_whatsapp && (
+                        <span className="muted cohort-students__email">
+                          WhatsApp: {maskPhoneBR(e.student_whatsapp.replace(/^55/, ""))}
+                        </span>
+                      )}
+                    </button>
+                    {canManageEnrollments && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        disabled={removingId === e.student_id}
+                        onClick={() => removeEnrollment(e.student_id)}
+                      >
+                        {removingId === e.student_id ? "Removendo…" : "Remover"}
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
+          )}
+
+          {selectedEnrollment && (
+            <StudentAssessmentsPanel
+              key={selectedEnrollment.student_id}
+              cohortId={cohortId}
+              studentId={selectedEnrollment.student_id}
+              studentName={selectedEnrollment.student_name}
+              track={track}
+            />
           )}
         </>
       )}
 
-      <StudentEnrollModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        cohortId={cohortId}
-        enrolledIds={enrolledIds}
-        canCreate={canCreate}
-        onEnrolled={() => {
-          load();
-          onChanged();
-        }}
-      />
+      {canManageEnrollments && (
+        <StudentEnrollModal
+          open={modalOpen}
+          onClose={() => setModalOpen(false)}
+          cohortId={cohortId}
+          enrolledIds={enrolledIds}
+          canCreate={canManageEnrollments}
+          onEnrolled={() => {
+            load();
+            onChanged();
+          }}
+        />
+      )}
     </section>
   );
 }

@@ -23,12 +23,20 @@ from app.schemas import (
     EnrollmentBulkCreate,
     EnrollmentBulkOut,
     EnrollmentOut,
+    LessonAssessmentsOut,
     ModuleProfessorIn,
     ModuleProfessorOut,
+    PendingAssessmentStudentOut,
+    StudentAssessmentOut,
+    StudentAssessmentsOut,
     TrackOut,
     TranscriptionOut,
 )
 from app.models.assessment import CohortLessonNote
+from app.services.assessment.read_service import (
+    AssessmentReadRow,
+    StudentAssessmentReadService,
+)
 from app.services.lesson_completion_service import complete_lesson
 from app.services.storage.download import file_response
 from app.services.transcription_service import transcribe_audio
@@ -307,12 +315,13 @@ async def update_cohort(
 @router.get(
     "/{cohort_id}/enrollments",
     response_model=list[EnrollmentOut],
-    dependencies=[Depends(can_manage)],
+    dependencies=[Depends(can_view)],
 )
 async def list_enrollments(
-    cohort_id: uuid.UUID, db: Annotated[AsyncSession, Depends(get_db)]
+    cohort_id: uuid.UUID, user: CurrentUser, db: Annotated[AsyncSession, Depends(get_db)]
 ):
-    await _get_cohort_or_404(db, cohort_id)
+    cohort = await _get_cohort_or_404(db, cohort_id)
+    await _assert_cohort_access(db, user, cohort)
     stmt = (
         select(Enrollment, User.name, User.email, User.whatsapp)
         .join(User, Enrollment.student_id == User.id)
@@ -465,6 +474,83 @@ async def get_progress(
     return CohortProgressOut(
         completed_lesson_ids=completed,
         current_lesson_id=await _current_lesson_id(db, cohort),
+    )
+
+
+def _assessment_out(row: AssessmentReadRow) -> StudentAssessmentOut:
+    return StudentAssessmentOut(
+        id=row.id,
+        student_id=row.student_id,
+        student_name=row.student_name,
+        scope=row.scope,
+        lesson_id=row.lesson_id,
+        module_id=row.module_id,
+        track_id=row.track_id,
+        scope_title=row.scope_title,
+        level=row.level,
+        assessment=row.assessment,
+        gaps=row.gaps,
+        created_at=row.created_at,
+    )
+
+
+@router.get(
+    "/{cohort_id}/lessons/{lesson_id}/assessments",
+    response_model=LessonAssessmentsOut,
+    dependencies=[Depends(can_view)],
+)
+async def list_lesson_assessments(
+    cohort_id: uuid.UUID,
+    lesson_id: uuid.UUID,
+    user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Latest lesson assessments for the cohort, plus concluded students still pending."""
+    cohort = await _get_cohort_or_404(db, cohort_id)
+    await _assert_cohort_access(db, user, cohort)
+    try:
+        result = await StudentAssessmentReadService.latest_lesson_assessments(
+            db, cohort_id=cohort_id, lesson_id=lesson_id
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    return LessonAssessmentsOut(
+        lesson_id=result.lesson_id,
+        assessments=[_assessment_out(row) for row in result.assessments],
+        pending=[
+            PendingAssessmentStudentOut(
+                student_id=item.student_id,
+                student_name=item.student_name,
+            )
+            for item in result.pending
+        ],
+    )
+
+
+@router.get(
+    "/{cohort_id}/students/{student_id}/assessments",
+    response_model=StudentAssessmentsOut,
+    dependencies=[Depends(can_view)],
+)
+async def list_student_assessments(
+    cohort_id: uuid.UUID,
+    student_id: uuid.UUID,
+    user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Latest lesson/module/track assessments for one enrolled student."""
+    cohort = await _get_cohort_or_404(db, cohort_id)
+    await _assert_cohort_access(db, user, cohort)
+    try:
+        result = await StudentAssessmentReadService.latest_for_student(
+            db, cohort_id=cohort_id, student_id=student_id
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    return StudentAssessmentsOut(
+        student_id=result.student_id,
+        student_name=result.student_name,
+        assessments=[_assessment_out(row) for row in result.assessments],
     )
 
 

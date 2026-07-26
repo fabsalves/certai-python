@@ -853,6 +853,34 @@ html.modal-scroll-lock body {
   background: var(--surface);
 }
 
+.cohort-students__item.is-selected {
+  border-color: color-mix(in srgb, var(--brand) 45%, var(--border));
+  background: color-mix(in srgb, var(--brand) 6%, var(--surface));
+}
+
+.cohort-students__select {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.cohort-students__select:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 .cohort-students__item-main {
   display: flex;
   flex-direction: column;
@@ -866,6 +894,132 @@ html.modal-scroll-lock body {
 
 .cohort-students__email {
   font-size: 13px;
+}
+
+.cohort-assessment-dist {
+  margin-bottom: 20px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.cohort-assessment-dist__label {
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.cohort-assessment-dist__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.cohort-assessment-dist__item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.cohort-assessment-dist__count {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.student-assessments-panel {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.student-assessments-panel__head {
+  margin-bottom: 20px;
+}
+
+.student-assessments-panel__section {
+  margin-bottom: 20px;
+}
+
+.student-assessments-panel__section-title {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.student-assessments-panel__lessons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+  padding-left: 12px;
+  border-left: 2px solid var(--border);
+}
+
+.student-assessment-card {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.student-assessment-card + .student-assessment-card {
+  margin-top: 10px;
+}
+
+.student-assessment-card--missing {
+  background: transparent;
+}
+
+.student-assessment-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.student-assessment-card--missing .student-assessment-card__head {
+  margin-bottom: 0;
+}
+
+.student-assessment-card__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.student-assessment-card__field + .student-assessment-card__field {
+  margin-top: 10px;
+}
+
+.student-assessment-card__label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.student-assessment-card__text {
+  margin: 0;
+  font-size: 14px;
+  white-space: pre-wrap;
+}
+
+.student-assessment-card__empty {
+  margin: 0;
+  font-size: 14px;
 }
 
 .enroll-picker {

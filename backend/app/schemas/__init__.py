@@ -266,6 +266,39 @@ class CohortLessonNoteOut(BaseModel):
     ingestion_status: str = "done"
 
 
+# --- Layered student assessments (read) ---
+class StudentAssessmentOut(BaseModel):
+    id: uuid.UUID
+    student_id: uuid.UUID
+    student_name: str
+    scope: str  # lesson | module | track
+    lesson_id: uuid.UUID | None = None
+    module_id: uuid.UUID | None = None
+    track_id: uuid.UUID | None = None
+    scope_title: str = ""
+    level: str | None = None  # null = insufficient evidence
+    assessment: str = ""
+    gaps: str = ""
+    created_at: datetime
+
+
+class PendingAssessmentStudentOut(BaseModel):
+    student_id: uuid.UUID
+    student_name: str
+
+
+class LessonAssessmentsOut(BaseModel):
+    lesson_id: uuid.UUID
+    assessments: list[StudentAssessmentOut] = []
+    pending: list[PendingAssessmentStudentOut] = []
+
+
+class StudentAssessmentsOut(BaseModel):
+    student_id: uuid.UUID
+    student_name: str
+    assessments: list[StudentAssessmentOut] = []
+
+
 # --- Lesson completion ---
 class LessonCompletionIn(BaseModel):
     lesson_id: uuid.UUID

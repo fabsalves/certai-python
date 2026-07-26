@@ -9,6 +9,7 @@ import {
   FileChip,
   fileKindFromName,
 } from "../ui/FileAttachment";
+import { LessonAssessmentDistribution } from "./LessonAssessmentDistribution";
 import { LessonReportCapture } from "./LessonReportCapture";
 
 interface Props {
@@ -164,6 +165,10 @@ export function CohortProgressPanel({
               : "Aguardando conclusão das aulas anteriores."}
         </p>
       </div>
+
+      {activeLessonId && (
+        <LessonAssessmentDistribution cohortId={cohortId} lessonId={activeLessonId} />
+      )}
 
       {isDone && note && note.ingestion_status !== "done" && (
         <div
