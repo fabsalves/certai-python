@@ -7,6 +7,8 @@ venv/
 backend/.celerybeat-schedule-dev
 backend/.celerybeat-schedule-dev.db
 backend/.celerybeat-dev.pid
+backend/celerybeat-schedule.db
+frontend/tsconfig.tsbuildinfo
 
 # Node
 node_modules/
