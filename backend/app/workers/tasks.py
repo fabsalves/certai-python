@@ -71,15 +71,18 @@ def ingest_track_material(self, track_id: str) -> dict:
 
 
 @celery_app.task(bind=True, max_retries=2, default_retry_delay=30)
-def evaluate_cohort_gaps(self, cohort_id: str) -> dict:
-    """An external AI reads the cohort's micro-scores and points out gaps."""
-    return run_async(_evaluate_gaps(UUID(cohort_id)))
-
-
-@celery_app.task
-def sweep_evaluations() -> dict:
-    """Scheduled job (Beat): triggers evaluation for every active cohort."""
-    return run_async(_sweep_evaluations())
+def assess_student_lesson(
+    self, cohort_id: str, student_id: str, lesson_id: str
+) -> dict:
+    """External evaluator: consolidate lesson-scope understanding for one student."""
+    try:
+        return run_async(
+            _assess_student_lesson(
+                UUID(cohort_id), UUID(student_id), UUID(lesson_id)
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise self.retry(exc=exc)
 
 
 @celery_app.task
@@ -231,50 +234,24 @@ async def _process_whatsapp_inbound(conversation_id: UUID, task_id: str) -> dict
     return {"status": "ok", "conversation_id": str(conversation_id)}
 
 
-async def _evaluate_gaps(cohort_id: UUID) -> dict:
-    from app.ai.client import get_openai
-    from app.core.config import settings
+async def _assess_student_lesson(
+    cohort_id: UUID, student_id: UUID, lesson_id: UUID
+) -> dict:
     from app.core.database import SessionLocal
-    from app.models.assessment import MicroScore
+    from app.services.assessment.lesson_assessment_service import LessonAssessmentService
 
     async with SessionLocal() as db:
-        rows = (
-            await db.execute(select(MicroScore).where(MicroScore.cohort_id == cohort_id))
-        ).scalars().all()
-
-    data = [
-        {"competency": r.competency, "level": r.level.value, "student": str(r.student_id)}
-        for r in rows
-    ]
-    client = get_openai()
-    resp = await client.chat.completions.create(
-        model=settings.EVALUATOR_MODEL,
-        max_tokens=1024,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You are the external evaluator. From the micro-scores, point out "
-                    "knowledge gaps per competency and per student. Do not compute a single "
-                    "average. Write the report in Brazilian Portuguese."
-                ),
-            },
-            {"role": "user", "content": str(data)},
-        ],
-    )
-    report = resp.choices[0].message.content or ""
-    return {"cohort_id": str(cohort_id), "report": report}
-
-
-async def _sweep_evaluations() -> dict:
-    from app.core.database import SessionLocal
-    from app.models.cohort import Cohort
-
-    async with SessionLocal() as db:
-        cohorts = (await db.execute(select(Cohort.id))).scalars().all()
-    for cid in cohorts:
-        evaluate_cohort_gaps.delay(str(cid))
-    return {"cohorts_enqueued": len(cohorts)}
+        row = await LessonAssessmentService.assess(
+            db, cohort_id, student_id, lesson_id
+        )
+        await db.commit()
+        return {
+            "cohort_id": str(cohort_id),
+            "student_id": str(student_id),
+            "lesson_id": str(lesson_id),
+            "assessment_id": str(row.id),
+            "level": row.level.value if row.level is not None else None,
+        }
 
 
 async def _sweep_abandoned_voice_sessions() -> dict:

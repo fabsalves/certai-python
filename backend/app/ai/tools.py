@@ -175,7 +175,9 @@ async def _conclude_lesson(args: dict[str, Any], ctx: ToolContext) -> str:
     if ctx.student_id is None or ctx.lesson_id is None:
         return "Não foi possível concluir: contexto de aluno ou aula ausente."
 
+    from app.core.db_events import enqueue_after_commit
     from app.services.student_progress_service import StudentProgressService
+    from app.workers.tasks import assess_student_lesson
 
     try:
         await StudentProgressService.conclude(
@@ -187,4 +189,11 @@ async def _conclude_lesson(args: dict[str, Any], ctx: ToolContext) -> str:
     except ValueError:
         return "Progresso não está ATIVA para conclusão."
 
+    enqueue_after_commit(
+        ctx.db,
+        assess_student_lesson,
+        str(ctx.cohort_id),
+        str(ctx.student_id),
+        str(ctx.lesson_id),
+    )
     return "Aula marcada como concluída para este aluno."

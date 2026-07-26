@@ -10,7 +10,6 @@ workers can scale independently.
 """
 
 from celery import Celery
-from celery.schedules import crontab
 
 from app.core.config import settings
 
@@ -35,7 +34,7 @@ celery_app.conf.update(
         "app.workers.tasks.transcribe_audio": {"queue": "transcription"},
         "app.workers.tasks.plan_dispatch": {"queue": "whatsapp"},
         "app.workers.tasks.process_whatsapp_inbound": {"queue": "whatsapp"},
-        "app.workers.tasks.evaluate_cohort_gaps": {"queue": "evaluation"},
+        "app.workers.tasks.assess_student_lesson": {"queue": "evaluation"},
         "app.workers.tasks.ingest_lesson_completion": {"queue": "evaluation"},
         "app.workers.tasks.ingest_track_material": {"queue": "evaluation"},
     },
@@ -43,10 +42,6 @@ celery_app.conf.update(
 
 # Scheduled jobs.
 celery_app.conf.beat_schedule = {
-    "nightly-gap-evaluation": {
-        "task": "app.workers.tasks.sweep_evaluations",
-        "schedule": crontab(hour=3, minute=0),  # every day at 03:00
-    },
     "voice-session-abandon-sweep": {
         "task": "app.workers.tasks.sweep_abandoned_voice_sessions",
         "schedule": 30.0,  # 90s lock TTL; sweep a cada 30s
