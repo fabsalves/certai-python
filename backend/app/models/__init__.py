@@ -10,7 +10,13 @@ from app.models.conversation import (
     MessageSource,
 )
 from app.models.voice_session import VoiceSession, VoiceSessionStatus
-from app.models.assessment import CohortLessonNote, Level, MicroScore
+from app.models.assessment import (
+    AssessmentScope,
+    CohortLessonNote,
+    Level,
+    MicroScore,
+    StudentAssessment,
+)
 from app.models.student_progress import StudentLessonProgress, StudentLessonProgressStatus
 
 __all__ = [
@@ -35,6 +41,8 @@ __all__ = [
     "MicroScore",
     "CohortLessonNote",
     "Level",
+    "AssessmentScope",
+    "StudentAssessment",
     "StudentLessonProgress",
     "StudentLessonProgressStatus",
 ]
