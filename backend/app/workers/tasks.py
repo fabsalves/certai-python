@@ -74,11 +74,58 @@ def ingest_track_material(self, track_id: str) -> dict:
 def assess_student_lesson(
     self, cohort_id: str, student_id: str, lesson_id: str
 ) -> dict:
-    """External evaluator: consolidate lesson-scope understanding for one student."""
+    """External evaluator: consolidate lesson-scope understanding for one student.
+
+    Known limitations (not handled in this phase):
+    - If this task fails after retries, the module assessment is never enqueued and
+      the track assessment never runs — the chain breaks silently (no sweep/retry).
+    - If the task runs twice, a duplicate StudentAssessment row may be appended;
+      that is tolerable (append-only, readers take the latest) — no idempotency guard.
+    """
     try:
         return run_async(
             _assess_student_lesson(
                 UUID(cohort_id), UUID(student_id), UUID(lesson_id)
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise self.retry(exc=exc)
+
+
+@celery_app.task(bind=True, max_retries=2, default_retry_delay=30)
+def assess_student_module(
+    self, cohort_id: str, student_id: str, module_id: str
+) -> dict:
+    """External evaluator: consolidate module-scope understanding for one student.
+
+    Known limitations (not handled in this phase):
+    - If this task fails after retries, the track assessment is never enqueued —
+      the chain breaks silently (no sweep/retry).
+    - Duplicate runs may append duplicate rows; append-only latest-read is enough.
+    """
+    try:
+        return run_async(
+            _assess_student_module(
+                UUID(cohort_id), UUID(student_id), UUID(module_id)
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise self.retry(exc=exc)
+
+
+@celery_app.task(bind=True, max_retries=2, default_retry_delay=30)
+def assess_student_track(
+    self, cohort_id: str, student_id: str, track_id: str
+) -> dict:
+    """External evaluator: consolidate track-scope understanding for one student.
+
+    Known limitation (not handled in this phase): duplicate runs may append
+    duplicate rows; append-only latest-read is enough — no idempotency guard.
+    """
+    try:
+        return run_async(
+            _assess_student_track(
+                UUID(cohort_id), UUID(student_id), UUID(track_id)
             )
         )
     except Exception as exc:  # noqa: BLE001
@@ -238,17 +285,94 @@ async def _assess_student_lesson(
     cohort_id: UUID, student_id: UUID, lesson_id: UUID
 ) -> dict:
     from app.core.database import SessionLocal
+    from app.models.track import Lesson
+    from app.services.assessment.completion import module_lessons_all_concluded
     from app.services.assessment.lesson_assessment_service import LessonAssessmentService
 
     async with SessionLocal() as db:
         row = await LessonAssessmentService.assess(
             db, cohort_id, student_id, lesson_id
         )
+        result = {
+            "cohort_id": str(cohort_id),
+            "student_id": str(student_id),
+            "lesson_id": str(lesson_id),
+            "assessment_id": str(row.id),
+            "level": row.level.value if row.level is not None else None,
+        }
+        await db.commit()
+
+        # Chain after lesson assessment so the last lesson's row already exists.
+        # If this task fails, module/track are never enqueued (silent break).
+        lesson = await db.get(Lesson, lesson_id)
+        module_id = lesson.module_id if lesson is not None else None
+        if module_id is not None and await module_lessons_all_concluded(
+            db,
+            cohort_id=cohort_id,
+            student_id=student_id,
+            module_id=module_id,
+        ):
+            assess_student_module.delay(
+                str(cohort_id), str(student_id), str(module_id)
+            )
+
+        return result
+
+
+async def _assess_student_module(
+    cohort_id: UUID, student_id: UUID, module_id: UUID
+) -> dict:
+    from app.core.database import SessionLocal
+    from app.models.track import Module
+    from app.services.assessment.completion import track_modules_all_assessed
+    from app.services.assessment.module_assessment_service import ModuleAssessmentService
+
+    async with SessionLocal() as db:
+        row = await ModuleAssessmentService.assess(
+            db, cohort_id, student_id, module_id
+        )
+        result = {
+            "cohort_id": str(cohort_id),
+            "student_id": str(student_id),
+            "module_id": str(module_id),
+            "assessment_id": str(row.id),
+            "level": row.level.value if row.level is not None else None,
+        }
+        await db.commit()
+
+        # Chain after module assessment so this module's row already exists.
+        # Track fires when every active module has a module assessment (not merely
+        # when lessons are concluded). If this task fails, track is never enqueued.
+        module = await db.get(Module, module_id)
+        track_id = module.track_id if module is not None else None
+        if track_id is not None and await track_modules_all_assessed(
+            db,
+            cohort_id=cohort_id,
+            student_id=student_id,
+            track_id=track_id,
+        ):
+            assess_student_track.delay(
+                str(cohort_id), str(student_id), str(track_id)
+            )
+
+        return result
+
+
+async def _assess_student_track(
+    cohort_id: UUID, student_id: UUID, track_id: UUID
+) -> dict:
+    from app.core.database import SessionLocal
+    from app.services.assessment.track_assessment_service import TrackAssessmentService
+
+    async with SessionLocal() as db:
+        row = await TrackAssessmentService.assess(
+            db, cohort_id, student_id, track_id
+        )
         await db.commit()
         return {
             "cohort_id": str(cohort_id),
             "student_id": str(student_id),
-            "lesson_id": str(lesson_id),
+            "track_id": str(track_id),
             "assessment_id": str(row.id),
             "level": row.level.value if row.level is not None else None,
         }

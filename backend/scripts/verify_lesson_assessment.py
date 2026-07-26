@@ -1,14 +1,21 @@
-"""Verify lesson-scope student assessment.
+"""Verify layered student assessments (lesson / module / track).
 
-Two modes:
+Modes:
   1) Trigger wiring (no DB / Celery / Lira):
        python scripts/verify_lesson_assessment.py --check-trigger
 
-  2) Direct assessment for an already-concluded (cohort, student, lesson):
+  2) Direct assessment (iterate without triggers):
        python scripts/verify_lesson_assessment.py \\
-         --cohort-id UUID --student-id UUID --lesson-id UUID
+         --scope lesson --cohort-id UUID --student-id UUID --lesson-id UUID
 
-     With --force, runs even if progress is missing / not concluded (warns only).
+       python scripts/verify_lesson_assessment.py \\
+         --scope module --cohort-id UUID --student-id UUID --module-id UUID
+
+       python scripts/verify_lesson_assessment.py \\
+         --scope track --cohort-id UUID --student-id UUID --track-id UUID
+
+     With --force, runs even if progress/preconditions look incomplete (warns only).
+     Legacy: omitting --scope with --lesson-id implies --scope lesson.
 
 Usage (from backend/ with venv active).
 """
@@ -24,17 +31,51 @@ import uuid
 sys.path.insert(0, ".")
 
 
-def test_conclude_enqueues_lesson_assessment() -> None:
-    """Conclude must enqueue assess_student_lesson after commit (no Celery needed)."""
+def test_trigger_wiring() -> None:
+    """Assert conclude → lesson task; lesson task → module; module task → track."""
     from app.ai import tools
+    from app.workers import tasks
 
-    source = inspect.getsource(tools._conclude_lesson)
-    assert "enqueue_after_commit" in source
-    assert "assess_student_lesson" in source
+    conclude_src = inspect.getsource(tools._conclude_lesson)
+    assert "enqueue_after_commit" in conclude_src
+    assert "assess_student_lesson" in conclude_src
     print("OK _conclude_lesson enfileira assess_student_lesson via enqueue_after_commit")
 
+    lesson_src = inspect.getsource(tasks._assess_student_lesson)
+    assert "module_lessons_all_concluded" in lesson_src
+    assert "assess_student_module.delay" in lesson_src
+    print("OK _assess_student_lesson encadeia assess_student_module quando módulo completo")
 
-async def run_direct_assessment(
+    module_src = inspect.getsource(tasks._assess_student_module)
+    assert "track_modules_all_assessed" in module_src
+    assert "assess_student_track.delay" in module_src
+    print(
+        "OK _assess_student_module encadeia assess_student_track "
+        "quando todos os módulos têm avaliação"
+    )
+
+    # Module/track services must not pull conversations.
+    from app.services.assessment import module_assessment_service, track_assessment_service
+
+    module_src = inspect.getsource(module_assessment_service)
+    track_src = inspect.getsource(track_assessment_service)
+    assert "list_lesson_messages" not in module_src
+    assert "list_lesson_messages" not in track_src
+    assert "conversation_service" not in module_src
+    assert "conversation_service" not in track_src
+    print("OK módulo e trilha NÃO leem conversas (sem conversation_service)")
+
+
+async def _print_persisted(row) -> None:
+    level = row.level.value if row.level is not None else None
+    print(f"  assessment_id: {row.id}")
+    print(f"  scope: {row.scope.value}")
+    print(f"  level: {level}")
+    print(f"  assessment: {row.assessment[:500]}")
+    print(f"  gaps: {row.gaps[:500]}")
+
+
+async def run_direct_lesson(
     cohort_id: uuid.UUID,
     student_id: uuid.UUID,
     lesson_id: uuid.UUID,
@@ -80,61 +121,197 @@ async def run_direct_assessment(
         )
         assert persisted is not None, "StudentAssessment não foi persistido"
         assert persisted.id == row.id
-
-        level = persisted.level.value if persisted.level is not None else None
         print("OK avaliação de aula persistida")
-        print(f"  assessment_id: {persisted.id}")
-        print(f"  level: {level}")
-        print(f"  assessment: {persisted.assessment[:500]}")
-        print(f"  gaps: {persisted.gaps[:500]}")
+        await _print_persisted(persisted)
+
+
+async def run_direct_module(
+    cohort_id: uuid.UUID,
+    student_id: uuid.UUID,
+    module_id: uuid.UUID,
+    *,
+    force: bool = False,
+) -> None:
+    from sqlalchemy import select
+
+    from app.core.database import SessionLocal
+    from app.models.assessment import AssessmentScope, StudentAssessment
+    from app.services.assessment.completion import module_lessons_all_concluded
+    from app.services.assessment.module_assessment_service import ModuleAssessmentService
+
+    async with SessionLocal() as db:
+        complete = await module_lessons_all_concluded(
+            db,
+            cohort_id=cohort_id,
+            student_id=student_id,
+            module_id=module_id,
+        )
+        if not complete:
+            msg = (
+                "Nem todas as aulas ativas do módulo estão CONCLUIDA "
+                f"(cohort={cohort_id} student={student_id} module={module_id})."
+            )
+            if force:
+                print(f"AVISO: {msg} Continuando com --force.")
+            else:
+                raise SystemExit(msg)
+
+        print(
+            "INFO: avaliação de módulo NÃO lê conversas — "
+            "insumos = avaliações de aula + micro-scores do módulo."
+        )
+        row = await ModuleAssessmentService.assess(
+            db, cohort_id, student_id, module_id
+        )
+        await db.commit()
+
+        persisted = await db.scalar(
+            select(StudentAssessment)
+            .where(
+                StudentAssessment.cohort_id == cohort_id,
+                StudentAssessment.student_id == student_id,
+                StudentAssessment.scope == AssessmentScope.MODULE,
+                StudentAssessment.module_id == module_id,
+            )
+            .order_by(StudentAssessment.created_at.desc())
+            .limit(1)
+        )
+        assert persisted is not None, "StudentAssessment de módulo não foi persistido"
+        assert persisted.id == row.id
+        print("OK avaliação de módulo persistida")
+        await _print_persisted(persisted)
+
+
+async def run_direct_track(
+    cohort_id: uuid.UUID,
+    student_id: uuid.UUID,
+    track_id: uuid.UUID,
+    *,
+    force: bool = False,
+) -> None:
+    from sqlalchemy import select
+
+    from app.core.database import SessionLocal
+    from app.models.assessment import AssessmentScope, StudentAssessment
+    from app.services.assessment.completion import track_modules_all_assessed
+    from app.services.assessment.track_assessment_service import TrackAssessmentService
+
+    async with SessionLocal() as db:
+        complete = await track_modules_all_assessed(
+            db,
+            cohort_id=cohort_id,
+            student_id=student_id,
+            track_id=track_id,
+        )
+        if not complete:
+            msg = (
+                "Nem todos os módulos ativos da trilha têm avaliação de módulo "
+                f"(cohort={cohort_id} student={student_id} track={track_id})."
+            )
+            if force:
+                print(f"AVISO: {msg} Continuando com --force.")
+            else:
+                raise SystemExit(msg)
+
+        print(
+            "INFO: avaliação de trilha NÃO lê conversas — "
+            "insumos = avaliações de módulo + micro-scores da trilha."
+        )
+        row = await TrackAssessmentService.assess(
+            db, cohort_id, student_id, track_id
+        )
+        await db.commit()
+
+        persisted = await db.scalar(
+            select(StudentAssessment)
+            .where(
+                StudentAssessment.cohort_id == cohort_id,
+                StudentAssessment.student_id == student_id,
+                StudentAssessment.scope == AssessmentScope.TRACK,
+                StudentAssessment.track_id == track_id,
+            )
+            .order_by(StudentAssessment.created_at.desc())
+            .limit(1)
+        )
+        assert persisted is not None, "StudentAssessment de trilha não foi persistido"
+        assert persisted.id == row.id
+        print("OK avaliação de trilha persistida")
+        await _print_persisted(persisted)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Verify lesson assessment flow")
+    parser = argparse.ArgumentParser(description="Verify layered assessment flow")
     parser.add_argument(
         "--check-trigger",
         action="store_true",
-        help="Only assert conclude → enqueue wiring (no DB)",
+        help="Only assert trigger/chain wiring (no DB)",
+    )
+    parser.add_argument(
+        "--scope",
+        choices=("lesson", "module", "track"),
+        default=None,
+        help="Assessment scope for direct mode",
     )
     parser.add_argument("--cohort-id", type=uuid.UUID, default=None)
     parser.add_argument("--student-id", type=uuid.UUID, default=None)
     parser.add_argument("--lesson-id", type=uuid.UUID, default=None)
+    parser.add_argument("--module-id", type=uuid.UUID, default=None)
+    parser.add_argument("--track-id", type=uuid.UUID, default=None)
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Run even if progress is missing or lesson is not concluded",
+        help="Run even if completion preconditions are not met",
     )
     args = parser.parse_args()
 
     if args.check_trigger:
-        test_conclude_enqueues_lesson_assessment()
+        test_trigger_wiring()
         print("\nChecagem do gatilho passou.")
         return
 
-    missing = [
-        name
-        for name, value in (
-            ("--cohort-id", args.cohort_id),
-            ("--student-id", args.student_id),
-            ("--lesson-id", args.lesson_id),
+    scope = args.scope
+    if scope is None and args.lesson_id is not None:
+        scope = "lesson"
+    if scope is None:
+        parser.error("modo direto exige --scope (ou --lesson-id legado) ou --check-trigger")
+
+    if args.cohort_id is None or args.student_id is None:
+        parser.error("modo direto exige --cohort-id e --student-id")
+
+    if scope == "lesson":
+        if args.lesson_id is None:
+            parser.error("--scope lesson exige --lesson-id")
+        asyncio.run(
+            run_direct_lesson(
+                args.cohort_id,
+                args.student_id,
+                args.lesson_id,
+                force=args.force,
+            )
         )
-        if value is None
-    ]
-    if missing:
-        parser.error(
-            "modo direto exige "
-            + ", ".join(missing)
-            + " (ou use --check-trigger)"
+    elif scope == "module":
+        if args.module_id is None:
+            parser.error("--scope module exige --module-id")
+        asyncio.run(
+            run_direct_module(
+                args.cohort_id,
+                args.student_id,
+                args.module_id,
+                force=args.force,
+            )
+        )
+    else:
+        if args.track_id is None:
+            parser.error("--scope track exige --track-id")
+        asyncio.run(
+            run_direct_track(
+                args.cohort_id,
+                args.student_id,
+                args.track_id,
+                force=args.force,
+            )
         )
 
-    asyncio.run(
-        run_direct_assessment(
-            args.cohort_id,
-            args.student_id,
-            args.lesson_id,
-            force=args.force,
-        )
-    )
     print("\nAvaliação direta concluída.")
 
 

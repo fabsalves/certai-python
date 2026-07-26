@@ -83,7 +83,10 @@ coerente — a trilha vê a história consolidada, não um oceano de transcriç�
 
 - Aula concluída para o aluno (`concluded_at`) → avalia a **aula**
 - Todas as aulas do módulo concluídas para o aluno → avalia o **módulo**
-- Todos os módulos da trilha concluídos → avalia a **trilha**
+  (encadeado após a task de avaliação de aula terminar — evita corrida
+  em que o módulo rodaria sem a avaliação da última aula)
+- Todos os módulos da trilha **com avaliação de módulo** para o aluno →
+  avalia a **trilha** (encadeado após a task de avaliação de módulo)
 
 Nenhum mecanismo novo de disparo.
 
