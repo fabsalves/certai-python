@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,8 +14,11 @@ from app.ai.persona import LIRA_TONE
 from app.core.config import settings
 from app.services.conversation_service import lesson_conversation_history
 
+logger = logging.getLogger(__name__)
+
 INSTRUCTIONS_CHAR_LIMIT = 25_000
 MAX_HISTORY_TURNS = 20
+INSTRUCTIONS_WARN_RATIO = 0.8
 
 VOICE_MODE_BLOCK = """## Modo de conversa
 Você está em uma chamada de voz ao vivo. Respostas curtas e naturais para fala.
@@ -188,19 +192,30 @@ class RealtimeInstructionsBuilder:
                 f"{RESUMPTION_BLOCK}"
             )
 
+        def finish(text: str) -> str:
+            warn_at = int(INSTRUCTIONS_CHAR_LIMIT * INSTRUCTIONS_WARN_RATIO)
+            n = len(text)
+            if n > warn_at:
+                logger.warning(
+                    "Realtime instructions size %s chars exceeds 80%% of limit %s",
+                    n,
+                    INSTRUCTIONS_CHAR_LIMIT,
+                )
+            return text
+
         full = render(format_history(history))
         if len(full) <= INSTRUCTIONS_CHAR_LIMIT:
-            return full
+            return finish(full)
 
         recent = history[-MAX_HISTORY_TURNS:]
         dropped = history[:-MAX_HISTORY_TURNS]
         truncated = render(format_history(recent))
         if len(truncated) <= INSTRUCTIONS_CHAR_LIMIT:
-            return truncated
+            return finish(truncated)
 
         summary = await _summarize_dropped_turns(dropped)
         with_summary = render(format_history(recent), summary=summary)
         if len(with_summary) <= INSTRUCTIONS_CHAR_LIMIT:
-            return with_summary
+            return finish(with_summary)
 
-        return truncated
+        return finish(truncated)

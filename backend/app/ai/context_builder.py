@@ -5,7 +5,8 @@ to the AI. The ContextBuilder hands the AI:
 
   - the track MAP (sequence, titles, where each thing lives) -> always, so the AI
     can orient ("you'll see this in Lesson 6");
-  - the lesson CONTENT -> only up to where the cohort has reached (CohortProgress).
+  - the current lesson CONTENT -> full catalog + full cohort note;
+  - prior unlocked lessons -> note summary/unclear_points only (no catalog, no KB).
 
 A future lesson has no content in the bundle. The AI cannot teach it because it
 does not exist in the context -- with no textual rule.
@@ -30,7 +31,7 @@ class ContextBundle:
 
     scope: str
     track_map: list[dict] = field(default_factory=list)        # always present
-    unlocked_content: list[dict] = field(default_factory=list)  # only what the cohort saw
+    unlocked_content: list[dict] = field(default_factory=list)  # current lesson catalog only
     cohort_notes: list[dict] = field(default_factory=list)
     current_position: dict | None = None
     track_guide: str = ""  # macro guide from the track material, available at any lesson
@@ -41,7 +42,7 @@ class ContextBundle:
         blocks = (
             "## Track map (full sequence, titles only)\n"
             f"{json.dumps(self.track_map, ensure_ascii=False, indent=2)}\n\n"
-            "## Unlocked content (lessons the cohort has studied)\n"
+            "## Current lesson content\n"
             f"{json.dumps(self.unlocked_content, ensure_ascii=False, indent=2)}\n\n"
             "## Notes for this cohort\n"
             f"{json.dumps(self.cohort_notes, ensure_ascii=False, indent=2)}\n\n"
@@ -98,12 +99,19 @@ class ContextBuilder:
                         "unlocked": lesson.id in unlocked,
                     }
                 )
-                if lesson.id in unlocked:
+                # Full catalog only for the current lesson (when unlocked).
+                if lesson.id == lesson_id and lesson.id in unlocked:
                     content.append({"lesson": lesson.title, "content": lesson.content})
                 if lesson.id == lesson_id:
-                    position = {"module": module.title, "lesson": lesson.title}
+                    position = {
+                        "track": track.title,
+                        "module": module.title,
+                        "lesson": lesson.title,
+                    }
 
-        notes = await self._notes(cohort_id, list(unlocked))
+        notes = await self._notes(
+            cohort_id, list(unlocked), current_lesson_id=lesson_id
+        )
         return ContextBundle(
             scope="lesson",
             track_map=track_map,
@@ -152,7 +160,13 @@ class ContextBuilder:
             ),
         )
 
-    async def _notes(self, cohort_id: uuid.UUID, lesson_ids: list[uuid.UUID]) -> list[dict]:
+    async def _notes(
+        self,
+        cohort_id: uuid.UUID,
+        lesson_ids: list[uuid.UUID],
+        *,
+        current_lesson_id: uuid.UUID | None = None,
+    ) -> list[dict]:
         if not lesson_ids:
             return []
         stmt = (
@@ -165,12 +179,15 @@ class ContextBuilder:
             )
         )
         rows = (await self.db.execute(stmt)).all()
-        return [
-            {
+        result: list[dict] = []
+        for note, title in rows:
+            entry: dict = {
                 "lesson": title,
                 "summary": note.summary,
                 "unclear_points": note.unclear_points,
-                "knowledge_base": note.attachment_knowledge_base,
             }
-            for note, title in rows
-        ]
+            # Full note (incl. knowledge_base) only for the current lesson.
+            if current_lesson_id is None or note.lesson_id == current_lesson_id:
+                entry["knowledge_base"] = note.attachment_knowledge_base
+            result.append(entry)
+        return result
