@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../lib/api";
 import {
+  ASSESSMENT_OVERVIEW_HINT,
+  ASSESSMENT_STATE_HINTS,
   matchesLevelFilter,
+  trackLevelFromBatch,
   trackLevelSortRank,
+  type CohortTrackLevels,
   type LevelFilter,
-  type StudentAssessments,
   type TrackLevelSummary,
 } from "../../lib/assessments";
 import type { Enrollment } from "../../lib/cohorts";
@@ -12,7 +15,11 @@ import type { Track } from "../../lib/tracks";
 import { useAuth } from "../../lib/auth";
 import { useConfirm } from "../../lib/confirm";
 import { useApiAction } from "../../lib/useApiAction";
-import { AssessmentLevelBadge } from "./AssessmentLevelBadge";
+import { Tooltip } from "../ui/Tooltip";
+import {
+  AssessmentLevelBadge,
+  AssessmentLevelBadgeSkeleton,
+} from "./AssessmentLevelBadge";
 import { StudentAssessmentsPanel } from "./StudentAssessmentsPanel";
 import { StudentEnrollModal } from "./StudentEnrollModal";
 
@@ -24,14 +31,26 @@ interface Props {
 
 type SortMode = "name" | "level";
 
-const LEVEL_FILTERS: { value: LevelFilter; label: string }[] = [
+const LEVEL_FILTERS: {
+  value: LevelFilter;
+  label: string;
+  hint?: string;
+}[] = [
   { value: "all", label: "Todos" },
   { value: "high", label: "Alto" },
   { value: "medium", label: "Médio" },
   { value: "low", label: "Baixo" },
   { value: "very_low", label: "Muito baixo" },
-  { value: "no_evidence", label: "Sem evidência" },
-  { value: "no_assessment", label: "Sem avaliação" },
+  {
+    value: "no_evidence",
+    label: "Sem evidência",
+    hint: ASSESSMENT_STATE_HINTS.no_evidence,
+  },
+  {
+    value: "no_assessment",
+    label: "Sem avaliação",
+    hint: ASSESSMENT_STATE_HINTS.no_assessment,
+  },
 ];
 
 function isNarrowViewport(): boolean {
@@ -42,7 +61,7 @@ export function CohortEnrollments({ cohortId, track, onChanged }: Props) {
   const { user } = useAuth();
   const confirm = useConfirm();
   const runAction = useApiAction();
-  // Professor is read-only on this tab — never enroll/remove.
+  // Professor is read-only on this tab: never enroll/remove.
   const canManageEnrollments =
     user?.role === "admin" || user?.role === "designer";
   const detailRef = useRef<HTMLDivElement>(null);
@@ -55,6 +74,7 @@ export function CohortEnrollments({ cohortId, track, onChanged }: Props) {
   const [sortMode, setSortMode] = useState<SortMode>("name");
   const [levelFilter, setLevelFilter] = useState<LevelFilter>("all");
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [staleSelectionNotice, setStaleSelectionNotice] = useState<string | null>(null);
   const [trackLevels, setTrackLevels] = useState<Record<string, TrackLevelSummary>>({});
   const [levelsLoading, setLevelsLoading] = useState(false);
 
@@ -75,29 +95,29 @@ export function CohortEnrollments({ cohortId, track, onChanged }: Props) {
   useEffect(() => {
     if (enrollments.length === 0) {
       setTrackLevels({});
+      setLevelsLoading(false);
       return;
     }
     let cancelled = false;
     setLevelsLoading(true);
-    Promise.all(
-      enrollments.map(async (enrollment) => {
-        try {
-          const { data } = await api.get<StudentAssessments>(
-            `/cohorts/${cohortId}/students/${enrollment.student_id}/assessments`,
-          );
-          const trackRow = data.assessments.find((row) => row.scope === "track");
-          const summary: TrackLevelSummary = trackRow
-            ? { kind: "level", level: trackRow.level }
-            : { kind: "missing" };
-          return [enrollment.student_id, summary] as const;
-        } catch {
-          return [enrollment.student_id, { kind: "missing" } as TrackLevelSummary] as const;
-        }
-      }),
-    )
-      .then((rows) => {
+    api
+      .get<CohortTrackLevels>(`/cohorts/${cohortId}/students/track-levels`)
+      .then(({ data }) => {
         if (cancelled) return;
-        setTrackLevels(Object.fromEntries(rows));
+        const next: Record<string, TrackLevelSummary> = {};
+        for (const row of data.students) {
+          next[row.student_id] = trackLevelFromBatch(row);
+        }
+        setTrackLevels(next);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        // Fail closed: mark enrolled students as missing only after the request ends.
+        const next: Record<string, TrackLevelSummary> = {};
+        for (const enrollment of enrollments) {
+          next[enrollment.student_id] = { kind: "missing" };
+        }
+        setTrackLevels(next);
       })
       .finally(() => {
         if (!cancelled) setLevelsLoading(false);
@@ -152,6 +172,7 @@ export function CohortEnrollments({ cohortId, track, onChanged }: Props) {
   }, [enrollments, selectedStudentId]);
 
   function selectStudent(studentId: string) {
+    setStaleSelectionNotice(null);
     setSelectedStudentId(studentId);
     if (isNarrowViewport()) {
       requestAnimationFrame(() => {
@@ -159,6 +180,13 @@ export function CohortEnrollments({ cohortId, track, onChanged }: Props) {
       });
     }
   }
+
+  const handleAssessmentsNotEnrolled = useCallback(() => {
+    setSelectedStudentId(null);
+    setStaleSelectionNotice(
+      "Este aluno não está mais nesta turma. Recarregue a página para atualizar a lista.",
+    );
+  }, []);
 
   async function removeEnrollment(studentIdToRemove: string) {
     const enrollment = enrollments.find((e) => e.student_id === studentIdToRemove);
@@ -189,9 +217,20 @@ export function CohortEnrollments({ cohortId, track, onChanged }: Props) {
   return (
     <section className="cohort-students">
       <div className="cohort-students__toolbar">
-        <p className="muted cohort-students__hint">
-          Selecione um aluno para ver as avaliações da trilha, módulos e aulas.
-        </p>
+        <div className="muted cohort-students__hint">
+          <p className="cohort-students__hint-text">
+            Selecione um aluno para ver as avaliações da trilha, módulos e aulas.
+          </p>
+          <Tooltip content={ASSESSMENT_OVERVIEW_HINT}>
+            <button
+              type="button"
+              className="ui-help-icon"
+              aria-label="O que é a avaliação"
+            >
+              ?
+            </button>
+          </Tooltip>
+        </div>
         {canManageEnrollments && (
           <button type="button" className="btn btn-primary" onClick={() => setModalOpen(true)}>
             Adicionar alunos
@@ -244,16 +283,24 @@ export function CohortEnrollments({ cohortId, track, onChanged }: Props) {
           </div>
 
           <div className="cohort-students__filters" role="group" aria-label="Filtrar por nível">
-            {LEVEL_FILTERS.map((item) => (
-              <button
-                key={item.value}
-                type="button"
-                className={`cohort-students__chip${levelFilter === item.value ? " is-active" : ""}`}
-                onClick={() => setLevelFilter(item.value)}
-              >
-                {item.label}
-              </button>
-            ))}
+            {LEVEL_FILTERS.map((item) => {
+              const chip = (
+                <button
+                  type="button"
+                  className={`cohort-students__chip${levelFilter === item.value ? " is-active" : ""}`}
+                  onClick={() => setLevelFilter(item.value)}
+                >
+                  {item.label}
+                </button>
+              );
+              return item.hint ? (
+                <Tooltip key={item.value} content={item.hint}>
+                  {chip}
+                </Tooltip>
+              ) : (
+                <Fragment key={item.value}>{chip}</Fragment>
+              );
+            })}
           </div>
 
           <p className="muted cohort-students__count">
@@ -282,12 +329,20 @@ export function CohortEnrollments({ cohortId, track, onChanged }: Props) {
                             className="cohort-students__select"
                             onClick={() => selectStudent(e.student_id)}
                           >
-                            <span className="cohort-students__name">{e.student_name}</span>
-                            {summary?.kind === "level" ? (
-                              <AssessmentLevelBadge level={summary.level} />
-                            ) : (
-                              <AssessmentLevelBadge missing />
-                            )}
+                            <span className="cohort-students__name-slot">
+                              <Tooltip content={e.student_name}>
+                                <span className="cohort-students__name">{e.student_name}</span>
+                              </Tooltip>
+                            </span>
+                            <span className="cohort-students__badge-slot">
+                              {levelsLoading && summary == null ? (
+                                <AssessmentLevelBadgeSkeleton />
+                              ) : summary?.kind === "level" ? (
+                                <AssessmentLevelBadge level={summary.level} compact />
+                              ) : (
+                                <AssessmentLevelBadge missing compact />
+                              )}
+                            </span>
                           </button>
                           {canManageEnrollments ? (
                             <button
@@ -327,10 +382,13 @@ export function CohortEnrollments({ cohortId, track, onChanged }: Props) {
                   studentEmail={selectedEnrollment.student_email}
                   studentWhatsapp={selectedEnrollment.student_whatsapp}
                   track={track}
+                  onNotEnrolled={handleAssessmentsNotEnrolled}
                 />
               ) : (
                 <div className="cohort-students__detail-empty">
-                  <p>Selecione um aluno para ver as avaliações</p>
+                  <p className={staleSelectionNotice ? "muted" : undefined}>
+                    {staleSelectionNotice ?? "Selecione um aluno para ver as avaliações"}
+                  </p>
                 </div>
               )}
             </div>

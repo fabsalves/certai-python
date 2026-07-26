@@ -299,6 +299,16 @@ class StudentAssessmentsOut(BaseModel):
     assessments: list[StudentAssessmentOut] = []
 
 
+class CohortTrackLevelOut(BaseModel):
+    student_id: uuid.UUID
+    level: str | None = None  # null = insufficient evidence, or no assessment
+    has_assessment: bool
+
+
+class CohortTrackLevelsOut(BaseModel):
+    students: list[CohortTrackLevelOut] = []
+
+
 # --- Lesson completion ---
 class LessonCompletionIn(BaseModel):
     lesson_id: uuid.UUID

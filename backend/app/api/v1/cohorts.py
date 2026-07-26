@@ -18,6 +18,8 @@ from app.schemas import (
     CohortListOut,
     CohortOut,
     CohortProgressOut,
+    CohortTrackLevelOut,
+    CohortTrackLevelsOut,
     CohortUpdate,
     EnrollmentCreate,
     EnrollmentBulkCreate,
@@ -524,6 +526,37 @@ async def list_lesson_assessments(
             )
             for item in result.pending
         ],
+    )
+
+
+@router.get(
+    "/{cohort_id}/students/track-levels",
+    response_model=CohortTrackLevelsOut,
+    dependencies=[Depends(can_view)],
+)
+async def list_student_track_levels(
+    cohort_id: uuid.UUID,
+    user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Latest track-level assessment summary for every enrolled student (batch)."""
+    cohort = await _get_cohort_or_404(db, cohort_id)
+    await _assert_cohort_access(db, user, cohort)
+    try:
+        result = await StudentAssessmentReadService.latest_track_levels(
+            db, cohort_id=cohort_id
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    return CohortTrackLevelsOut(
+        students=[
+            CohortTrackLevelOut(
+                student_id=row.student_id,
+                level=row.level,
+                has_assessment=row.has_assessment,
+            )
+            for row in result.students
+        ]
     )
 
 

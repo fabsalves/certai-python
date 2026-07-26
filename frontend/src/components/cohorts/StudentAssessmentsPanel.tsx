@@ -1,3 +1,4 @@
+import axios from "axios";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { api } from "../../lib/api";
 import type { StudentAssessment, StudentAssessments } from "../../lib/assessments";
@@ -12,6 +13,8 @@ interface Props {
   studentEmail: string;
   studentWhatsapp?: string | null;
   track: Track;
+  /** 404: student no longer enrolled (stale page / removed). Parent clears selection. */
+  onNotEnrolled?: () => void;
 }
 
 type ScopeEyebrow = "Trilha" | "Módulo" | "Aula";
@@ -112,6 +115,7 @@ export function StudentAssessmentsPanel({
   studentEmail,
   studentWhatsapp,
   track,
+  onNotEnrolled,
 }: Props) {
   const [data, setData] = useState<StudentAssessments | null>(null);
   const [loading, setLoading] = useState(true);
@@ -119,6 +123,7 @@ export function StudentAssessmentsPanel({
 
   useEffect(() => {
     let cancelled = false;
+    let notEnrolled = false;
     setLoading(true);
     setError("");
     api
@@ -126,19 +131,25 @@ export function StudentAssessmentsPanel({
       .then(({ data: payload }) => {
         if (!cancelled) setData(payload);
       })
-      .catch(() => {
-        if (!cancelled) {
-          setData(null);
-          setError("Não foi possível carregar as avaliações do aluno.");
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setData(null);
+        // 404: not enrolled anymore (stale list after seed/removal), not a hard failure.
+        if (axios.isAxiosError(err) && err.response?.status === 404) {
+          notEnrolled = true;
+          onNotEnrolled?.();
+          return;
         }
+        setError("Não foi possível carregar as avaliações do aluno.");
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        // Keep loading until parent clears selection on 404 (avoids empty-tree flash).
+        if (!cancelled && !notEnrolled) setLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [cohortId, studentId]);
+  }, [cohortId, studentId, onNotEnrolled]);
 
   const byKey = useMemo(() => {
     const map = new Map<string, StudentAssessment>();

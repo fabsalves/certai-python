@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../../lib/api";
 import {
   ASSESSMENT_LEVEL_ORDER,
+  ASSESSMENT_STATE_HINTS,
   assessmentLevelLabel,
   type AssessmentLevel,
   type LessonAssessments,
 } from "../../lib/assessments";
+import { Tooltip } from "../ui/Tooltip";
 
 interface Props {
   cohortId: string;
@@ -16,6 +18,40 @@ interface CountItem {
   key: string;
   label: string;
   count: number;
+  hint?: string;
+}
+
+function DistributionHeading() {
+  return (
+    <div className="cohort-assessment-dist__heading">
+      <div className="cohort-assessment-dist__heading-row">
+        <p className="cohort-assessment-dist__label">Como a turma foi nesta aula</p>
+        <Tooltip
+          content={
+            <>
+              <p>
+                <strong>Sem evidência suficiente:</strong> {ASSESSMENT_STATE_HINTS.no_evidence}
+              </p>
+              <p>
+                <strong>Sem avaliação:</strong> {ASSESSMENT_STATE_HINTS.no_assessment}
+              </p>
+              <p>
+                <strong>Avaliação pendente:</strong> {ASSESSMENT_STATE_HINTS.pending}
+              </p>
+            </>
+          }
+        >
+          <button
+            type="button"
+            className="ui-help-icon"
+            aria-label="O que significam os estados de avaliação"
+          >
+            ?
+          </button>
+        </Tooltip>
+      </div>
+    </div>
+  );
 }
 
 export function LessonAssessmentDistribution({ cohortId, lessonId }: Props) {
@@ -77,6 +113,7 @@ export function LessonAssessmentDistribution({ cohortId, lessonId }: Props) {
         key: "no_evidence",
         label: "Sem evidência suficiente",
         count: noEvidence,
+        hint: ASSESSMENT_STATE_HINTS.no_evidence,
       });
     }
     if (data.pending.length > 0) {
@@ -84,6 +121,7 @@ export function LessonAssessmentDistribution({ cohortId, lessonId }: Props) {
         key: "pending",
         label: "Avaliação pendente",
         count: data.pending.length,
+        hint: ASSESSMENT_STATE_HINTS.pending,
       });
     }
     return result;
@@ -112,7 +150,7 @@ export function LessonAssessmentDistribution({ cohortId, lessonId }: Props) {
   if (items.length === 0) {
     return (
       <div className="cohort-assessment-dist">
-        <p className="cohort-assessment-dist__label">Como a turma foi nesta aula</p>
+        <DistributionHeading />
         <p className="muted" style={{ margin: 0, fontSize: 14 }}>
           Ainda não há alunos que concluíram esta aula.
         </p>
@@ -122,12 +160,18 @@ export function LessonAssessmentDistribution({ cohortId, lessonId }: Props) {
 
   return (
     <div className="cohort-assessment-dist">
-      <p className="cohort-assessment-dist__label">Como a turma foi nesta aula</p>
+      <DistributionHeading />
       <ul className="cohort-assessment-dist__list">
         {items.map((item) => (
           <li key={item.key} className="cohort-assessment-dist__item">
             <span className="cohort-assessment-dist__count">{item.count}</span>
-            <span>{item.label}</span>
+            {item.hint ? (
+              <Tooltip content={item.hint}>
+                <span>{item.label}</span>
+              </Tooltip>
+            ) : (
+              <span>{item.label}</span>
+            )}
           </li>
         ))}
       </ul>

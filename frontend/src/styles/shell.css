@@ -366,6 +366,80 @@
   margin: 0;
 }
 
+/* --- Tooltip --- */
+
+.ui-tooltip-anchor {
+  display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+  vertical-align: middle;
+}
+
+.ui-tooltip {
+  position: fixed;
+  z-index: 120;
+  max-width: min(280px, calc(100vw - 16px));
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--ink);
+  color: var(--on-brand);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 450;
+  line-height: 1.45;
+  letter-spacing: 0.01em;
+  box-shadow: 0 4px 18px rgba(20, 32, 43, 0.22), 0 1px 3px rgba(20, 32, 43, 0.12);
+  pointer-events: none;
+  animation: ui-tooltip-in 0.12s ease-out;
+}
+
+.ui-tooltip__content {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.ui-tooltip__content strong {
+  color: #fff;
+  font-weight: 600;
+}
+
+.ui-tooltip__content p {
+  margin: 0;
+}
+
+.ui-tooltip__content p + p {
+  margin-top: 6px;
+}
+
+.ui-tooltip__arrow {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: var(--ink);
+  transform: rotate(45deg);
+  left: var(--tooltip-arrow-left, 50%);
+  margin-left: -4px;
+}
+
+.ui-tooltip--top .ui-tooltip__arrow {
+  bottom: -4px;
+}
+
+.ui-tooltip--bottom .ui-tooltip__arrow {
+  top: -4px;
+}
+
+@keyframes ui-tooltip-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* --- Modal --- */
 
 .modal-backdrop {
@@ -812,10 +886,17 @@ html.modal-scroll-lock body {
 }
 
 .cohort-students__hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0;
   font-size: 14px;
   flex: 1;
   min-width: 0;
+}
+
+.cohort-students__hint-text {
+  margin: 0;
 }
 
 .cohort-students__empty {
@@ -995,14 +1076,14 @@ html.modal-scroll-lock body {
 }
 
 .cohort-students__select {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  column-gap: 12px;
   min-width: 0;
   flex: 1;
   margin: 0;
-  padding: 10px 12px;
+  padding: 8px 12px;
   border: 0;
   background: transparent;
   color: inherit;
@@ -1021,13 +1102,41 @@ html.modal-scroll-lock body {
   border-radius: var(--radius-sm);
 }
 
-.cohort-students__name {
-  font-weight: 500;
-  font-size: 14px;
+.cohort-students__name-slot {
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.cohort-students__name-slot .ui-tooltip-anchor {
+  display: block;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.cohort-students__badge-slot {
+  flex-shrink: 0;
+  justify-self: end;
+  overflow: visible;
+}
+
+.cohort-students__badge-slot .ui-tooltip-anchor {
+  flex: none;
+  overflow: visible;
+}
+
+.cohort-students__name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  width: 100%;
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 1.3;
+  min-width: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .cohort-students__remove {
@@ -1110,13 +1219,47 @@ html.modal-scroll-lock body {
   background: var(--surface);
 }
 
+.cohort-assessment-dist__heading {
+  margin-bottom: 10px;
+}
+
+.cohort-assessment-dist__heading-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .cohort-assessment-dist__label {
-  margin: 0 0 10px;
+  margin: 0;
   font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-muted);
+}
+
+.ui-help-icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: help;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ui-help-icon:hover,
+.ui-help-icon:focus-visible {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--text-muted) 45%, transparent);
 }
 
 .cohort-assessment-dist__list {
@@ -1175,6 +1318,30 @@ html.modal-scroll-lock body {
   color: var(--text-muted);
   background: var(--surface-sunken);
   border-color: var(--border);
+}
+
+.assessment-level-badge--skeleton {
+  width: 72px;
+  height: 20px;
+  padding: 0;
+  border-color: transparent;
+  background: linear-gradient(
+    90deg,
+    var(--surface-sunken) 0%,
+    color-mix(in srgb, var(--surface-sunken) 55%, #fff) 50%,
+    var(--surface-sunken) 100%
+  );
+  background-size: 200% 100%;
+  animation: assessment-badge-shimmer 1.2s ease-in-out infinite;
+}
+
+@keyframes assessment-badge-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
 }
 
 .student-assessments-panel {

@@ -52,6 +52,18 @@ class StudentAssessmentsResult:
     assessments: list[AssessmentReadRow]
 
 
+@dataclass(frozen=True)
+class TrackLevelRow:
+    student_id: uuid.UUID
+    level: str | None
+    has_assessment: bool
+
+
+@dataclass(frozen=True)
+class CohortTrackLevelsResult:
+    students: list[TrackLevelRow]
+
+
 def _level_value(row: StudentAssessment) -> str | None:
     return row.level.value if row.level is not None else None
 
@@ -284,3 +296,53 @@ class StudentAssessmentReadService:
             student_name=student.name,
             assessments=assessments,
         )
+
+    @staticmethod
+    async def latest_track_levels(
+        db: AsyncSession,
+        *,
+        cohort_id: uuid.UUID,
+    ) -> CohortTrackLevelsResult:
+        """Latest track-scope level per enrolled student (one query, no AI)."""
+        cohort = await db.get(Cohort, cohort_id)
+        if cohort is None:
+            raise ValueError("Turma não encontrada")
+
+        enrolled = (
+            await db.execute(
+                select(Enrollment.student_id, User.name)
+                .join(User, Enrollment.student_id == User.id)
+                .where(Enrollment.cohort_id == cohort_id)
+                .order_by(User.name)
+            )
+        ).all()
+
+        assessment_rows = (
+            await db.execute(
+                select(StudentAssessment)
+                .where(
+                    StudentAssessment.cohort_id == cohort_id,
+                    StudentAssessment.scope == AssessmentScope.TRACK,
+                    StudentAssessment.track_id == cohort.track_id,
+                )
+                .order_by(StudentAssessment.created_at.desc())
+            )
+        ).scalars().all()
+
+        latest_by_student: dict[uuid.UUID, StudentAssessment] = {}
+        for row in assessment_rows:
+            if row.student_id in latest_by_student:
+                continue
+            latest_by_student[row.student_id] = row
+
+        students = [
+            TrackLevelRow(
+                student_id=student_id,
+                level=_level_value(latest_by_student[student_id])
+                if student_id in latest_by_student
+                else None,
+                has_assessment=student_id in latest_by_student,
+            )
+            for student_id, _name in enrolled
+        ]
+        return CohortTrackLevelsResult(students=students)
