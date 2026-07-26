@@ -53,3 +53,42 @@ export const ASSESSMENT_LEVEL_ORDER: AssessmentLevel[] = [
   "low",
   "very_low",
 ];
+
+/** Track-level summary for list panorama. */
+export type TrackLevelSummary =
+  | { kind: "level"; level: AssessmentLevel | null }
+  | { kind: "missing" };
+
+/** Lower rank = needs attention first when sorting by level. */
+export function trackLevelSortRank(summary: TrackLevelSummary | undefined): number {
+  // Missing assessment is absence of data — sort last, not first.
+  if (summary == null || summary.kind === "missing") return 6;
+  if (summary.level === null) return 1; // insufficient evidence — strongest alert
+  const order: Record<AssessmentLevel, number> = {
+    very_low: 2,
+    low: 3,
+    medium: 4,
+    high: 5,
+  };
+  return order[summary.level] ?? 6;
+}
+
+export type LevelFilter =
+  | "all"
+  | AssessmentLevel
+  | "no_evidence"
+  | "no_assessment";
+
+export function matchesLevelFilter(
+  summary: TrackLevelSummary | undefined,
+  filter: LevelFilter,
+): boolean {
+  if (filter === "all") return true;
+  if (filter === "no_assessment") {
+    return summary == null || summary.kind === "missing";
+  }
+  if (filter === "no_evidence") {
+    return summary?.kind === "level" && summary.level === null;
+  }
+  return summary?.kind === "level" && summary.level === filter;
+}

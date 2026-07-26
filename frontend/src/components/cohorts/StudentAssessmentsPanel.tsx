@@ -1,57 +1,106 @@
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { api } from "../../lib/api";
-import {
-  assessmentLevelLabel,
-  type StudentAssessment,
-  type StudentAssessments,
-} from "../../lib/assessments";
+import type { StudentAssessment, StudentAssessments } from "../../lib/assessments";
 import { sortedLessons, sortedModules, type Track } from "../../lib/tracks";
+import { maskPhoneBR } from "../../lib/validation";
+import { AssessmentLevelBadge } from "./AssessmentLevelBadge";
 
 interface Props {
   cohortId: string;
   studentId: string;
   studentName: string;
+  studentEmail: string;
+  studentWhatsapp?: string | null;
   track: Track;
 }
 
-function AssessmentCard({ row }: { row: StudentAssessment }) {
+type ScopeEyebrow = "Trilha" | "Módulo" | "Aula";
+
+function AssessmentScopeCard({
+  eyebrow,
+  title,
+  row,
+  defaultOpen,
+  nested,
+}: {
+  eyebrow: ScopeEyebrow;
+  title: string;
+  row: StudentAssessment | null;
+  defaultOpen: boolean;
+  /** Lesson cards (or other nested scope cards) rendered inside this card when open. */
+  nested?: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const hasNested = nested != null;
+  const canExpand = row != null || hasNested;
+
   return (
-    <article className="student-assessment-card">
-      <div className="student-assessment-card__head">
-        <h4 className="student-assessment-card__title">{row.scope_title || "Avaliação"}</h4>
-        <span className="tag">{assessmentLevelLabel(row.level)}</span>
-      </div>
-      <div className="student-assessment-card__field">
-        <span className="student-assessment-card__label">Parecer</span>
-        {row.assessment.trim() ? (
-          <p className="student-assessment-card__text">{row.assessment.trim()}</p>
-        ) : (
-          <p className="muted student-assessment-card__empty">Nenhum</p>
-        )}
-      </div>
-      {row.level != null && (
-        <div className="student-assessment-card__field">
-          <span className="student-assessment-card__label">Lacunas</span>
-          {row.gaps.trim() ? (
-            <p className="student-assessment-card__text">{row.gaps.trim()}</p>
+    <article
+      className={`student-assessment-card${open ? " is-open" : ""}${
+        row == null ? " student-assessment-card--missing" : ""
+      }${hasNested ? " student-assessment-card--parent" : ""}`}
+    >
+      <button
+        type="button"
+        className="student-assessment-card__toggle"
+        onClick={() => {
+          if (canExpand) setOpen((v) => !v);
+        }}
+        aria-expanded={open}
+        disabled={!canExpand}
+      >
+        <div className="student-assessment-card__toggle-main">
+          <span className="student-assessment-card__eyebrow">{eyebrow}</span>
+          <h4 className="student-assessment-card__title">{title}</h4>
+        </div>
+        <div className="student-assessment-card__toggle-meta">
+          {row ? (
+            <AssessmentLevelBadge level={row.level} />
           ) : (
-            <p className="muted student-assessment-card__empty">Nenhuma</p>
+            <AssessmentLevelBadge missing />
+          )}
+          {canExpand && (
+            <span className={`student-assessment-card__chevron${open ? " is-open" : ""}`} aria-hidden>
+              ▾
+            </span>
           )}
         </div>
-      )}
-    </article>
-  );
-}
+      </button>
 
-function MissingCard({ title }: { title: string }) {
-  return (
-    <article className="student-assessment-card student-assessment-card--missing">
-      <div className="student-assessment-card__head">
-        <h4 className="student-assessment-card__title">{title}</h4>
-        <span className="muted" style={{ fontSize: 13 }}>
-          Ainda sem avaliação
-        </span>
-      </div>
+      {canExpand && (
+        <div
+          className={`student-assessment-card__collapse${open ? " is-open" : ""}`}
+          aria-hidden={!open}
+        >
+          <div className="student-assessment-card__collapse-inner">
+            {row && (
+              <div className="student-assessment-card__body">
+                <div className="student-assessment-card__field">
+                  <span className="student-assessment-card__label">Parecer</span>
+                  {row.assessment.trim() ? (
+                    <p className="student-assessment-card__text">{row.assessment.trim()}</p>
+                  ) : (
+                    <p className="muted student-assessment-card__empty">Nenhum</p>
+                  )}
+                </div>
+                {row.level != null && (
+                  <div className="student-assessment-card__field">
+                    <span className="student-assessment-card__label">Lacunas</span>
+                    {row.gaps.trim() ? (
+                      <p className="student-assessment-card__text">{row.gaps.trim()}</p>
+                    ) : (
+                      <p className="muted student-assessment-card__empty">Nenhuma</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+            {hasNested && (
+              <div className="student-assessment-card__nested">{nested}</div>
+            )}
+          </div>
+        </div>
+      )}
     </article>
   );
 }
@@ -60,6 +109,8 @@ export function StudentAssessmentsPanel({
   cohortId,
   studentId,
   studentName,
+  studentEmail,
+  studentWhatsapp,
   track,
 }: Props) {
   const [data, setData] = useState<StudentAssessments | null>(null);
@@ -102,7 +153,7 @@ export function StudentAssessmentsPanel({
   if (loading) {
     return (
       <div className="student-assessments-panel">
-        <p className="muted">Carregando avaliações de {studentName}…</p>
+        <p className="muted">Carregando avaliações…</p>
       </div>
     );
   }
@@ -115,51 +166,58 @@ export function StudentAssessmentsPanel({
     );
   }
 
-  const trackAssessment = byKey.get(`track:${track.id}`);
+  const trackAssessment = byKey.get(`track:${track.id}`) ?? null;
   const modules = sortedModules(track).filter((mod) => mod.is_active);
 
   return (
     <div className="student-assessments-panel">
       <header className="student-assessments-panel__head">
-        <h3 style={{ margin: 0 }}>Avaliações de {studentName}</h3>
-        <p className="muted" style={{ marginTop: 6, fontSize: 14 }}>
-          Parecer, nível e lacunas por trilha, módulo e aula.
+        <h3 className="student-assessments-panel__name">{studentName}</h3>
+        <p className="muted student-assessments-panel__contact">
+          {studentEmail}
+          {studentWhatsapp
+            ? ` · WhatsApp ${maskPhoneBR(studentWhatsapp.replace(/^55/, ""))}`
+            : ""}
         </p>
       </header>
 
-      <section className="student-assessments-panel__section">
-        <h4 className="student-assessments-panel__section-title">Trilha</h4>
-        {trackAssessment ? (
-          <AssessmentCard row={trackAssessment} />
-        ) : (
-          <MissingCard title={track.title} />
-        )}
-      </section>
+      <div className="student-assessments-panel__tree">
+        <AssessmentScopeCard
+          eyebrow="Trilha"
+          title={track.title}
+          row={trackAssessment}
+          defaultOpen
+        />
 
-      {modules.map((mod) => {
-        const moduleAssessment = byKey.get(`module:${mod.id}`);
-        const lessons = sortedLessons(mod).filter((lesson) => lesson.is_active);
-        return (
-          <section key={mod.id} className="student-assessments-panel__section">
-            <h4 className="student-assessments-panel__section-title">Módulo · {mod.title}</h4>
-            {moduleAssessment ? (
-              <AssessmentCard row={moduleAssessment} />
-            ) : (
-              <MissingCard title={mod.title} />
-            )}
-            <div className="student-assessments-panel__lessons">
-              {lessons.map((lesson) => {
-                const lessonAssessment = byKey.get(`lesson:${lesson.id}`);
-                return lessonAssessment ? (
-                  <AssessmentCard key={lesson.id} row={lessonAssessment} />
-                ) : (
-                  <MissingCard key={lesson.id} title={lesson.title} />
-                );
-              })}
-            </div>
-          </section>
-        );
-      })}
+        {modules.map((mod) => {
+          const moduleAssessment = byKey.get(`module:${mod.id}`) ?? null;
+          const lessons = sortedLessons(mod).filter((lesson) => lesson.is_active);
+          return (
+            <AssessmentScopeCard
+              key={mod.id}
+              eyebrow="Módulo"
+              title={mod.title}
+              row={moduleAssessment}
+              defaultOpen={false}
+              nested={
+                lessons.length > 0 ? (
+                  <>
+                    {lessons.map((lesson) => (
+                      <AssessmentScopeCard
+                        key={lesson.id}
+                        eyebrow="Aula"
+                        title={lesson.title}
+                        row={byKey.get(`lesson:${lesson.id}`) ?? null}
+                        defaultOpen={false}
+                      />
+                    ))}
+                  </>
+                ) : undefined
+              }
+            />
+          );
+        })}
+      </div>
     </div>
   );
 }
