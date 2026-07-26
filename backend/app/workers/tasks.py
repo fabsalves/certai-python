@@ -71,15 +71,71 @@ def ingest_track_material(self, track_id: str) -> dict:
 
 
 @celery_app.task(bind=True, max_retries=2, default_retry_delay=30)
-def evaluate_cohort_gaps(self, cohort_id: str) -> dict:
-    """An external AI reads the cohort's micro-scores and points out gaps."""
-    return run_async(_evaluate_gaps(UUID(cohort_id)))
+def assess_student_lesson(
+    self, cohort_id: str, student_id: str, lesson_id: str
+) -> dict:
+    """External evaluator: consolidate lesson-scope understanding for one student.
+
+    Known limitations (not handled in this phase):
+    - If this task fails after retries, the module assessment is never enqueued and
+      the track assessment never runs — the chain breaks silently (no sweep/retry).
+    - If the task runs twice, a duplicate StudentAssessment row may be appended;
+      that is tolerable (append-only, readers take the latest) — no idempotency guard.
+    """
+    try:
+        return run_async(
+            _assess_student_lesson(
+                UUID(cohort_id), UUID(student_id), UUID(lesson_id)
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise self.retry(exc=exc)
+
+
+@celery_app.task(bind=True, max_retries=2, default_retry_delay=30)
+def assess_student_module(
+    self, cohort_id: str, student_id: str, module_id: str
+) -> dict:
+    """External evaluator: consolidate module-scope understanding for one student.
+
+    Known limitations (not handled in this phase):
+    - If this task fails after retries, the track assessment is never enqueued —
+      the chain breaks silently (no sweep/retry).
+    - Duplicate runs may append duplicate rows; append-only latest-read is enough.
+    """
+    try:
+        return run_async(
+            _assess_student_module(
+                UUID(cohort_id), UUID(student_id), UUID(module_id)
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise self.retry(exc=exc)
+
+
+@celery_app.task(bind=True, max_retries=2, default_retry_delay=30)
+def assess_student_track(
+    self, cohort_id: str, student_id: str, track_id: str
+) -> dict:
+    """External evaluator: consolidate track-scope understanding for one student.
+
+    Known limitation (not handled in this phase): duplicate runs may append
+    duplicate rows; append-only latest-read is enough — no idempotency guard.
+    """
+    try:
+        return run_async(
+            _assess_student_track(
+                UUID(cohort_id), UUID(student_id), UUID(track_id)
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise self.retry(exc=exc)
 
 
 @celery_app.task
-def sweep_evaluations() -> dict:
-    """Scheduled job (Beat): triggers evaluation for every active cohort."""
-    return run_async(_sweep_evaluations())
+def sweep_abandoned_voice_sessions() -> dict:
+    """Scheduled job (Beat): marca sessões de voz sem heartbeat há 90s como abandoned."""
+    return run_async(_sweep_abandoned_voice_sessions())
 
 
 # --- async implementations ---
@@ -157,7 +213,7 @@ async def _mark_track_ingestion_failed(track_id: UUID) -> None:
 
 async def _process_whatsapp_inbound(conversation_id: UUID, task_id: str) -> dict:
     from app.core.database import SessionLocal
-    from app.models.conversation import Author, Conversation, Message
+    from app.models.conversation import Author, Conversation, Message, MessageSource
     from app.models.user import User
     from app.services.cinndi.outbound import CinndiOutboundError, send_text_message
     from app.services.conversation_service import generate_lesson_reply
@@ -172,6 +228,17 @@ async def _process_whatsapp_inbound(conversation_id: UUID, task_id: str) -> dict
             await clear_debounce(conversation_id)
             return {"status": "missing_conversation"}
 
+        from app.services.student_progress_service import StudentProgressService
+
+        if not await StudentProgressService.is_lesson_interactive_for(
+            db,
+            conversation.cohort_id,
+            conversation.user_id,
+            conversation.lesson_id,
+        ):
+            await clear_debounce(conversation_id)
+            return {"status": "lesson_closed"}
+
         student = await db.get(User, conversation.user_id)
         if student is None or not student.whatsapp:
             await clear_debounce(conversation_id)
@@ -184,6 +251,7 @@ async def _process_whatsapp_inbound(conversation_id: UUID, task_id: str) -> dict
                 conversation.cohort_id,
                 conversation.lesson_id,
                 conversation.user_id,
+                entry_source=MessageSource.WHATSAPP_TEXT,
             )
             provider_id = send_text_message(to_phone=student.whatsapp, body=final)
 
@@ -213,47 +281,108 @@ async def _process_whatsapp_inbound(conversation_id: UUID, task_id: str) -> dict
     return {"status": "ok", "conversation_id": str(conversation_id)}
 
 
-async def _evaluate_gaps(cohort_id: UUID) -> dict:
-    from app.ai.client import get_openai
-    from app.core.config import settings
+async def _assess_student_lesson(
+    cohort_id: UUID, student_id: UUID, lesson_id: UUID
+) -> dict:
     from app.core.database import SessionLocal
-    from app.models.assessment import MicroScore
+    from app.models.track import Lesson
+    from app.services.assessment.completion import module_lessons_all_concluded
+    from app.services.assessment.lesson_assessment_service import LessonAssessmentService
 
     async with SessionLocal() as db:
-        rows = (
-            await db.execute(select(MicroScore).where(MicroScore.cohort_id == cohort_id))
-        ).scalars().all()
+        row = await LessonAssessmentService.assess(
+            db, cohort_id, student_id, lesson_id
+        )
+        result = {
+            "cohort_id": str(cohort_id),
+            "student_id": str(student_id),
+            "lesson_id": str(lesson_id),
+            "assessment_id": str(row.id),
+            "level": row.level.value if row.level is not None else None,
+        }
+        await db.commit()
 
-    data = [
-        {"competency": r.competency, "level": r.level.value, "student": str(r.student_id)}
-        for r in rows
-    ]
-    client = get_openai()
-    resp = await client.chat.completions.create(
-        model=settings.EVALUATOR_MODEL,
-        max_tokens=1024,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You are the external evaluator. From the micro-scores, point out "
-                    "knowledge gaps per competency and per student. Do not compute a single "
-                    "average. Write the report in Brazilian Portuguese."
-                ),
-            },
-            {"role": "user", "content": str(data)},
-        ],
-    )
-    report = resp.choices[0].message.content or ""
-    return {"cohort_id": str(cohort_id), "report": report}
+        # Chain after lesson assessment so the last lesson's row already exists.
+        # If this task fails, module/track are never enqueued (silent break).
+        lesson = await db.get(Lesson, lesson_id)
+        module_id = lesson.module_id if lesson is not None else None
+        if module_id is not None and await module_lessons_all_concluded(
+            db,
+            cohort_id=cohort_id,
+            student_id=student_id,
+            module_id=module_id,
+        ):
+            assess_student_module.delay(
+                str(cohort_id), str(student_id), str(module_id)
+            )
+
+        return result
 
 
-async def _sweep_evaluations() -> dict:
+async def _assess_student_module(
+    cohort_id: UUID, student_id: UUID, module_id: UUID
+) -> dict:
     from app.core.database import SessionLocal
-    from app.models.cohort import Cohort
+    from app.models.track import Module
+    from app.services.assessment.completion import track_modules_all_assessed
+    from app.services.assessment.module_assessment_service import ModuleAssessmentService
 
     async with SessionLocal() as db:
-        cohorts = (await db.execute(select(Cohort.id))).scalars().all()
-    for cid in cohorts:
-        evaluate_cohort_gaps.delay(str(cid))
-    return {"cohorts_enqueued": len(cohorts)}
+        row = await ModuleAssessmentService.assess(
+            db, cohort_id, student_id, module_id
+        )
+        result = {
+            "cohort_id": str(cohort_id),
+            "student_id": str(student_id),
+            "module_id": str(module_id),
+            "assessment_id": str(row.id),
+            "level": row.level.value if row.level is not None else None,
+        }
+        await db.commit()
+
+        # Chain after module assessment so this module's row already exists.
+        # Track fires when every active module has a module assessment (not merely
+        # when lessons are concluded). If this task fails, track is never enqueued.
+        module = await db.get(Module, module_id)
+        track_id = module.track_id if module is not None else None
+        if track_id is not None and await track_modules_all_assessed(
+            db,
+            cohort_id=cohort_id,
+            student_id=student_id,
+            track_id=track_id,
+        ):
+            assess_student_track.delay(
+                str(cohort_id), str(student_id), str(track_id)
+            )
+
+        return result
+
+
+async def _assess_student_track(
+    cohort_id: UUID, student_id: UUID, track_id: UUID
+) -> dict:
+    from app.core.database import SessionLocal
+    from app.services.assessment.track_assessment_service import TrackAssessmentService
+
+    async with SessionLocal() as db:
+        row = await TrackAssessmentService.assess(
+            db, cohort_id, student_id, track_id
+        )
+        await db.commit()
+        return {
+            "cohort_id": str(cohort_id),
+            "student_id": str(student_id),
+            "track_id": str(track_id),
+            "assessment_id": str(row.id),
+            "level": row.level.value if row.level is not None else None,
+        }
+
+
+async def _sweep_abandoned_voice_sessions() -> dict:
+    from app.core.database import SessionLocal
+    from app.services.realtime.voice_session_service import VoiceSessionService
+
+    async with SessionLocal() as db:
+        abandoned = await VoiceSessionService().sweep_abandoned_sessions(db)
+        await db.commit()
+    return {"abandoned": abandoned}

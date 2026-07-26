@@ -11,6 +11,7 @@ from app.models.cohort import Enrollment
 from app.models.user import Role, User
 from app.schemas import AgentResponse, MessageIn
 from app.services.conversation_service import student_lesson_message
+from app.services.student_progress_service import LessonNotInteractiveError
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
@@ -37,4 +38,14 @@ async def converse(
 ):
     """Student talks to Lira within a lesson scope. Segregated per cohort."""
     await _ensure_enrolled(db, cohort_id, user.id)
-    return await student_lesson_message(db, cohort_id, lesson_id, user.id, body.content)
+    try:
+        return await student_lesson_message(
+            db, cohort_id, lesson_id, user.id, body.content
+        )
+    except LessonNotInteractiveError as exc:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Esta aula foi encerrada e não aceita novas interações."
+            if exc.reason == "lesson_closed"
+            else "Nenhuma aula ativa disponível para conversa.",
+        ) from exc

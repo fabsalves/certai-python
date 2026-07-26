@@ -26,10 +26,11 @@ from app.services.playground_context_service import build_playground_context
 from app.services.playground_scores_service import build_playground_scores
 from app.services.conversation_service import list_lesson_messages, student_lesson_message
 from app.services.lesson_completion_service import complete_lesson
+from app.services.student_progress_service import LessonNotInteractiveError
 from app.services.transcription_service import transcribe_audio
 from app.services.upload_validation import (
     AUDIO_MAX_BYTES,
-    is_audio_content_type,
+    is_allowed_report_audio,
     parse_report_attachment,
     parse_report_audio,
 )
@@ -207,7 +208,12 @@ async def list_student_messages(
 
     messages = await list_lesson_messages(db, cohort_id, student_id, lesson_id)
     return [
-        MessageOut(author=m.author.value, content=m.content, created_at=m.created_at)
+        MessageOut(
+            author=m.author.value,
+            content=m.content,
+            created_at=m.created_at,
+            source=m.source.value if m.source else None,
+        )
         for m in messages
     ]
 
@@ -227,9 +233,17 @@ async def send_student_message(
     """Envia mensagem como aluno matriculado — sessão segregada por turma e aluno."""
     await _get_cohort_or_404(db, cohort_id)
     await _ensure_enrolled_student(db, cohort_id, student_id)
-    return await student_lesson_message(
-        db, cohort_id, lesson_id, student_id, body.content, merge_channels=True
-    )
+    try:
+        return await student_lesson_message(
+            db, cohort_id, lesson_id, student_id, body.content
+        )
+    except LessonNotInteractiveError as exc:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Esta aula foi encerrada e não aceita novas interações."
+            if exc.reason == "lesson_closed"
+            else "Nenhuma aula ativa disponível para conversa.",
+        ) from exc
 
 
 @router.post(
@@ -248,7 +262,7 @@ async def transcribe_lesson_report(
     cohort = await _get_cohort_or_404(db, cohort_id)
     await _ensure_module_professor(db, cohort_id, professor_id, lesson_id)
 
-    if not is_audio_content_type(audio.content_type):
+    if not is_allowed_report_audio(audio.content_type, audio.filename):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Arquivo deve ser de áudio")
 
     content = await audio.read()
@@ -281,6 +295,7 @@ async def complete_lesson_as_professor(
     transcript: Annotated[str, Form()] = "",
     attachment: Annotated[UploadFile | None, File()] = None,
     audio: Annotated[UploadFile | None, File()] = None,
+    audio_source: Annotated[str, Form()] = "",
 ):
     """Encerra aula como professor do módulo — somente admin."""
     cohort = await _get_cohort_or_404(db, cohort_id)
@@ -304,6 +319,7 @@ async def complete_lesson_as_professor(
             transcript,
             attachment=stored_attachment,
             audio=stored_audio,
+            audio_source=audio_source or None,
         )
     except ValueError as e:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(e))

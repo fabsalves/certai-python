@@ -31,11 +31,11 @@ export function TrackPathPreview({ track, selectedLessonId, onSelectLesson }: Pr
         <h3 style={{ margin: 0 }}>Percurso</h3>
         {!track.is_active ? (
           <p className="path-preview__notice">
-            Trilha desativada — turmas novas não podem usar. Você ainda edita e visualiza tudo aqui.
+            Trilha desativada. Turmas novas não podem usar; você ainda edita e visualiza tudo aqui.
           </p>
         ) : (
           <p className="muted" style={{ margin: "4px 0 0", fontSize: 13 }}>
-            Visualização da trilha — como a turma percorre as aulas
+            Como a turma percorre as aulas
           </p>
         )}
       </div>

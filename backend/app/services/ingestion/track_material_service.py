@@ -21,6 +21,7 @@ from app.services.ingestion import (
     INGESTION_FAILED,
     INGESTION_PROCESSING,
     INGESTION_UNSUPPORTED,
+    coerce_llm_text_field,
 )
 from app.services.ingestion.extraction import UnsupportedFormatError, extract_text
 from app.services.storage import get_storage
@@ -61,10 +62,7 @@ async def build_track_guide(extracted_text: str) -> str:
         guide = json.loads(text).get("guide", "")
     except json.JSONDecodeError:
         return text
-    if isinstance(guide, str):
-        return guide
-    # Model ignored the "one string" instruction: keep valid JSON, not a dict repr.
-    return json.dumps(guide, ensure_ascii=False, indent=2)
+    return coerce_llm_text_field(guide)
 
 
 async def ingest_track_material(db: AsyncSession, track_id: uuid.UUID) -> Track:

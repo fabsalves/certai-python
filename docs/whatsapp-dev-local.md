@@ -14,13 +14,29 @@ Inspirado no fluxo do `sam-python` (`bin/send-message` / `bin/send-audio`).
 
 Sem encerrar a aula, o inbound simulado retorna `no_conversation`.
 
+## ENV — convite e voz
+
+| Variável | Dev local | Prod/staging |
+|---|---|---|
+| `WHATSAPP_INVITE_USE_VOICE_TEMPLATE` | `true` após v2 APPROVED | `true` |
+| `WHATSAPP_INVITE_VOICE_TEMPLATE` | `certai_convite_aula_voz_v2` | idem |
+| `FRONTEND_BASE_URL` | `http://localhost:5173` (só `./bin/voice-link`) | `https://app.certai.com.br` (botão WhatsApp) |
+
+O botão do template v2 aponta para `https://app.certai.com.br/voz/{token}`. Em dev, use `./bin/voice-link` ou copie o token manualmente para `localhost:5173`.
+
+Ver: [whatsapp-template-certai_convite_aula.md](./whatsapp-template-certai_convite_aula.md) · [doc-template-cinndi.md](./doc-template-cinndi.md)
+
 ## O que você precisa vs o que pode pular
 
 | Etapa | Tunnel Cloudflare | Celular (inbound) | Cinndi API |
 |---|---|---|---|
 | Encerrar aula (convite) | Não | Recebe 1 msg | Sim |
+| Botão "Falar com a Lira" → call | Não* | Sim | Sim (template v2) |
 | Simular texto/áudio do aluno | **Não** | **Não** | Não |
 | Resposta da Lira | Não | Recebe no WhatsApp | Sim |
+| Call de voz (`voice-link`) | Não | Não | Não |
+
+\* Botão abre `app.certai.com.br`; em dev puro use `voice-link` ou cole o token em localhost.
 
 ## Simular texto
 
@@ -54,18 +70,29 @@ Outros caminhos também funcionam:
 - Requer `GROQ_API_KEY` no `.env` (Whisper transcreve antes do turno da IA)
 - Debounce igual ao texto (`INBOUND_DEBOUNCE_SECONDS`, padrão 5s)
 
-Áudios de exemplo ficam em `fixtures/audio/` (no repo: `audio-teste.ogg`; no sam: `nota-2.ogg`, `sua-nota.ogg`).
+Áudios de exemplo ficam em `fixtures/audio/` (no repo: `audio-teste.ogg`).
+
+## Voz ao vivo (sem depender do botão WhatsApp)
+
+```bash
+./bin/voice-link --student eriko@certai.app
+```
+
+Abre `FRONTEND_BASE_URL/voz/{token}` em aba anônima. Requer `OPENAI_API_KEY` e Realtime configurado.
 
 ## Fluxo completo sugerido
 
 ```
 1. bin/dev
-2. Login professor → encerrar aula da turma seed
-3. ./bin/send-message '...'     # ou: ./bin/send-audio fixtures/audio/audio-teste.ogg
-4. Aguardar ~5s (debounce) + tempo da IA
-5. Conferir resposta no WhatsApp real do aluno
-6. Logs no terminal do worker (fila whatsapp)
+2. .env: WHATSAPP_INVITE_USE_VOICE_TEMPLATE=true (após v2 APPROVED)
+3. Login professor → encerrar aula da turma seed
+4. Aluno recebe WhatsApp com botão OU ./bin/voice-link para testar call local
+5. ./bin/send-message '...'     # cross-channel pós-voz
+6. Aguardar ~5s (debounce) + tempo da IA
+7. Logs no terminal do worker (fila whatsapp)
 ```
+
+**Re-disparo de convite:** dispatch pula se já existe msg agent na conversation — use `bin/db-reset` ou encerre outra aula.
 
 ## Respostas do webhook
 

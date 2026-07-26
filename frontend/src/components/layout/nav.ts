@@ -24,7 +24,7 @@ export const NAV: NavItem[] = [
   {
     to: "/admin/playground",
     label: "Playground",
-    description: "Testar IA como aluno ou professor",
+    description: "Simular conversas como aluno ou professor",
     roles: ACCESS.playground,
     icon: "playground",
   },

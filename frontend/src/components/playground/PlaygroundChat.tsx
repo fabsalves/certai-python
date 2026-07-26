@@ -2,6 +2,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
   type ReactNode,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -10,6 +11,7 @@ import {
   fetchStudentMessages,
   sendStudentMessage,
   type PlaygroundMessage,
+  type PlaygroundMessageSource,
 } from "../../lib/playground";
 import { PlaygroundSessionHead } from "./PlaygroundSessionHead";
 
@@ -30,6 +32,54 @@ function authorLabel(author: PlaygroundMessage["author"]): string {
   return "Professor";
 }
 
+const SOURCE_LABELS: Record<PlaygroundMessageSource, string> = {
+  realtime_voice: "Voz",
+  whatsapp_text: "WhatsApp",
+  whatsapp_audio: "WhatsApp áudio",
+  in_app_text: "Playground",
+};
+
+function sourceLabel(source: PlaygroundMessageSource | null | undefined): string | null {
+  if (!source) return null;
+  return SOURCE_LABELS[source] ?? source;
+}
+
+function formatWhen(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+const URL_PATTERN = /(https?:\/\/\S+)/g;
+
+function renderMessageContent(content: string) {
+  return content.split(URL_PATTERN).map((part, index) => {
+    if (!/^https?:\/\//.test(part)) {
+      return <span key={index}>{part}</span>;
+    }
+
+    return (
+      <a
+        key={index}
+        href={part}
+        className="playground-chat__link"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        {part}
+      </a>
+    );
+  });
+}
+
 export function PlaygroundChat({
   cohortId,
   studentId,
@@ -43,36 +93,50 @@ export function PlaygroundChat({
   const [messages, setMessages] = useState<PlaygroundMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const loadMessages = useCallback(
+    async (options?: { refresh?: boolean }) => {
+      if (!cohortId || !studentId || !lessonId) {
+        setMessages([]);
+        return;
+      }
+
+      const isRefresh = options?.refresh ?? false;
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      setError("");
+
+      try {
+        const data = await fetchStudentMessages(cohortId, studentId, lessonId);
+        setMessages(data);
+      } catch {
+        setError(
+          isRefresh
+            ? "Não foi possível atualizar o histórico."
+            : "Não foi possível carregar o histórico.",
+        );
+      } finally {
+        if (isRefresh) {
+          setRefreshing(false);
+        } else {
+          setLoading(false);
+        }
+      }
+    },
+    [cohortId, studentId, lessonId],
+  );
+
   useEffect(() => {
-    if (!cohortId || !studentId || !lessonId) {
-      setMessages([]);
-      return;
-    }
-
-    let cancelled = false;
-    setLoading(true);
-    setError("");
-
-    fetchStudentMessages(cohortId, studentId, lessonId)
-      .then((data) => {
-        if (!cancelled) setMessages(data);
-      })
-      .catch(() => {
-        if (!cancelled) setError("Não foi possível carregar o histórico.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [cohortId, studentId, lessonId]);
+    void loadMessages();
+  }, [loadMessages]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -104,6 +168,7 @@ export function PlaygroundChat({
       author: "student",
       content,
       created_at: new Date().toISOString(),
+      source: "in_app_text",
     };
     setMessages((prev) => [...prev, optimistic]);
 
@@ -111,7 +176,12 @@ export function PlaygroundChat({
       const { response } = await sendStudentMessage(cohortId, studentId, lessonId, content);
       setMessages((prev) => [
         ...prev,
-        { author: "agent", content: response, created_at: new Date().toISOString() },
+        {
+          author: "agent",
+          content: response,
+          created_at: new Date().toISOString(),
+          source: "in_app_text",
+        },
       ]);
       onMessageSent?.();
     } catch {
@@ -130,7 +200,20 @@ export function PlaygroundChat({
         title={lessonTitle}
         participantName={studentName}
         roleLabel="Aluno"
-        actions={headerActions}
+        actions={
+          <>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm playground-chat__refresh"
+              onClick={() => void loadMessages({ refresh: true })}
+              disabled={loading || refreshing || !canChat}
+              aria-label="Atualizar mensagens"
+            >
+              {refreshing ? "Atualizando…" : "Atualizar"}
+            </button>
+            {headerActions}
+          </>
+        }
       />
 
       <div className="playground-chat__log" aria-live="polite">
@@ -143,15 +226,24 @@ export function PlaygroundChat({
             </p>
           )}
 
-          {messages.map((msg, index) => (
-            <div
-              key={`${msg.created_at}-${index}`}
-              className={`playground-chat__bubble playground-chat__bubble--${msg.author}`}
-            >
-              <span className="playground-chat__author">{authorLabel(msg.author)}</span>
-              <p>{msg.content}</p>
-            </div>
-          ))}
+          {messages.map((msg, index) => {
+            const source = sourceLabel(msg.source);
+            return (
+              <div
+                key={`${msg.created_at}-${index}`}
+                className={`playground-chat__bubble playground-chat__bubble--${msg.author}`}
+              >
+                <span className="playground-chat__author">{authorLabel(msg.author)}</span>
+                <p>{renderMessageContent(msg.content)}</p>
+                <div className="playground-chat__meta">
+                  {source && <span className="playground-chat__source">{source}</span>}
+                  <time className="playground-chat__time" dateTime={msg.created_at}>
+                    {formatWhen(msg.created_at)}
+                  </time>
+                </div>
+              </div>
+            );
+          })}
 
           {sending && (
             <div className="playground-chat__bubble playground-chat__bubble--agent">

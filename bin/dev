@@ -40,6 +40,7 @@ export API_PORT FLOWER_PORT FRONTEND_PORT
 printf 'Dev stack:\n'
 printf '  Frontend  http://localhost:%s\n' "$FRONTEND_PORT"
 printf '  API       http://localhost:%s\n' "$API_PORT"
+printf '  Worker    celery (inclui Beat -B — sweep voz a cada 30s)\n'
 printf '  Flower    http://localhost:%s\n' "$FLOWER_PORT"
 printf '\n'
 

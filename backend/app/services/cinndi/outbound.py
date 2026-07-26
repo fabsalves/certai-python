@@ -78,20 +78,71 @@ def send_template_message(
     template_name: str,
     body_params: list[str],
     code: str = "pt_BR",
+    button_suffix: str | None = None,
 ) -> str | None:
+    """Envia template Cinndi. Para botão URL dinâmico, passe o sufixo em button_suffix."""
     from_phone = _from_phone()
     to_digits = digits_only(to_phone)
     if not from_phone or not to_digits:
         raise CinndiOutboundError("invalid from/to phone")
 
+    payload: dict[str, Any] = {
+        "para": to_digits,
+        "name": template_name,
+        "code": code,
+        "header": "",
+        "body": list(body_params),
+        "buttons": button_suffix or "",
+    }
+
     response = _execute(
         "POST",
         f"enviar-template/{from_phone}/{_api_key()}",
-        {
-            "para": to_digits,
-            "name": template_name,
-            "code": code,
-            "body": list(body_params),
-        },
+        payload,
+    )
+    return provider_message_id_from_response(response["body"])
+
+
+def send_interactive_url_message(
+    *,
+    to_phone: str,
+    body: str,
+    url: str,
+    button_display: str = "Entrar na aula",
+    button_id: str = "open_voice_session",
+    header: str | None = None,
+    footer: str | None = None,
+) -> str | None:
+    """Envia mensagem de sessão com botão URL clicável (janela 24h aberta)."""
+    from_phone = _from_phone()
+    to_digits = digits_only(to_phone)
+    if not from_phone or not to_digits:
+        raise CinndiOutboundError("invalid from/to phone")
+    if not body.strip():
+        raise CinndiOutboundError("invalid body")
+    if not url.strip():
+        raise CinndiOutboundError("invalid url")
+
+    payload: dict[str, Any] = {
+        "para": to_digits,
+        "type": "button",
+        "body": body,
+        "buttons": [
+            {
+                "id": button_id,
+                "display": button_display[:20],
+                "title": url,
+            }
+        ],
+    }
+    if header:
+        payload["header"] = header
+    if footer:
+        payload["footer"] = footer
+
+    response = _execute(
+        "POST",
+        f"enviar-mensagem-interativa-url/{from_phone}/{_api_key()}",
+        payload,
     )
     return provider_message_id_from_response(response["body"])

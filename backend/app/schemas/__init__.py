@@ -6,6 +6,7 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field, mod
 
 from app.core.email import normalize_email
 from app.core.phone import normalize_br_phone
+from app.models.student_progress import StudentLessonProgressStatus
 from app.models.track import ModuleLevel
 from app.models.user import Role
 
@@ -239,12 +240,73 @@ class CohortProgressOut(BaseModel):
     current_lesson_id: uuid.UUID | None = None
 
 
+class StudentLessonProgressOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    cohort_id: uuid.UUID
+    student_id: uuid.UUID
+    lesson_id: uuid.UUID
+    status: StudentLessonProgressStatus
+    disparada_at: datetime
+    activated_at: datetime | None = None
+    concluded_at: datetime | None = None
+    encerrada_por_avanco_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
 class CohortLessonNoteOut(BaseModel):
     lesson_id: uuid.UUID
     attachment_filename: str | None = None
     has_attachment: bool = False
     has_audio: bool = False
+    audio_filename: str | None = None
+    audio_source: str | None = None  # "recording" | "file"
     ingestion_status: str = "done"
+
+
+# --- Layered student assessments (read) ---
+class StudentAssessmentOut(BaseModel):
+    id: uuid.UUID
+    student_id: uuid.UUID
+    student_name: str
+    scope: str  # lesson | module | track
+    lesson_id: uuid.UUID | None = None
+    module_id: uuid.UUID | None = None
+    track_id: uuid.UUID | None = None
+    scope_title: str = ""
+    level: str | None = None  # null = insufficient evidence
+    assessment: str = ""
+    gaps: str = ""
+    created_at: datetime
+
+
+class PendingAssessmentStudentOut(BaseModel):
+    student_id: uuid.UUID
+    student_name: str
+
+
+class LessonAssessmentsOut(BaseModel):
+    lesson_id: uuid.UUID
+    assessments: list[StudentAssessmentOut] = []
+    pending: list[PendingAssessmentStudentOut] = []
+
+
+class StudentAssessmentsOut(BaseModel):
+    student_id: uuid.UUID
+    student_name: str
+    assessments: list[StudentAssessmentOut] = []
+
+
+class CohortTrackLevelOut(BaseModel):
+    student_id: uuid.UUID
+    level: str | None = None  # null = insufficient evidence, or no assessment
+    has_assessment: bool
+
+
+class CohortTrackLevelsOut(BaseModel):
+    students: list[CohortTrackLevelOut] = []
 
 
 # --- Lesson completion ---
@@ -267,6 +329,7 @@ class MessageOut(BaseModel):
     author: str
     content: str
     created_at: datetime
+    source: str | None = None
 
 
 class AgentResponse(BaseModel):

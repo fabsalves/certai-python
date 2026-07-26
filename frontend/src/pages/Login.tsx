@@ -45,7 +45,7 @@ export function Login() {
             Acompanhe o que a turma de fato aprendeu.
           </h1>
           <p style={{ color: "rgba(243,247,246,0.72)", maxWidth: 420, marginTop: 16 }}>
-            Trilhas, turmas e registro aula a aula — com evidência clara de absorção.
+            Trilhas, turmas e registro aula a aula, com evidência clara de absorção.
           </p>
         </div>
         <span style={{ fontSize: 13, color: "rgba(243,247,246,0.45)" }}>

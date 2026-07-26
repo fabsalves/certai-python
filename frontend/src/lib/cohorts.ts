@@ -33,6 +33,10 @@ export interface CohortLessonNote {
   attachment_filename: string | null;
   has_attachment: boolean;
   has_audio: boolean;
+  /** Real upload/recording name; null on legacy notes. */
+  audio_filename?: string | null;
+  /** "recording" | "file"; null on legacy notes. */
+  audio_source?: "recording" | "file" | null;
   ingestion_status: string;
 }
 

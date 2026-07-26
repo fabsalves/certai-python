@@ -22,6 +22,16 @@ AUDIO_MAX_BYTES = 25 * 1024 * 1024
 MATERIAL_MAX_BYTES = 20 * 1024 * 1024
 ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024
 
+REPORT_AUDIO_EXTENSIONS = {".webm", ".ogg", ".mp3", ".wav", ".m4a", ".mpeg"}
+AUDIO_CONTENT_TYPE_BY_EXT = {
+    ".webm": "audio/webm",
+    ".ogg": "audio/ogg",
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".m4a": "audio/mp4",
+    ".mpeg": "audio/mpeg",
+}
+
 
 def _extension(filename: str | None) -> str:
     return Path(filename or "").suffix.lower()
@@ -66,6 +76,13 @@ def is_audio_content_type(content_type: str | None) -> bool:
     return ct.startswith("audio/") or ct == "video/webm"
 
 
+def is_allowed_report_audio(content_type: str | None, filename: str | None) -> bool:
+    """Accept audio MIME or known report-audio extensions (octet-stream uploads)."""
+    if is_audio_content_type(content_type):
+        return True
+    return _extension(filename) in REPORT_AUDIO_EXTENSIONS
+
+
 def _has_upload(upload: UploadFile | None) -> bool:
     return upload is not None and bool(upload.filename)
 
@@ -92,19 +109,17 @@ async def parse_report_audio(upload: UploadFile | None) -> StoredFile | None:
     if not _has_upload(upload):
         return None
     assert upload is not None
-    if not is_audio_content_type(upload.content_type):
-        ext = _extension(upload.filename)
-        if ext not in {".webm", ".ogg", ".mp3", ".wav", ".m4a", ".mpeg"}:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Arquivo deve ser de áudio")
+    if not is_allowed_report_audio(upload.content_type, upload.filename):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Arquivo deve ser de áudio")
     content = await read_upload(
         upload,
         max_bytes=AUDIO_MAX_BYTES,
         too_large_message="Áudio muito grande (máx. 25 MB)",
     )
     ext = _extension(upload.filename) or ".webm"
-    content_type = (upload.content_type or "audio/webm").split(";")[0].strip().lower()
+    content_type = (upload.content_type or "").split(";")[0].strip().lower()
     if content_type in ("application/octet-stream", "binary/octet-stream", ""):
-        content_type = "audio/webm"
+        content_type = AUDIO_CONTENT_TYPE_BY_EXT.get(ext, "audio/webm")
     return StoredFile(
         content=content,
         filename=upload.filename or f"relato{ext}",

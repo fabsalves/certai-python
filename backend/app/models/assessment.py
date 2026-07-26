@@ -6,6 +6,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
+from app.models.conversation import _enum_values
 
 
 class Level(str, enum.Enum):
@@ -15,6 +16,14 @@ class Level(str, enum.Enum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
+
+
+class AssessmentScope(str, enum.Enum):
+    """Scope of a consolidated student assessment."""
+
+    LESSON = "lesson"
+    MODULE = "module"
+    TRACK = "track"
 
 
 class MicroScore(Base):
@@ -35,6 +44,46 @@ class MicroScore(Base):
     competency: Mapped[str] = mapped_column(String(255), default="")
     level: Mapped[Level] = mapped_column(Enum(Level, native_enum=False, length=20))
     evidence: Mapped[str] = mapped_column(Text, default="")  # why the AI assigned this level
+
+
+class StudentAssessment(Base):
+    """Consolidated qualitative assessment of a student's understanding at a scope
+    (lesson, module, or track). Append-only: readers take the latest row."""
+
+    __tablename__ = "student_assessments"
+
+    cohort_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("cohorts.id", ondelete="CASCADE"), index=True
+    )
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    scope: Mapped[AssessmentScope] = mapped_column(
+        Enum(
+            AssessmentScope,
+            values_callable=_enum_values,
+            native_enum=False,
+            length=20,
+        ),
+        nullable=False,
+    )
+    # Exactly one of lesson_id / module_id / track_id is set, matching scope.
+    # Enforced in the service layer, not via DB constraint.
+    lesson_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("lessons.id", ondelete="CASCADE"), nullable=True
+    )
+    module_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("modules.id", ondelete="CASCADE"), nullable=True
+    )
+    track_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tracks.id", ondelete="CASCADE"), nullable=True
+    )
+    # Null = insufficient evidence to assign a level (valid outcome).
+    level: Mapped[Level | None] = mapped_column(
+        Enum(Level, native_enum=False, length=20), nullable=True
+    )
+    assessment: Mapped[str] = mapped_column(Text, default="")
+    gaps: Mapped[str] = mapped_column(Text, default="")
 
 
 class CohortLessonNote(Base):
@@ -58,6 +107,9 @@ class CohortLessonNote(Base):
     attachment_extracted_text: Mapped[str] = mapped_column(Text, default="")  # raw attachment text
     attachment_knowledge_base: Mapped[str] = mapped_column(Text, default="")  # AI consolidation
     audio_storage_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    audio_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     audio_content_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # "recording" | "file" — how the professor provided the audio for the report.
+    audio_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
     # pending -> processing -> done | failed. Dispatch to students only after done.
     ingestion_status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)

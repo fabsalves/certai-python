@@ -18,23 +18,33 @@ from app.schemas import (
     CohortListOut,
     CohortOut,
     CohortProgressOut,
+    CohortTrackLevelOut,
+    CohortTrackLevelsOut,
     CohortUpdate,
     EnrollmentCreate,
     EnrollmentBulkCreate,
     EnrollmentBulkOut,
     EnrollmentOut,
+    LessonAssessmentsOut,
     ModuleProfessorIn,
     ModuleProfessorOut,
+    PendingAssessmentStudentOut,
+    StudentAssessmentOut,
+    StudentAssessmentsOut,
     TrackOut,
     TranscriptionOut,
 )
 from app.models.assessment import CohortLessonNote
+from app.services.assessment.read_service import (
+    AssessmentReadRow,
+    StudentAssessmentReadService,
+)
 from app.services.lesson_completion_service import complete_lesson
 from app.services.storage.download import file_response
 from app.services.transcription_service import transcribe_audio
 from app.services.upload_validation import (
     AUDIO_MAX_BYTES,
-    is_audio_content_type,
+    is_allowed_report_audio,
     parse_report_attachment,
     parse_report_audio,
 )
@@ -307,12 +317,13 @@ async def update_cohort(
 @router.get(
     "/{cohort_id}/enrollments",
     response_model=list[EnrollmentOut],
-    dependencies=[Depends(can_manage)],
+    dependencies=[Depends(can_view)],
 )
 async def list_enrollments(
-    cohort_id: uuid.UUID, db: Annotated[AsyncSession, Depends(get_db)]
+    cohort_id: uuid.UUID, user: CurrentUser, db: Annotated[AsyncSession, Depends(get_db)]
 ):
-    await _get_cohort_or_404(db, cohort_id)
+    cohort = await _get_cohort_or_404(db, cohort_id)
+    await _assert_cohort_access(db, user, cohort)
     stmt = (
         select(Enrollment, User.name, User.email, User.whatsapp)
         .join(User, Enrollment.student_id == User.id)
@@ -468,6 +479,114 @@ async def get_progress(
     )
 
 
+def _assessment_out(row: AssessmentReadRow) -> StudentAssessmentOut:
+    return StudentAssessmentOut(
+        id=row.id,
+        student_id=row.student_id,
+        student_name=row.student_name,
+        scope=row.scope,
+        lesson_id=row.lesson_id,
+        module_id=row.module_id,
+        track_id=row.track_id,
+        scope_title=row.scope_title,
+        level=row.level,
+        assessment=row.assessment,
+        gaps=row.gaps,
+        created_at=row.created_at,
+    )
+
+
+@router.get(
+    "/{cohort_id}/lessons/{lesson_id}/assessments",
+    response_model=LessonAssessmentsOut,
+    dependencies=[Depends(can_view)],
+)
+async def list_lesson_assessments(
+    cohort_id: uuid.UUID,
+    lesson_id: uuid.UUID,
+    user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Latest lesson assessments for the cohort, plus concluded students still pending."""
+    cohort = await _get_cohort_or_404(db, cohort_id)
+    await _assert_cohort_access(db, user, cohort)
+    try:
+        result = await StudentAssessmentReadService.latest_lesson_assessments(
+            db, cohort_id=cohort_id, lesson_id=lesson_id
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    return LessonAssessmentsOut(
+        lesson_id=result.lesson_id,
+        assessments=[_assessment_out(row) for row in result.assessments],
+        pending=[
+            PendingAssessmentStudentOut(
+                student_id=item.student_id,
+                student_name=item.student_name,
+            )
+            for item in result.pending
+        ],
+    )
+
+
+@router.get(
+    "/{cohort_id}/students/track-levels",
+    response_model=CohortTrackLevelsOut,
+    dependencies=[Depends(can_view)],
+)
+async def list_student_track_levels(
+    cohort_id: uuid.UUID,
+    user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Latest track-level assessment summary for every enrolled student (batch)."""
+    cohort = await _get_cohort_or_404(db, cohort_id)
+    await _assert_cohort_access(db, user, cohort)
+    try:
+        result = await StudentAssessmentReadService.latest_track_levels(
+            db, cohort_id=cohort_id
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    return CohortTrackLevelsOut(
+        students=[
+            CohortTrackLevelOut(
+                student_id=row.student_id,
+                level=row.level,
+                has_assessment=row.has_assessment,
+            )
+            for row in result.students
+        ]
+    )
+
+
+@router.get(
+    "/{cohort_id}/students/{student_id}/assessments",
+    response_model=StudentAssessmentsOut,
+    dependencies=[Depends(can_view)],
+)
+async def list_student_assessments(
+    cohort_id: uuid.UUID,
+    student_id: uuid.UUID,
+    user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Latest lesson/module/track assessments for one enrolled student."""
+    cohort = await _get_cohort_or_404(db, cohort_id)
+    await _assert_cohort_access(db, user, cohort)
+    try:
+        result = await StudentAssessmentReadService.latest_for_student(
+            db, cohort_id=cohort_id, student_id=student_id
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    return StudentAssessmentsOut(
+        student_id=result.student_id,
+        student_name=result.student_name,
+        assessments=[_assessment_out(row) for row in result.assessments],
+    )
+
+
 async def _latest_lesson_note(
     db: AsyncSession, cohort_id: uuid.UUID, lesson_id: uuid.UUID
 ) -> CohortLessonNote | None:
@@ -514,6 +633,8 @@ async def list_lesson_notes(
             attachment_filename=note.attachment_filename,
             has_attachment=bool(note.attachment_storage_key),
             has_audio=bool(note.audio_storage_key),
+            audio_filename=note.audio_filename,
+            audio_source=note.audio_source,
             ingestion_status=note.ingestion_status,
         )
         for note in by_lesson.values()
@@ -559,7 +680,7 @@ async def download_lesson_audio(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Relato não encontrado")
     return await file_response(
         storage_key=note.audio_storage_key,
-        filename="relato-aula.webm",
+        filename=note.audio_filename or "relato-aula.webm",
         content_type=note.audio_content_type or "audio/webm",
     )
 
@@ -576,7 +697,7 @@ async def transcribe_lesson_report(
     cohort = await _get_cohort_or_404(db, cohort_id)
     await _assert_lesson_professor(db, user, cohort, lesson_id)
 
-    if not is_audio_content_type(audio.content_type):
+    if not is_allowed_report_audio(audio.content_type, audio.filename):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Arquivo deve ser de áudio")
 
     content = await audio.read()
@@ -608,6 +729,7 @@ async def complete(
     transcript: Annotated[str, Form()] = "",
     attachment: Annotated[UploadFile | None, File()] = None,
     audio: Annotated[UploadFile | None, File()] = None,
+    audio_source: Annotated[str, Form()] = "",
 ):
     """The professor signals the cohort studied the lesson. Advances the cohort and
     unlocks context. The AI ingestion (and only then the WhatsApp dispatch) runs
@@ -633,6 +755,7 @@ async def complete(
             transcript,
             attachment=stored_attachment,
             audio=stored_audio,
+            audio_source=audio_source or None,
         )
     except ValueError as e:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(e))

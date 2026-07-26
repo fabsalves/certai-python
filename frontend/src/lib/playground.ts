@@ -1,9 +1,16 @@
 import { api } from "./api";
 
+export type PlaygroundMessageSource =
+  | "realtime_voice"
+  | "whatsapp_text"
+  | "whatsapp_audio"
+  | "in_app_text";
+
 export interface PlaygroundMessage {
   author: "student" | "agent" | "professor";
   content: string;
   created_at: string;
+  source?: PlaygroundMessageSource | null;
 }
 
 export interface PlaygroundAgentResponse {

@@ -4,6 +4,9 @@ __pycache__/
 .venv/
 venv/
 *.egg-info/
+backend/.celerybeat-schedule-dev
+backend/.celerybeat-schedule-dev.db
+backend/.celerybeat-dev.pid
 
 # Node
 node_modules/

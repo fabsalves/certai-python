@@ -46,6 +46,24 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     GROQ_TRANSCRIBE_MODEL: str = "whisper-large-v3"
 
+    # --- Voz / handoff (link público /voz/:token) ---
+    FRONTEND_BASE_URL: str = "http://localhost:5173"
+    VOICE_HANDOFF_EXPIRE_HOURS: int = 48
+
+    # --- OpenAI Realtime (voz ao vivo) ---
+    OPENAI_REALTIME_MODEL: str = "gpt-realtime-2"
+    OPENAI_REALTIME_VOICE: str = "coral"
+    OPENAI_REALTIME_REASONING_EFFORT: str = "low"
+    OPENAI_REALTIME_TRANSCRIPTION_MODEL: str = "gpt-4o-mini-transcribe"
+    OPENAI_REALTIME_TRANSCRIPTION_LANGUAGE: str = "pt"
+    # VAD: server_vad; tunable via ENV (prefix_padding, silence_duration, threshold).
+    OPENAI_REALTIME_TURN_DETECTION: Literal["semantic_vad", "server_vad"] = "server_vad"
+    OPENAI_REALTIME_VAD_EAGERNESS: Literal["auto", "low", "medium", "high"] = "low"
+    OPENAI_REALTIME_VAD_THRESHOLD: float = 0.9
+    OPENAI_REALTIME_VAD_PREFIX_PADDING_MS: int = 500
+    OPENAI_REALTIME_VAD_SILENCE_DURATION_MS: int = 1200
+    OPENAI_REALTIME_INTERRUPT_RESPONSE: bool = True
+
     # --- Storage (local em dev; S3 em staging/prod) ---
     STORAGE_BACKEND: Literal["local", "s3"] = "local"
     STORAGE_LOCAL_ROOT: str = "./media"
@@ -61,6 +79,8 @@ class Settings(BaseSettings):
     CINNDI_WEBHOOK_TOKEN: str = ""
     CINNDI_INSECURE_SSL: bool = False
     WHATSAPP_INVITE_TEMPLATE: str = "certai_convite_aula"
+    WHATSAPP_INVITE_VOICE_TEMPLATE: str = "certai_convite_aula_voz_v2"
+    WHATSAPP_INVITE_USE_VOICE_TEMPLATE: bool = False
     WHATSAPP_TEMPLATE_LANG: str = "pt_BR"
     ASSISTANT_NAME: str = "Lira"
     INBOUND_DEBOUNCE_SECONDS: int = 5

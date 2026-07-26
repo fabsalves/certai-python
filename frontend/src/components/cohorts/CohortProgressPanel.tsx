@@ -9,6 +9,7 @@ import {
   FileChip,
   fileKindFromName,
 } from "../ui/FileAttachment";
+import { LessonAssessmentDistribution } from "./LessonAssessmentDistribution";
 import { LessonReportCapture } from "./LessonReportCapture";
 
 interface Props {
@@ -30,11 +31,11 @@ function findLesson(track: Track, lessonId: string) {
 }
 
 const NOTE_INGESTION_LABELS: Record<string, string> = {
-  pending: "Relato aguardando processamento pela IA…",
-  processing: "IA processando o relato da aula…",
-  done: "Relato processado pela IA.",
+  pending: "Relato aguardando processamento…",
+  processing: "Processando o relato da aula…",
+  done: "Relato processado.",
   failed:
-    "Falha no processamento do relato. Os convites aos alunos estão retidos até o reprocessamento.",
+    "Falha no processamento do relato. Os convites aos alunos ficam retidos até o reprocessamento.",
 };
 
 export function CohortProgressPanel({
@@ -112,13 +113,20 @@ export function CohortProgressPanel({
 
   async function downloadAudio() {
     if (!activeLessonId || !note?.has_audio) return;
+    const audioName = note.audio_filename || "relato-aula.webm";
     setDownloading("audio");
     await runAction({
       run: () =>
-        downloadApiFile(`/cohorts/${cohortId}/lessons/${activeLessonId}/audio`, "relato-aula.webm"),
+        downloadApiFile(`/cohorts/${cohortId}/lessons/${activeLessonId}/audio`, audioName),
       errorMessage: "Não foi possível baixar o áudio.",
     });
     setDownloading(null);
+  }
+
+  function audioMetaLabel(source: CohortLessonNote["audio_source"]): string {
+    if (source === "recording") return "Áudio gravado";
+    if (source === "file") return "Áudio anexado";
+    return "Áudio do relato";
   }
 
   if (allDone && !selected) {
@@ -153,10 +161,14 @@ export function CohortProgressPanel({
           {isDone
             ? "Aula já concluída pela turma."
             : isCurrent
-              ? "Aula atual — grave ou escreva o relato, revise e encerre para liberar a próxima."
+              ? "Aula atual. Grave ou escreva o relato, revise e encerre para liberar a próxima."
               : "Aguardando conclusão das aulas anteriores."}
         </p>
       </div>
+
+      {activeLessonId && (
+        <LessonAssessmentDistribution cohortId={cohortId} lessonId={activeLessonId} />
+      )}
 
       {isDone && note && note.ingestion_status !== "done" && (
         <div
@@ -193,9 +205,9 @@ export function CohortProgressPanel({
           )}
           {note.has_audio && (
             <FileChip
-              filename="relato-aula.webm"
+              filename={note.audio_filename || "relato-aula.webm"}
               kind="audio"
-              meta="Áudio gravado"
+              meta={audioMetaLabel(note.audio_source)}
               onDownload={downloadAudio}
               downloading={downloading === "audio"}
             />

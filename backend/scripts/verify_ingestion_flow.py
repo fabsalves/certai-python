@@ -68,6 +68,58 @@ def test_ingest_task_chains_dispatch_after_commit() -> None:
     assert source.index("await db.commit()") < source.index("plan_dispatch.delay")
 
 
+def test_coerce_llm_text_field_serializes_nested_values() -> None:
+    from app.services.ingestion import coerce_llm_text_field
+
+    assert coerce_llm_text_field("texto") == "texto"
+    assert coerce_llm_text_field({"tema": "x"}) == '{"tema": "x"}'
+    assert coerce_llm_text_field(["a", "b"]) == '["a", "b"]'
+    assert coerce_llm_text_field(None) == ""
+
+
+async def _test_ingest_lesson_note_coerces_dict_fields() -> None:
+    from app.services.ingestion.lesson_note_ingestion_service import ingest_lesson_note
+    from app.models.assessment import CohortLessonNote
+
+    note = CohortLessonNote(
+        cohort_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
+        lesson_id=uuid.UUID("00000000-0000-0000-0000-000000000002"),
+        professor_transcript="A turma entendeu X",
+        ingestion_status="pending",
+    )
+    db = AsyncMock()
+    db.get = AsyncMock(return_value=note)
+    db.flush = AsyncMock()
+
+    nested_kb = {"conceitos": ["fato", "interpretação"], "perguntas": ["o que é fato?"]}
+
+    with (
+        patch(
+            "app.services.ingestion.lesson_note_ingestion_service.consolidate_notes",
+            new=AsyncMock(
+                return_value={
+                    "summary": {"titulo": "Resumo"},
+                    "unclear_points": ["dúvida 1"],
+                    "knowledge_base": nested_kb,
+                }
+            ),
+        ),
+        patch(
+            "app.services.ingestion.lesson_note_ingestion_service.get_storage",
+            return_value=MagicMock(),
+        ),
+    ):
+        result = await ingest_lesson_note(db, note.id)
+
+    import json
+
+    assert isinstance(result.summary, str)
+    assert isinstance(result.unclear_points, str)
+    assert isinstance(result.attachment_knowledge_base, str)
+    assert json.loads(result.attachment_knowledge_base) == nested_kb
+    assert result.ingestion_status == "done"
+
+
 async def _test_ingest_lesson_note_persists_fields() -> None:
     from app.services.ingestion.lesson_note_ingestion_service import ingest_lesson_note
     from app.models.assessment import CohortLessonNote
@@ -113,9 +165,11 @@ def main() -> None:
     test_context_bundle_empty_guide_omitted()
     test_complete_lesson_enqueues_ingestion_not_dispatch()
     test_ingest_task_chains_dispatch_after_commit()
+    test_coerce_llm_text_field_serializes_nested_values()
 
     import asyncio
 
+    asyncio.run(_test_ingest_lesson_note_coerces_dict_fields())
     asyncio.run(_test_ingest_lesson_note_persists_fields())
     print("verify_ingestion_flow: all checks passed")
 

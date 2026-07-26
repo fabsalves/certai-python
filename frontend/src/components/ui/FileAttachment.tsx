@@ -28,7 +28,16 @@ function FileGlyph({ kind }: { kind?: "doc" | "audio" | "pdf" }) {
 
 export function fileKindFromName(filename: string | null | undefined): "doc" | "audio" | "pdf" {
   const ext = (filename ?? "").split(".").pop()?.toLowerCase();
-  if (ext === "webm" || ext === "mp3" || ext === "wav" || ext === "ogg" || ext === "m4a") return "audio";
+  if (
+    ext === "webm" ||
+    ext === "mp3" ||
+    ext === "wav" ||
+    ext === "ogg" ||
+    ext === "m4a" ||
+    ext === "mpeg"
+  ) {
+    return "audio";
+  }
   if (ext === "pdf") return "pdf";
   return "doc";
 }
@@ -87,6 +96,7 @@ interface FilePickerProps {
   accept: string;
   disabled?: boolean;
   buttonLabel?: string;
+  buttonClassName?: string;
   onChange: (file: File | null) => void;
 }
 
@@ -95,6 +105,7 @@ export function FilePicker({
   accept,
   disabled,
   buttonLabel = "Escolher arquivo",
+  buttonClassName = "btn btn-ghost btn-sm",
   onChange,
 }: FilePickerProps) {
   const autoId = useId();
@@ -125,7 +136,7 @@ export function FilePicker({
       />
       <button
         type="button"
-        className="btn btn-ghost btn-sm"
+        className={buttonClassName}
         disabled={disabled}
         onClick={openPicker}
       >

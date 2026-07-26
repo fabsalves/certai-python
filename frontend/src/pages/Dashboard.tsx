@@ -23,29 +23,29 @@ export function Dashboard() {
           <>
             <div className="card stat-card">
               <div className="stat-card__label">Trilhas publicadas</div>
-              <div className="stat-card__value">—</div>
+              <div className="stat-card__value">…</div>
             </div>
             <div className="card stat-card">
               <div className="stat-card__label">Turmas em andamento</div>
-              <div className="stat-card__value">—</div>
+              <div className="stat-card__value">…</div>
             </div>
           </>
         )}
         {isProfessor && (
           <div className="card stat-card">
             <div className="stat-card__label">Turmas sob sua responsabilidade</div>
-            <div className="stat-card__value">—</div>
+            <div className="stat-card__value">…</div>
           </div>
         )}
         {isStudent && (
           <div className="card stat-card">
             <div className="stat-card__label">Aulas já liberadas</div>
-            <div className="stat-card__value">—</div>
+            <div className="stat-card__value">…</div>
           </div>
         )}
         <div className="card stat-card">
           <div className="stat-card__label">Certificados emitidos</div>
-          <div className="stat-card__value">—</div>
+          <div className="stat-card__value">…</div>
         </div>
       </div>
 
@@ -55,7 +55,7 @@ export function Dashboard() {
           <p className="muted" style={{ marginTop: 10 }}>
             O conteúdo é montado em trilhas, módulo a módulo. O professor informa quando a turma
             concluiu uma aula; só então o grupo avança e o material seguinte fica disponível.
-            O registro de aprendizado usa níveis descritivos — sem nota numérica.
+            O registro de aprendizado usa níveis descritivos, sem nota numérica.
           </p>
         </div>
 

@@ -293,7 +293,7 @@ async def seed(*, force: bool = False) -> None:
             ),
         ])
 
-        cohort = Cohort(name="VPF — Turma 1", track_id=track.id)
+        cohort = Cohort(name="VPF, Turma 1", track_id=track.id)
         db.add(cohort)
         await db.flush()
         db.add_all([
