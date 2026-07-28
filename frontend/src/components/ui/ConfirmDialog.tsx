@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 export interface ConfirmDialogProps {
   open: boolean;
@@ -21,6 +21,8 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const pointerDownOnBackdrop = useRef(false);
+
   useEffect(() => {
     if (!open) return;
     function onKeyDown(ev: KeyboardEvent) {
@@ -33,14 +35,24 @@ export function ConfirmDialog({
   if (!open) return null;
 
   return (
-    <div className="modal-backdrop" onClick={onCancel} role="presentation">
+    <div
+      className="modal-backdrop"
+      role="presentation"
+      onPointerDown={(e) => {
+        pointerDownOnBackdrop.current = e.target === e.currentTarget;
+      }}
+      onClick={(e) => {
+        if (pointerDownOnBackdrop.current && e.target === e.currentTarget) {
+          onCancel();
+        }
+      }}
+    >
       <div
         className="modal card confirm-dialog"
         role="alertdialog"
         aria-modal
         aria-labelledby="confirm-dialog-title"
         aria-describedby="confirm-dialog-message"
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="modal__head">
           <h2 id="confirm-dialog-title">{title}</h2>

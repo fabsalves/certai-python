@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 
 interface ModalProps {
   open: boolean;
@@ -9,6 +9,8 @@ interface ModalProps {
 }
 
 export function Modal({ open, onClose, title, children, wide = false }: ModalProps) {
+  const pointerDownOnBackdrop = useRef(false);
+
   useEffect(() => {
     if (!open) return;
     document.documentElement.classList.add("modal-scroll-lock");
@@ -18,13 +20,23 @@ export function Modal({ open, onClose, title, children, wide = false }: ModalPro
   if (!open) return null;
 
   return (
-    <div className="modal-backdrop" onClick={onClose} role="presentation">
+    <div
+      className="modal-backdrop"
+      role="presentation"
+      onPointerDown={(e) => {
+        pointerDownOnBackdrop.current = e.target === e.currentTarget;
+      }}
+      onClick={(e) => {
+        if (pointerDownOnBackdrop.current && e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <div
         className={`modal card${wide ? " modal--wide" : ""}`}
         role="dialog"
         aria-modal
         aria-labelledby="modal-title"
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="modal__head">
           <h2 id="modal-title">{title}</h2>
