@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, PostgresDsn, RedisDsn, computed_field
+from pydantic import Field, PostgresDsn, RedisDsn, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,10 +25,16 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     # Origens liberadas no CORS (lista separada por vírgula no .env)
     CORS_ORIGINS: str = "http://localhost:5173"
+    # Host headers aceitos em prod (TrustedHostMiddleware)
+    ALLOWED_HOSTS: str = (
+        "*.certai.app,certai.app,*.certai.com.br,certai.com.br,*.herokuapp.com"
+    )
 
     # --- Banco ---
-    POSTGRES_USER: str
-    POSTGRES_PASSWORD: str
+    # Heroku Postgres injeta DATABASE_URL; POSTGRES_* continuam válidos em dev.
+    DATABASE_URL: str | None = None
+    POSTGRES_USER: str = ""
+    POSTGRES_PASSWORD: str = ""
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
     POSTGRES_DB: str = "certai"
@@ -85,9 +91,30 @@ class Settings(BaseSettings):
     ASSISTANT_NAME: str = "Lira"
     INBOUND_DEBOUNCE_SECONDS: int = 5
 
+    @model_validator(mode="after")
+    def derive_celery_redis_urls(self) -> "Settings":
+        redis_base = str(self.REDIS_URL).rsplit("/", 1)[0]
+        if self.CELERY_BROKER_URL == "redis://localhost:6379/1" and "localhost" not in redis_base:
+            self.CELERY_BROKER_URL = f"{redis_base}/1"
+        if (
+            self.CELERY_RESULT_BACKEND == "redis://localhost:6379/2"
+            and "localhost" not in redis_base
+        ):
+            self.CELERY_RESULT_BACKEND = f"{redis_base}/2"
+        return self
+
     @computed_field
     @property
-    def DATABASE_URL(self) -> str:
+    def database_url(self) -> str:
+        if self.DATABASE_URL:
+            url = self.DATABASE_URL
+            if url.startswith("postgres://"):
+                return url.replace("postgres://", "postgresql+asyncpg://", 1)
+            if url.startswith("postgresql://"):
+                return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            return url
+        if not self.POSTGRES_USER or not self.POSTGRES_PASSWORD:
+            raise ValueError("Set DATABASE_URL or POSTGRES_USER/POSTGRES_PASSWORD")
         return str(
             PostgresDsn.build(
                 scheme="postgresql+asyncpg",
@@ -103,6 +130,11 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+
+    @computed_field
+    @property
+    def allowed_hosts_list(self) -> list[str]:
+        return [h.strip() for h in self.ALLOWED_HOSTS.split(",") if h.strip()]
 
 
 @lru_cache

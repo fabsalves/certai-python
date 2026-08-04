@@ -42,7 +42,7 @@ app.add_middleware(
 
 # Em produção, recusa Host headers desconhecidos.
 if settings.ENV == "prod":
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=["*.certai.app", "certai.app"])
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts_list)
 
 
 @app.middleware("http")
