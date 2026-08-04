@@ -1,8 +1,20 @@
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from pydantic import Field, PostgresDsn, RedisDsn, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def redis_url_for_db(redis_url: str, db: int) -> str:
+    """Build Redis URL for a logical DB; Heroku rediss:// needs ssl_cert_reqs for Celery."""
+    parsed = urlparse(redis_url)
+    query = parse_qs(parsed.query)
+    if parsed.scheme == "rediss" and "ssl_cert_reqs" not in query:
+        query["ssl_cert_reqs"] = ["CERT_NONE"]
+    return urlunparse(
+        parsed._replace(path=f"/{db}", query=urlencode({k: v[0] for k, v in query.items()}))
+    )
 
 
 class Settings(BaseSettings):
@@ -93,14 +105,14 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def derive_celery_redis_urls(self) -> "Settings":
-        redis_base = str(self.REDIS_URL).rsplit("/", 1)[0]
-        if self.CELERY_BROKER_URL == "redis://localhost:6379/1" and "localhost" not in redis_base:
-            self.CELERY_BROKER_URL = f"{redis_base}/1"
+        redis_url = str(self.REDIS_URL)
+        if self.CELERY_BROKER_URL == "redis://localhost:6379/1" and "localhost" not in redis_url:
+            self.CELERY_BROKER_URL = redis_url_for_db(redis_url, 1)
         if (
             self.CELERY_RESULT_BACKEND == "redis://localhost:6379/2"
-            and "localhost" not in redis_base
+            and "localhost" not in redis_url
         ):
-            self.CELERY_RESULT_BACKEND = f"{redis_base}/2"
+            self.CELERY_RESULT_BACKEND = redis_url_for_db(redis_url, 2)
         return self
 
     @computed_field
