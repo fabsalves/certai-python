@@ -106,13 +106,15 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def derive_celery_redis_urls(self) -> "Settings":
         redis_url = str(self.REDIS_URL)
-        if self.CELERY_BROKER_URL == "redis://localhost:6379/1" and "localhost" not in redis_url:
-            self.CELERY_BROKER_URL = redis_url_for_db(redis_url, 1)
-        if (
-            self.CELERY_RESULT_BACKEND == "redis://localhost:6379/2"
-            and "localhost" not in redis_url
-        ):
-            self.CELERY_RESULT_BACKEND = redis_url_for_db(redis_url, 2)
+        if "localhost" in redis_url:
+            return self
+        # RedisCloud (Heroku addon) só expõe DB 0 — broker e backend compartilham a instância.
+        db_index = 0 if "redislabs.com" in redis_url else 1
+        backend_db = 0 if "redislabs.com" in redis_url else 2
+        if self.CELERY_BROKER_URL == "redis://localhost:6379/1":
+            self.CELERY_BROKER_URL = redis_url_for_db(redis_url, db_index)
+        if self.CELERY_RESULT_BACKEND == "redis://localhost:6379/2":
+            self.CELERY_RESULT_BACKEND = redis_url_for_db(redis_url, backend_db)
         return self
 
     @computed_field

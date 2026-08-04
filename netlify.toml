@@ -6,7 +6,7 @@
 # Troque a URL abaixo pela URL real do app Heroku (ex.: certai-api.herokuapp.com)
 [[redirects]]
   from = "/api/*"
-  to = "https://certai-api-prod-2bec52feaa51.herokuapp.com/api/:splat"
+  to = "https://certai-828e20faf2de.herokuapp.com/api/:splat"
   status = 200
   force = true
 
