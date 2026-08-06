@@ -13,6 +13,13 @@ import { LessonAssessmentDistSkeleton } from "./LessonAssessmentDistSkeleton";
 interface Props {
   cohortId: string;
   lessonId: string;
+  /** Open Alunos dossier for this student (Andamento → Alunos bridge). */
+  onOpenStudent?: (studentId: string) => void;
+}
+
+interface BucketStudent {
+  student_id: string;
+  student_name: string;
 }
 
 interface CountItem {
@@ -20,6 +27,7 @@ interface CountItem {
   label: string;
   count: number;
   hint?: string;
+  students: BucketStudent[];
 }
 
 function DistributionHeading() {
@@ -55,15 +63,25 @@ function DistributionHeading() {
   );
 }
 
-export function LessonAssessmentDistribution({ cohortId, lessonId }: Props) {
+function sortByName(a: BucketStudent, b: BucketStudent): number {
+  return a.student_name.localeCompare(b.student_name, "pt-BR");
+}
+
+export function LessonAssessmentDistribution({
+  cohortId,
+  lessonId,
+  onOpenStudent,
+}: Props) {
   const [data, setData] = useState<LessonAssessments | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [openKey, setOpenKey] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError("");
+    setOpenKey(null);
     api
       .get<LessonAssessments>(`/cohorts/${cohortId}/lessons/${lessonId}/assessments`)
       .then(({ data: payload }) => {
@@ -85,44 +103,58 @@ export function LessonAssessmentDistribution({ cohortId, lessonId }: Props) {
 
   const items = useMemo((): CountItem[] => {
     if (!data) return [];
-    const byLevel: Record<AssessmentLevel, number> = {
-      very_low: 0,
-      low: 0,
-      medium: 0,
-      high: 0,
+    const byLevel: Record<AssessmentLevel, BucketStudent[]> = {
+      very_low: [],
+      low: [],
+      medium: [],
+      high: [],
     };
-    let noEvidence = 0;
+    const noEvidence: BucketStudent[] = [];
     for (const row of data.assessments) {
+      const student = {
+        student_id: row.student_id,
+        student_name: row.student_name,
+      };
       if (row.level == null) {
-        noEvidence += 1;
+        noEvidence.push(student);
       } else {
-        byLevel[row.level] += 1;
+        byLevel[row.level].push(student);
       }
     }
     const result: CountItem[] = [];
     for (const level of ASSESSMENT_LEVEL_ORDER) {
-      if (byLevel[level] > 0) {
+      const students = [...byLevel[level]].sort(sortByName);
+      if (students.length > 0) {
         result.push({
           key: level,
           label: assessmentLevelLabel(level),
-          count: byLevel[level],
+          count: students.length,
+          students,
         });
       }
     }
-    if (noEvidence > 0) {
+    if (noEvidence.length > 0) {
       result.push({
         key: "no_evidence",
         label: "Sem evidência suficiente",
-        count: noEvidence,
+        count: noEvidence.length,
         hint: ASSESSMENT_STATE_HINTS.no_evidence,
+        students: [...noEvidence].sort(sortByName),
       });
     }
     if (data.pending.length > 0) {
+      const pendingStudents = [...data.pending]
+        .map((row) => ({
+          student_id: row.student_id,
+          student_name: row.student_name,
+        }))
+        .sort(sortByName);
       result.push({
         key: "pending",
         label: "Avaliação pendente",
-        count: data.pending.length,
+        count: pendingStudents.length,
         hint: ASSESSMENT_STATE_HINTS.pending,
+        students: pendingStudents,
       });
     }
     return result;
@@ -157,19 +189,65 @@ export function LessonAssessmentDistribution({ cohortId, lessonId }: Props) {
     <div className="cohort-assessment-dist">
       <DistributionHeading />
       <ul className="cohort-assessment-dist__list">
-        {items.map((item) => (
-          <li key={item.key} className="cohort-assessment-dist__item">
-            <span className="cohort-assessment-dist__count">{item.count}</span>
-            {item.hint ? (
-              <Tooltip content={item.hint}>
-                <span>{item.label}</span>
-              </Tooltip>
-            ) : (
+        {items.map((item) => {
+          const open = openKey === item.key;
+          const labelNode = item.hint ? (
+            <Tooltip content={item.hint}>
               <span>{item.label}</span>
-            )}
-          </li>
-        ))}
+            </Tooltip>
+          ) : (
+            <span>{item.label}</span>
+          );
+          return (
+            <li
+              key={item.key}
+              className={`cohort-assessment-dist__item${open ? " is-open" : ""}`}
+            >
+              <button
+                type="button"
+                className="cohort-assessment-dist__bucket"
+                onClick={() => setOpenKey(open ? null : item.key)}
+                aria-expanded={open}
+              >
+                <span className="cohort-assessment-dist__count">{item.count}</span>
+                {labelNode}
+                <span
+                  className={`cohort-assessment-dist__chevron${open ? " is-open" : ""}`}
+                  aria-hidden
+                >
+                  ▾
+                </span>
+              </button>
+              {open && (
+                <ul className="cohort-assessment-dist__students">
+                  {item.students.map((student) => (
+                    <li key={student.student_id}>
+                      {onOpenStudent ? (
+                        <button
+                          type="button"
+                          className="cohort-assessment-dist__student"
+                          onClick={() => onOpenStudent(student.student_id)}
+                        >
+                          {student.student_name}
+                        </button>
+                      ) : (
+                        <span className="cohort-assessment-dist__student-static">
+                          {student.student_name}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          );
+        })}
       </ul>
+      {onOpenStudent ? (
+        <p className="muted cohort-assessment-dist__hint">
+          Abra um nível e toque no nome para ver a compreensão na trilha.
+        </p>
+      ) : null}
     </div>
   );
 }

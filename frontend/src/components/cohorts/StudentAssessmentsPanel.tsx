@@ -1,7 +1,12 @@
 import axios from "axios";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { api } from "../../lib/api";
-import type { StudentAssessment, StudentAssessments } from "../../lib/assessments";
+import {
+  ASSESSMENT_STATE_HINTS,
+  formatAssessmentWhen,
+  type StudentAssessment,
+  type StudentAssessments,
+} from "../../lib/assessments";
 import { sortedLessons, sortedModules, type Track } from "../../lib/tracks";
 import { maskPhoneBR } from "../../lib/validation";
 import { AssessmentLevelBadge } from "./AssessmentLevelBadge";
@@ -18,7 +23,7 @@ interface Props {
   onNotEnrolled?: () => void;
 }
 
-type ScopeEyebrow = "Trilha" | "Módulo" | "Aula";
+type ScopeEyebrow = "Módulo" | "Aula";
 
 function AssessmentScopeCard({
   eyebrow,
@@ -31,12 +36,15 @@ function AssessmentScopeCard({
   title: string;
   row: StudentAssessment | null;
   defaultOpen: boolean;
-  /** Lesson cards (or other nested scope cards) rendered inside this card when open. */
+  /** Lesson cards rendered inside this card when open. */
   nested?: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const hasNested = nested != null;
   const canExpand = row != null || hasNested;
+  const gapsText = row?.gaps.trim() ?? "";
+  const assessmentText = row?.assessment.trim() ?? "";
+  const hasBody = assessmentText.length > 0 || gapsText.length > 0 || Boolean(row?.created_at);
 
   return (
     <article
@@ -77,26 +85,25 @@ function AssessmentScopeCard({
           aria-hidden={!open}
         >
           <div className="student-assessment-card__collapse-inner">
-            {row && (
+            {row && hasBody && (
               <div className="student-assessment-card__body">
-                <div className="student-assessment-card__field">
-                  <span className="student-assessment-card__label">Parecer</span>
-                  {row.assessment.trim() ? (
-                    <p className="student-assessment-card__text">{row.assessment.trim()}</p>
-                  ) : (
-                    <p className="muted student-assessment-card__empty">Nenhum</p>
-                  )}
-                </div>
-                {row.level != null && (
+                {assessmentText ? (
+                  <div className="student-assessment-card__field">
+                    <span className="student-assessment-card__label">Parecer</span>
+                    <p className="student-assessment-card__text">{assessmentText}</p>
+                  </div>
+                ) : null}
+                {gapsText ? (
                   <div className="student-assessment-card__field">
                     <span className="student-assessment-card__label">Lacunas</span>
-                    {row.gaps.trim() ? (
-                      <p className="student-assessment-card__text">{row.gaps.trim()}</p>
-                    ) : (
-                      <p className="muted student-assessment-card__empty">Nenhuma</p>
-                    )}
+                    <p className="student-assessment-card__text">{gapsText}</p>
                   </div>
-                )}
+                ) : null}
+                {row.created_at ? (
+                  <p className="muted student-assessment-card__when">
+                    Avaliado em {formatAssessmentWhen(row.created_at)}
+                  </p>
+                ) : null}
               </div>
             )}
             {hasNested && (
@@ -162,6 +169,27 @@ export function StudentAssessmentsPanel({
     return map;
   }, [data]);
 
+  const modules = useMemo(
+    () => sortedModules(track).filter((mod) => mod.is_active),
+    [track],
+  );
+
+  const activeLessons = useMemo(
+    () =>
+      modules.flatMap((mod) =>
+        sortedLessons(mod).filter((lesson) => lesson.is_active),
+      ),
+    [modules],
+  );
+
+  const lessonAssessedCount = useMemo(() => {
+    let count = 0;
+    for (const lesson of activeLessons) {
+      if (byKey.has(`lesson:${lesson.id}`)) count += 1;
+    }
+    return count;
+  }, [activeLessons, byKey]);
+
   if (loading) {
     return <StudentAssessmentsSkeleton />;
   }
@@ -175,7 +203,8 @@ export function StudentAssessmentsPanel({
   }
 
   const trackAssessment = byKey.get(`track:${track.id}`) ?? null;
-  const modules = sortedModules(track).filter((mod) => mod.is_active);
+  const trackText = trackAssessment?.assessment.trim() ?? "";
+  const trackGaps = trackAssessment?.gaps.trim() ?? "";
 
   return (
     <div className="student-assessments-panel">
@@ -189,14 +218,52 @@ export function StudentAssessmentsPanel({
         </p>
       </header>
 
-      <div className="student-assessments-panel__tree">
-        <AssessmentScopeCard
-          eyebrow="Trilha"
-          title={track.title}
-          row={trackAssessment}
-          defaultOpen
-        />
+      <section className="student-assessments-panel__hero" aria-label="Avaliação da trilha">
+        <div className="student-assessments-panel__hero-top">
+          <span className="student-assessments-panel__hero-eyebrow">Trilha</span>
+          {trackAssessment ? (
+            <AssessmentLevelBadge level={trackAssessment.level} />
+          ) : (
+            <AssessmentLevelBadge missing />
+          )}
+        </div>
+        <h4 className="student-assessments-panel__hero-title">{track.title}</h4>
+        <p className="muted student-assessments-panel__hero-meta">
+          {lessonAssessedCount}/{activeLessons.length} aulas com avaliação
+        </p>
 
+        {trackAssessment ? (
+          <>
+            {trackText ? (
+              <div className="student-assessments-panel__hero-field">
+                <span className="student-assessments-panel__hero-label">Parecer</span>
+                <p className="student-assessments-panel__hero-text">{trackText}</p>
+              </div>
+            ) : trackAssessment.level === null ? (
+              <p className="muted student-assessments-panel__hero-text">
+                {ASSESSMENT_STATE_HINTS.no_evidence}
+              </p>
+            ) : null}
+            {trackGaps ? (
+              <div className="student-assessments-panel__hero-field">
+                <span className="student-assessments-panel__hero-label">Lacunas</span>
+                <p className="student-assessments-panel__hero-text">{trackGaps}</p>
+              </div>
+            ) : null}
+            {trackAssessment.created_at ? (
+              <p className="muted student-assessments-panel__hero-when">
+                Avaliado em {formatAssessmentWhen(trackAssessment.created_at)}
+              </p>
+            ) : null}
+          </>
+        ) : (
+          <p className="muted student-assessments-panel__hero-text">
+            {ASSESSMENT_STATE_HINTS.no_assessment}
+          </p>
+        )}
+      </section>
+
+      <div className="student-assessments-panel__tree">
         {modules.map((mod) => {
           const moduleAssessment = byKey.get(`module:${mod.id}`) ?? null;
           const lessons = sortedLessons(mod).filter((lesson) => lesson.is_active);

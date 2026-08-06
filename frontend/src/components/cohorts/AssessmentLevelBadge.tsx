@@ -49,9 +49,11 @@ export function AssessmentLevelBadge({ level, missing, compact, className }: Pro
       ? "high"
       : kind === "medium"
         ? "medium"
-        : kind === "low" || kind === "very_low"
+        : kind === "low"
           ? "low"
-          : "neutral";
+          : kind === "very_low"
+            ? "very-low"
+            : "neutral";
 
   const badge = (
     <span

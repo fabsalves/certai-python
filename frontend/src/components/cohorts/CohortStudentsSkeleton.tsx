@@ -28,11 +28,20 @@ export function CohortStudentsSkeleton() {
             {Array.from({ length: 2 }).map((_, sectionIndex) => (
               <div key={sectionIndex} className="cohort-students__section">
                 <div className="cohort-students__section-head" style={{ cursor: "default" }}>
-                  <span className="cohort-students__section-copy">
-                    <Skeleton variant="text" width={88} height={10} />
-                    <Skeleton variant="text" width={120} height={14} />
+                  <span className="cohort-students__section-head-main">
+                    <span className="cohort-students__section-copy">
+                      <Skeleton variant="text" width={88} height={10} />
+                      <Skeleton variant="text" width={120} height={14} />
+                    </span>
+                    <span className="cohort-students__section-meta">
+                      <Skeleton variant="rect" width={28} height={20} />
+                    </span>
                   </span>
-                  <Skeleton variant="rect" width={28} height={20} />
+                  <span className="cohort-students__level-mix" aria-hidden>
+                    <span className="cohort-students__level-mix-pill cohort-students__level-mix-pill--skeleton" />
+                    <span className="cohort-students__level-mix-pill cohort-students__level-mix-pill--skeleton" />
+                    <span className="cohort-students__level-mix-pill cohort-students__level-mix-pill--skeleton" />
+                  </span>
                 </div>
                 <ul className="cohort-students__list">
                   {Array.from({ length: sectionIndex === 0 ? 3 : 2 }).map((_, index) => (
@@ -50,6 +59,7 @@ export function CohortStudentsSkeleton() {
           <div className="editor-layout-skeleton__body">
             <Skeleton variant="text" width="50%" height={18} />
             <Skeleton variant="text" width="70%" height={14} />
+            <Skeleton variant="rect" width="100%" height={96} />
             <Skeleton variant="rect" width="100%" height={72} />
             <Skeleton variant="rect" width="100%" height={72} />
           </div>

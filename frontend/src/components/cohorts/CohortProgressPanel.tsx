@@ -26,6 +26,8 @@ interface Props {
   /** Set when a professor is viewing: scopes "done" to their own class. */
   viewerProfessorId?: string;
   onCompleted: () => void;
+  /** Bridge to Alunos dossier from lesson distribution. */
+  onOpenStudent?: (studentId: string) => void;
 }
 
 function findLesson(track: Track, lessonId: string) {
@@ -53,6 +55,7 @@ export function CohortProgressPanel({
   professorName,
   viewerProfessorId,
   onCompleted,
+  onOpenStudent,
 }: Props) {
   const runAction = useApiAction();
   const activeLessonId = selectedLessonId ?? progress.current_lesson_id;
@@ -301,7 +304,11 @@ export function CohortProgressPanel({
       />
 
       {activeLessonId && (
-        <LessonAssessmentDistribution cohortId={cohortId} lessonId={activeLessonId} />
+        <LessonAssessmentDistribution
+          cohortId={cohortId}
+          lessonId={activeLessonId}
+          onOpenStudent={onOpenStudent}
+        />
       )}
 
       {lessonNotes.map((note) => (

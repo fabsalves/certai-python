@@ -3,11 +3,15 @@ import { api } from "../../lib/api";
 import {
   ASSESSMENT_OVERVIEW_HINT,
   ASSESSMENT_STATE_HINTS,
+  assessmentLevelLabel,
+  countTrackLevels,
   matchesLevelFilter,
   trackLevelFromBatch,
+  trackLevelNeedsAttention,
   trackLevelSortRank,
   type CohortTrackLevels,
   type LevelFilter,
+  type TrackLevelCounts,
   type TrackLevelSummary,
 } from "../../lib/assessments";
 import {
@@ -35,6 +39,9 @@ interface Props {
   cohort: Cohort;
   track: Track;
   viewerProfessorId?: string;
+  /** Select this student when landing from Andamento (dossier bridge). */
+  focusStudentId?: string | null;
+  onFocusStudentHandled?: () => void;
   onChanged: () => void;
 }
 
@@ -72,11 +79,95 @@ function sectionTitle(section: StudentClassSection): string {
   return section.professorName ?? "Professor";
 }
 
+const MIX_ITEMS: {
+  key: keyof TrackLevelCounts;
+  short: string;
+  label: string;
+  tone: string;
+  hint?: string;
+}[] = [
+  { key: "high", short: "A", label: assessmentLevelLabel("high"), tone: "high" },
+  { key: "medium", short: "M", label: assessmentLevelLabel("medium"), tone: "medium" },
+  { key: "low", short: "B", label: assessmentLevelLabel("low"), tone: "low" },
+  {
+    key: "very_low",
+    short: "MB",
+    label: assessmentLevelLabel("very_low"),
+    tone: "very-low",
+  },
+  {
+    key: "no_evidence",
+    short: "SE",
+    label: "Sem evidência",
+    tone: "neutral",
+    hint: ASSESSMENT_STATE_HINTS.no_evidence,
+  },
+  {
+    key: "no_assessment",
+    short: "SA",
+    label: "Sem avaliação",
+    tone: "neutral",
+    hint: ASSESSMENT_STATE_HINTS.no_assessment,
+  },
+];
+
+function SectionLevelMix({
+  studentIds,
+  trackLevels,
+  loading,
+}: {
+  studentIds: string[];
+  trackLevels: Record<string, TrackLevelSummary>;
+  loading: boolean;
+}) {
+  const counts = useMemo(
+    () => countTrackLevels(studentIds, trackLevels),
+    [studentIds, trackLevels],
+  );
+  const items = MIX_ITEMS.filter((item) => counts[item.key] > 0);
+
+  if (loading && items.length === 0) {
+    return (
+      <span className="cohort-students__level-mix" aria-hidden>
+        <span className="cohort-students__level-mix-pill cohort-students__level-mix-pill--skeleton" />
+        <span className="cohort-students__level-mix-pill cohort-students__level-mix-pill--skeleton" />
+      </span>
+    );
+  }
+
+  if (items.length === 0) return null;
+
+  return (
+    <span className="cohort-students__level-mix" aria-label="Distribuição de níveis">
+      {items.map((item) => {
+        const pill = (
+          <span
+            className={`cohort-students__level-mix-pill cohort-students__level-mix-pill--${item.tone}`}
+          >
+            <span className="cohort-students__level-mix-count">{counts[item.key]}</span>
+            <span className="cohort-students__level-mix-short">{item.short}</span>
+          </span>
+        );
+        return (
+          <Tooltip
+            key={item.key}
+            content={item.hint ? `${item.label}: ${item.hint}` : item.label}
+          >
+            {pill}
+          </Tooltip>
+        );
+      })}
+    </span>
+  );
+}
+
 export function CohortEnrollments({
   cohortId,
   cohort,
   track,
   viewerProfessorId,
+  focusStudentId = null,
+  onFocusStudentHandled,
   onChanged,
 }: Props) {
   const { user } = useAuth();
@@ -209,6 +300,8 @@ export function CohortEnrollments({
   const visibleSections = useMemo(() => {
     return sections
       .map((section) => {
+        // Mix always reflects the full section; list rows follow the active filter.
+        const mixStudentIds = section.studentIds;
         let studentIds = section.studentIds.filter((id) => filteredByStudent.has(id));
         studentIds = [...studentIds].sort((a, b) => {
           const ea = enrollmentById.get(a);
@@ -221,7 +314,7 @@ export function CohortEnrollments({
           }
           return ea.student_name.localeCompare(eb.student_name, "pt-BR");
         });
-        return { ...section, studentIds };
+        return { ...section, studentIds, mixStudentIds };
       })
       .filter((section) => section.studentIds.length > 0);
   }, [sections, filteredByStudent, enrollmentById, sortMode, trackLevels]);
@@ -247,6 +340,47 @@ export function CohortEnrollments({
       setSelectedStudentId(null);
     }
   }, [enrollments, selectedStudentId]);
+
+  useEffect(() => {
+    if (!focusStudentId) return;
+    if (loading) return;
+
+    const enrolled = enrollments.some((e) => e.student_id === focusStudentId);
+    if (!enrolled) {
+      onFocusStudentHandled?.();
+      return;
+    }
+
+    setQuery("");
+    setLevelFilter("all");
+    setStaleSelectionNotice(null);
+    setSelectedStudentId(focusStudentId);
+
+    const preferred =
+      sections.find(
+        (section) =>
+          section.isOwnClass && section.studentIds.includes(focusStudentId),
+      ) ??
+      sections.find((section) => section.studentIds.includes(focusStudentId));
+    if (preferred) {
+      setOpenKeys((current) => {
+        const next = new Set(current);
+        next.add(preferred.key);
+        return next;
+      });
+    }
+
+    requestAnimationFrame(() => {
+      detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    onFocusStudentHandled?.();
+  }, [
+    focusStudentId,
+    loading,
+    enrollments,
+    sections,
+    onFocusStudentHandled,
+  ]);
 
   function selectStudent(studentId: string) {
     setStaleSelectionNotice(null);
@@ -307,7 +441,8 @@ export function CohortEnrollments({
       <div className="cohort-students__toolbar">
         <div className="muted cohort-students__hint">
           <p className="cohort-students__hint-text">
-            Alunos organizados por módulo e turma. Selecione um para ver as avaliações.
+            Pessoas na jornada. Veja quem está na sua turma e abra alguém para ler a
+            compreensão na trilha.
           </p>
           <Tooltip content={ASSESSMENT_OVERVIEW_HINT}>
             <button
@@ -425,25 +560,32 @@ export function CohortEnrollments({
                           onClick={() => toggleSection(section.key)}
                           aria-expanded={open}
                         >
-                          <span className="cohort-students__section-copy">
-                            <span className="cohort-students__section-module">
-                              {section.moduleTitle}
+                          <span className="cohort-students__section-head-main">
+                            <span className="cohort-students__section-copy">
+                              <span className="cohort-students__section-module">
+                                {section.moduleTitle}
+                              </span>
+                              <span className="cohort-students__section-title">
+                                {sectionTitle(section)}
+                              </span>
                             </span>
-                            <span className="cohort-students__section-title">
-                              {sectionTitle(section)}
+                            <span className="cohort-students__section-meta">
+                              <span className="cohort-students__section-count">
+                                {section.mixStudentIds.length}
+                              </span>
+                              <span
+                                className={`cohort-students__section-chevron${open ? " is-open" : ""}`}
+                                aria-hidden
+                              >
+                                ▾
+                              </span>
                             </span>
                           </span>
-                          <span className="cohort-students__section-meta">
-                            <span className="cohort-students__section-count">
-                              {section.studentIds.length}
-                            </span>
-                            <span
-                              className={`cohort-students__section-chevron${open ? " is-open" : ""}`}
-                              aria-hidden
-                            >
-                              ▾
-                            </span>
-                          </span>
+                          <SectionLevelMix
+                            studentIds={section.mixStudentIds}
+                            trackLevels={trackLevels}
+                            loading={levelsLoading}
+                          />
                         </button>
 
                         {open && (
@@ -453,14 +595,20 @@ export function CohortEnrollments({
                               if (!e) return null;
                               const selected = e.student_id === selectedStudentId;
                               const summary = trackLevels[e.student_id];
+                              const attention = trackLevelNeedsAttention(summary);
                               return (
                                 <li key={`${section.key}:${e.id}`}>
                                   <div
-                                    className={`cohort-students__row${selected ? " is-selected" : ""}${
+                                    className={[
+                                      "cohort-students__row",
+                                      selected ? "is-selected" : "",
+                                      attention ? "is-attention" : "",
                                       canManageEnrollments
-                                        ? " cohort-students__row--manageable"
-                                        : ""
-                                    }`}
+                                        ? "cohort-students__row--manageable"
+                                        : "",
+                                    ]
+                                      .filter(Boolean)
+                                      .join(" ")}
                                   >
                                     <button
                                       type="button"
@@ -534,9 +682,19 @@ export function CohortEnrollments({
                 />
               ) : (
                 <div className="cohort-students__detail-empty">
-                  <p className={staleSelectionNotice ? "muted" : undefined}>
-                    {staleSelectionNotice ?? "Selecione um aluno para ver as avaliações"}
-                  </p>
+                  {staleSelectionNotice ? (
+                    <p className="muted">{staleSelectionNotice}</p>
+                  ) : (
+                    <>
+                      <p className="cohort-students__detail-empty-title">
+                        Avaliações do aluno
+                      </p>
+                      <p className="muted">
+                        Selecione um aluno na lista para ver o parecer da trilha, módulos e
+                        aulas.
+                      </p>
+                    </>
+                  )}
                 </div>
               )}
             </div>

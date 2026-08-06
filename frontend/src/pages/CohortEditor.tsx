@@ -99,6 +99,8 @@ export function CohortEditor() {
   const [loadError, setLoadError] = useState("");
   const [tab, setTab] = useState<EditorTab>("meta");
   const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
+  /** Student to focus in Alunos after Andamento → dossier bridge. */
+  const [focusStudentId, setFocusStudentId] = useState<string | null>(null);
   const [profModalOpen, setProfModalOpen] = useState(false);
 
   const selectedTrack = useMemo(
@@ -462,6 +464,11 @@ export function CohortEditor() {
     setTab(id as EditorTab);
   }
 
+  function openStudentFromAndamento(studentId: string) {
+    setFocusStudentId(studentId);
+    setTab("students");
+  }
+
   function selectLesson(lessonId: string) {
     setTab("progress");
     setSelectedLessonId(lessonId);
@@ -622,6 +629,8 @@ export function CohortEditor() {
                       cohortId={cohort.id}
                       cohort={cohort}
                       track={track}
+                      focusStudentId={focusStudentId}
+                      onFocusStudentHandled={() => setFocusStudentId(null)}
                       onChanged={reloadCohort}
                     />
                   )}
@@ -638,6 +647,7 @@ export function CohortEditor() {
                       professorName={ownClass?.professor_name}
                       viewerProfessorId={isProfessor ? user?.id : undefined}
                       onCompleted={onProgressChanged}
+                      onOpenStudent={openStudentFromAndamento}
                     />
                   )}
                 </EditorTabPanel>
@@ -672,6 +682,8 @@ export function CohortEditor() {
                       cohort={cohort}
                       track={track}
                       viewerProfessorId={isProfessor ? user?.id : undefined}
+                      focusStudentId={focusStudentId}
+                      onFocusStudentHandled={() => setFocusStudentId(null)}
                       onChanged={reloadCohort}
                     />
                   )}
@@ -692,6 +704,7 @@ export function CohortEditor() {
                       professorName={ownClass?.professor_name}
                       viewerProfessorId={isProfessor ? user?.id : undefined}
                       onCompleted={onProgressChanged}
+                      onOpenStudent={openStudentFromAndamento}
                     />
                   )}
                 </EditorTabPanel>

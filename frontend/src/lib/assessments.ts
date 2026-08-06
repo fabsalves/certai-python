@@ -122,3 +122,70 @@ export function trackLevelFromBatch(row: CohortTrackLevel): TrackLevelSummary {
   if (!row.has_assessment) return { kind: "missing" };
   return { kind: "level", level: row.level };
 }
+
+/** Compact counts for a section head panorama (track-level only). */
+export interface TrackLevelCounts {
+  high: number;
+  medium: number;
+  low: number;
+  very_low: number;
+  no_evidence: number;
+  no_assessment: number;
+}
+
+export function emptyTrackLevelCounts(): TrackLevelCounts {
+  return {
+    high: 0,
+    medium: 0,
+    low: 0,
+    very_low: 0,
+    no_evidence: 0,
+    no_assessment: 0,
+  };
+}
+
+/** Count track-level summaries for the given student ids (unknown → ignored). */
+export function countTrackLevels(
+  studentIds: string[],
+  trackLevels: Record<string, TrackLevelSummary>,
+): TrackLevelCounts {
+  const counts = emptyTrackLevelCounts();
+  for (const id of studentIds) {
+    const summary = trackLevels[id];
+    if (summary == null) continue;
+    if (summary.kind === "missing") {
+      counts.no_assessment += 1;
+      continue;
+    }
+    if (summary.level === null) {
+      counts.no_evidence += 1;
+      continue;
+    }
+    counts[summary.level] += 1;
+  }
+  return counts;
+}
+
+/** Short date for assessment meta (pt-BR). */
+export function formatAssessmentWhen(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+/** Whether the list row should get an attention accent. */
+export function trackLevelNeedsAttention(
+  summary: TrackLevelSummary | undefined,
+): boolean {
+  if (summary == null || summary.kind === "missing") return false;
+  if (summary.level === null) return true;
+  return summary.level === "low" || summary.level === "very_low";
+}

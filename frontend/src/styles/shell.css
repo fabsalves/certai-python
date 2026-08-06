@@ -1384,7 +1384,8 @@ html.modal-scroll-lock body {
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  /* Allow page scroll when the list isn't overflowing (or at its edge). */
+  overscroll-behavior: auto;
   -webkit-overflow-scrolling: touch;
   /* Room for row hover elevation/shadow so the first item isn't clipped. */
   padding: 6px 8px 8px 4px;
@@ -1439,9 +1440,9 @@ html.modal-scroll-lock body {
   top: 0;
   z-index: 2;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
   width: 100%;
   margin: 0;
   padding: 10px 12px;
@@ -1461,11 +1462,21 @@ html.modal-scroll-lock body {
   background: var(--surface-sunken);
 }
 
+.cohort-students__section-head-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
 .cohort-students__section-copy {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  flex: 1;
   min-width: 0;
+  overflow: hidden;
 }
 
 .cohort-students__section-module {
@@ -1474,6 +1485,9 @@ html.modal-scroll-lock body {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .cohort-students__section-title {
@@ -1481,6 +1495,9 @@ html.modal-scroll-lock body {
   font-weight: 600;
   color: var(--ink);
   line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .cohort-students__section-sub {
@@ -1493,6 +1510,78 @@ html.modal-scroll-lock body {
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+}
+
+.cohort-students__level-mix {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.cohort-students__level-mix .ui-tooltip-anchor {
+  flex: none;
+}
+
+.cohort-students__level-mix-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  border: 1px solid transparent;
+  font-variant-numeric: tabular-nums;
+}
+
+.cohort-students__level-mix-count {
+  font-weight: 700;
+}
+
+.cohort-students__level-mix-short {
+  letter-spacing: 0.02em;
+}
+
+.cohort-students__level-mix-pill--high {
+  color: var(--brand);
+  background: var(--brand-50);
+  border-color: color-mix(in srgb, var(--brand) 22%, transparent);
+}
+
+.cohort-students__level-mix-pill--medium {
+  color: color-mix(in srgb, var(--accent) 82%, #000);
+  background: var(--accent-50);
+  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.cohort-students__level-mix-pill--low {
+  color: #8a4f2e;
+  background: #f6ebe3;
+  border-color: color-mix(in srgb, #8a4f2e 22%, transparent);
+}
+
+.cohort-students__level-mix-pill--very-low {
+  color: #8a3030;
+  background: #f7e8e6;
+  border-color: color-mix(in srgb, #8a3030 24%, transparent);
+}
+
+.cohort-students__level-mix-pill--neutral {
+  color: var(--text-muted);
+  background: var(--surface-sunken);
+  border-color: var(--border);
+}
+
+.cohort-students__level-mix-pill--skeleton {
+  width: 28px;
+  height: 16px;
+  padding: 0;
+  border-color: transparent;
+  background: var(--surface-sunken);
 }
 
 .cohort-students__section-count {
@@ -1538,21 +1627,31 @@ html.modal-scroll-lock body {
 }
 
 .cohort-students__detail-empty {
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   min-height: 220px;
   padding: 32px 24px;
   text-align: center;
 }
 
+.cohort-students__detail-empty-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  line-height: 1.3;
+}
+
 .cohort-students__detail-empty p {
   margin: 0;
-  max-width: 22ch;
-  font-family: var(--font-display);
-  font-size: 18px;
-  font-weight: 500;
-  color: var(--text-muted);
-  line-height: 1.4;
+  max-width: 34ch;
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .cohort-students__list {
@@ -1578,6 +1677,16 @@ html.modal-scroll-lock body {
   border-color: var(--border-strong);
   box-shadow: var(--shadow);
   transform: translateY(-1px);
+}
+
+.cohort-students__row.is-attention:not(.is-selected) {
+  box-shadow: inset 3px 0 0 color-mix(in srgb, #8a4f2e 55%, var(--border));
+}
+
+.cohort-students__row.is-attention:not(.is-selected):hover {
+  box-shadow:
+    inset 3px 0 0 color-mix(in srgb, #8a4f2e 55%, var(--border)),
+    var(--shadow);
 }
 
 .cohort-students__row.is-selected {
@@ -1778,20 +1887,101 @@ html.modal-scroll-lock body {
   margin: 0;
   padding: 0;
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .cohort-assessment-dist__item {
   display: flex;
-  align-items: baseline;
+  flex-direction: column;
+  align-items: stretch;
   gap: 6px;
   font-size: 14px;
+}
+
+.cohort-assessment-dist__bucket {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cohort-assessment-dist__bucket:hover {
+  background: var(--surface-sunken);
+}
+
+.cohort-assessment-dist__item.is-open .cohort-assessment-dist__bucket {
+  background: color-mix(in srgb, var(--brand) 6%, var(--surface));
+  border-color: color-mix(in srgb, var(--brand) 18%, var(--border));
 }
 
 .cohort-assessment-dist__count {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+
+.cohort-assessment-dist__chevron {
+  display: inline-flex;
+  margin-left: 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+.cohort-assessment-dist__chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.cohort-assessment-dist__students {
+  list-style: none;
+  margin: 0 0 2px 12px;
+  padding: 0 0 0 10px;
+  border-left: 2px solid color-mix(in srgb, var(--brand) 28%, var(--border));
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cohort-assessment-dist__student {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 5px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cohort-assessment-dist__student:hover {
+  background: var(--surface-sunken);
+  color: var(--brand);
+}
+
+.cohort-assessment-dist__student-static {
+  display: block;
+  padding: 5px 8px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.cohort-assessment-dist__hint {
+  margin: 10px 0 0;
+  font-size: 12px;
 }
 
 .assessment-level-badge {
@@ -1823,6 +2013,12 @@ html.modal-scroll-lock body {
   color: #8a4f2e;
   background: #f6ebe3;
   border-color: color-mix(in srgb, #8a4f2e 22%, transparent);
+}
+
+.assessment-level-badge--very-low {
+  color: #8a3030;
+  background: #f7e8e6;
+  border-color: color-mix(in srgb, #8a3030 24%, transparent);
 }
 
 .assessment-level-badge--neutral {
@@ -1860,7 +2056,7 @@ html.modal-scroll-lock body {
 }
 
 .student-assessments-panel__head {
-  margin-bottom: 18px;
+  margin-bottom: 14px;
   padding-bottom: 14px;
   border-bottom: 1px solid var(--border);
 }
@@ -1872,6 +2068,84 @@ html.modal-scroll-lock body {
   font-weight: 500;
   letter-spacing: -0.01em;
   color: var(--ink);
+}
+
+.student-assessments-panel__hero {
+  margin-bottom: 18px;
+  padding: 14px 14px 12px;
+  border: 1px solid color-mix(in srgb, var(--brand) 22%, var(--border));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--brand) 5%, var(--surface));
+}
+
+.student-assessments-panel__hero-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.student-assessments-panel__hero-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+
+.student-assessments-panel__hero-title {
+  margin: 6px 0 0;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  line-height: 1.3;
+}
+
+.student-assessments-panel__hero-meta {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.student-assessments-panel__hero-field {
+  margin-top: 12px;
+}
+
+.student-assessments-panel__hero-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-subtle);
+}
+
+.student-assessments-panel__hero-text {
+  margin: 0;
+  max-width: 62ch;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--ink);
+  white-space: pre-wrap;
+}
+
+.student-assessments-panel__hero > .student-assessments-panel__hero-text {
+  margin-top: 10px;
+}
+
+.student-assessments-panel__hero-when {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
+.student-assessment-card__when {
+  margin: 12px 0 0;
+  font-size: 12px;
 }
 
 .student-assessments-panel__contact {
