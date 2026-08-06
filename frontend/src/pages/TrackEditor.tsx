@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
 import { EditorTabPanel, EditorTabs } from "../components/tracks/EditorTabs";
 import { ModuleEditor } from "../components/tracks/ModuleEditor";
+import { TrackEditorSkeleton } from "../components/tracks/TrackEditorSkeleton";
 import { TrackPathPreview } from "../components/tracks/TrackPathPreview";
 import {
   FileAttachmentBlock,
@@ -289,7 +290,7 @@ export function TrackEditor() {
     document.getElementById(`module-${moduleId}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
-  if (loading) return <p className="muted">Carregando trilha…</p>;
+  if (loading) return <TrackEditorSkeleton />;
   if (loadError && !isNew && !track) return <p className="form-error">{loadError}</p>;
 
   const modules = track ? sortedModules(track) : [];

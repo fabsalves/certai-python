@@ -20,6 +20,7 @@ import {
   AssessmentLevelBadge,
   AssessmentLevelBadgeSkeleton,
 } from "./AssessmentLevelBadge";
+import { CohortStudentsSkeleton } from "./CohortStudentsSkeleton";
 import { StudentAssessmentsPanel } from "./StudentAssessmentsPanel";
 import { StudentEnrollModal } from "./StudentEnrollModal";
 
@@ -212,7 +213,7 @@ export function CohortEnrollments({ cohortId, track, onChanged }: Props) {
     setRemovingId(null);
   }
 
-  if (loading) return <p className="muted">Carregando alunos…</p>;
+  if (loading) return <CohortStudentsSkeleton />;
 
   return (
     <section className="cohort-students">

@@ -8,6 +8,7 @@ import {
   type LessonAssessments,
 } from "../../lib/assessments";
 import { Tooltip } from "../ui/Tooltip";
+import { LessonAssessmentDistSkeleton } from "./LessonAssessmentDistSkeleton";
 
 interface Props {
   cohortId: string;
@@ -128,13 +129,7 @@ export function LessonAssessmentDistribution({ cohortId, lessonId }: Props) {
   }, [data]);
 
   if (loading) {
-    return (
-      <div className="cohort-assessment-dist">
-        <p className="muted" style={{ margin: 0, fontSize: 14 }}>
-          Carregando avaliações da turma…
-        </p>
-      </div>
-    );
+    return <LessonAssessmentDistSkeleton />;
   }
 
   if (error) {

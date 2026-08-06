@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { ProfessorCreateModal } from "../components/cohorts/ProfessorCreateModal";
+import { ProfessorsListSkeleton } from "../components/professors/ProfessorsListSkeleton";
 import { PageHeader } from "../components/layout/PageHeader";
 import type { UserOption } from "../lib/users";
 
@@ -21,6 +22,10 @@ export function Professors() {
     load();
   }, [load]);
 
+  if (loading) {
+    return <ProfessorsListSkeleton />;
+  }
+
   return (
     <>
       <PageHeader
@@ -33,9 +38,7 @@ export function Professors() {
         }
       />
 
-      {loading && <p className="muted">Carregando professores…</p>}
-
-      {!loading && professors.length === 0 && (
+      {professors.length === 0 && (
         <div className="card empty-state">
           <p>Nenhum professor cadastrado.</p>
           <p className="muted" style={{ marginTop: 6 }}>
@@ -52,7 +55,7 @@ export function Professors() {
         </div>
       )}
 
-      {!loading && professors.length > 0 && (
+      {professors.length > 0 && (
         <ul className="professors-list">
           {professors.map((p) => (
             <li key={p.id} className="card professors-list__item">

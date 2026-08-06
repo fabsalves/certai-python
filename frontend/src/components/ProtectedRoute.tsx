@@ -1,6 +1,7 @@
 import { type ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth, type Role } from "../lib/auth";
+import { AppBootSkeleton } from "./layout/AppBootSkeleton";
 
 interface Props {
   children: ReactNode;
@@ -12,7 +13,7 @@ export function ProtectedRoute({ children, roles }: Props) {
   const location = useLocation();
 
   if (loading) {
-    return <div style={{ padding: 48, color: "var(--text-muted)" }}>Carregando…</div>;
+    return <AppBootSkeleton />;
   }
   if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />;

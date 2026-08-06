@@ -1,5 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { fetchPlaygroundContext, type PlaygroundContext } from "../../lib/playground";
+import { PlaygroundPanelSkeleton } from "./PlaygroundPanelSkeleton";
 
 interface Props {
   cohortId: string;
@@ -137,7 +138,7 @@ export function PlaygroundContextPanel({
       {error && <p className="form-error playground-context__error">{error}</p>}
 
       {loading && !context && !error && (
-        <p className="muted playground-context__hint">Carregando contexto…</p>
+        <PlaygroundPanelSkeleton label="Carregando contexto…" rows={3} />
       )}
 
       {context && (

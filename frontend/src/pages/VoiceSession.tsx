@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useParams } from "react-router-dom";
 import axios from "axios";
+import { Skeleton, SkeletonStatus } from "../components/ui/Skeleton";
 import { VoiceCallUI } from "../components/voice/VoiceCallUI";
 import { useRealtimeVoice } from "../hooks/useRealtimeVoice";
 import { useVoicePresenceState } from "../hooks/useVoicePresenceState";
@@ -88,7 +89,12 @@ export function VoiceSession() {
   if (pageState === "loading") {
     return (
       <div style={pageLayout}>
-        <p className="muted">Validando link…</p>
+        <SkeletonStatus label="Validando link…" className="voice-session-skeleton">
+          <Skeleton variant="circle" width={96} height={96} />
+          <Skeleton variant="text" width={180} height={18} />
+          <Skeleton variant="text" width={240} height={14} />
+          <Skeleton variant="rect" width={200} height={48} />
+        </SkeletonStatus>
       </div>
     );
   }

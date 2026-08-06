@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { type Cohort, uniqueProfessorNames } from "../lib/cohorts";
+import { CohortsListSkeleton } from "../components/cohorts/CohortsListSkeleton";
 import { PageHeader } from "../components/layout/PageHeader";
 
 export function Cohorts() {
@@ -23,6 +24,10 @@ export function Cohorts() {
     loadCohorts();
   }, [loadCohorts]);
 
+  if (loading) {
+    return <CohortsListSkeleton canManage={canManage} />;
+  }
+
   return (
     <>
       <PageHeader
@@ -41,9 +46,7 @@ export function Cohorts() {
         }
       />
 
-      {loading && <p className="muted">Carregando turmas…</p>}
-
-      {!loading && cohorts.length === 0 && (
+      {cohorts.length === 0 && (
         <div className="card empty-state">
           <p>Nenhuma turma cadastrada.</p>
           <p className="muted" style={{ marginTop: 6 }}>
@@ -59,7 +62,7 @@ export function Cohorts() {
         </div>
       )}
 
-      {!loading && cohorts.length > 0 && (
+      {cohorts.length > 0 && (
         <div className="cohorts-list">
           {cohorts.map((c) => (
             <Link key={c.id} to={`/cohorts/${c.id}`} className="card cohorts-list__item">
@@ -71,7 +74,12 @@ export function Cohorts() {
                   </p>
                 </div>
                 {canManage && (
-                  <span className="tag" title={c.module_professors.map((mp) => `${mp.module_title}: ${mp.professor_name}`).join("\n")}>
+                  <span
+                    className="tag"
+                    title={c.module_professors
+                      .map((mp) => `${mp.module_title}: ${mp.professor_name}`)
+                      .join("\n")}
+                  >
                     {uniqueProfessorNames(c)}
                   </span>
                 )}

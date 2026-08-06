@@ -778,6 +778,154 @@ html.modal-scroll-lock body {
   font-size: 13px;
 }
 
+/* --- Skeleton loading --- */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skeleton {
+  display: block;
+  flex-shrink: 0;
+  background: linear-gradient(
+    90deg,
+    var(--surface-sunken) 0%,
+    color-mix(in srgb, var(--surface-sunken) 55%, #fff) 50%,
+    var(--surface-sunken) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.2s ease-in-out infinite;
+}
+
+.skeleton--text {
+  height: 14px;
+  border-radius: 4px;
+}
+
+.skeleton--rect {
+  border-radius: var(--radius-sm);
+}
+
+.skeleton--circle {
+  border-radius: 50%;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+.list-skeleton-card,
+.cohorts-list-skeleton__item {
+  pointer-events: none;
+}
+
+.editor-layout-skeleton__tabs {
+  display: flex;
+  gap: 8px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-sunken);
+}
+
+.editor-layout-skeleton__body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+}
+
+.editor-layout-skeleton__path {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+}
+
+.editor-layout-skeleton__path-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cohort-students-skeleton__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.student-assessments-skeleton__card {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.student-assessments-skeleton__card:last-child {
+  border-bottom: none;
+}
+
+.playground-page-skeleton__stage {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: min(100%, 520px);
+  margin: auto;
+  padding: 24px;
+}
+
+.playground-panel-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+}
+
+.playground-panel-skeleton__row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.voice-session-skeleton {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  min-height: 50vh;
+  padding: 24px;
+}
+
+.app-boot-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 48px 24px;
+}
+
+.app-boot-skeleton__cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
 /* --- Lista de turmas --- */
 
 .cohorts-list {

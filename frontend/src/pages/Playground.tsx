@@ -3,6 +3,7 @@ import { CohortPathPreview } from "../components/cohorts/CohortPathPreview";
 import { LessonReportCapture } from "../components/cohorts/LessonReportCapture";
 import { PlaygroundChat } from "../components/playground/PlaygroundChat";
 import { PlaygroundContextPanel } from "../components/playground/PlaygroundContextPanel";
+import { PlaygroundPageSkeleton } from "../components/playground/PlaygroundPageSkeleton";
 import { PlaygroundScoresPanel } from "../components/playground/PlaygroundScoresPanel";
 import { PlaygroundSessionHead } from "../components/playground/PlaygroundSessionHead";
 import { Select } from "../components/ui/Select";
@@ -68,6 +69,7 @@ export function Playground() {
     () => readPlaygroundSession()?.selectedLessonId ?? null,
   );
   const [loading, setLoading] = useState(true);
+  const [sessionLoading, setSessionLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [railTab, setRailTab] = useState<RailTab>(initialRailTab);
@@ -114,9 +116,13 @@ export function Playground() {
   }, [mode, studentId, railTab]);
 
   useEffect(() => {
-    if (!cohortId) return;
+    if (!cohortId) {
+      setSessionLoading(false);
+      return;
+    }
 
     let cancelled = false;
+    setSessionLoading(true);
     setLoadError("");
 
     Promise.all([
@@ -151,6 +157,9 @@ export function Playground() {
       })
       .catch(() => {
         if (!cancelled) setLoadError("Não foi possível carregar os dados da turma.");
+      })
+      .finally(() => {
+        if (!cancelled) setSessionLoading(false);
       });
 
     return () => {
@@ -277,12 +286,10 @@ export function Playground() {
     </button>
   );
 
-  if (loading) {
-    return (
-      <div className="playground-shell playground-shell--centered">
-        <p className="muted">Carregando playground…</p>
-      </div>
-    );
+  // Keep skeleton until cohort list AND session payload are ready (avoids white flash).
+  const waitingSession = Boolean(cohortId) && (sessionLoading || !cohort || !track || !progress);
+  if (loading || waitingSession) {
+    return <PlaygroundPageSkeleton />;
   }
 
   if (cohorts.length === 0) {

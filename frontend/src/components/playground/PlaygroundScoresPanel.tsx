@@ -1,5 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { fetchPlaygroundScores, type PlaygroundMicroScore, type PlaygroundScores } from "../../lib/playground";
+import { PlaygroundPanelSkeleton } from "./PlaygroundPanelSkeleton";
 
 interface Props {
   cohortId: string;
@@ -154,7 +155,7 @@ export function PlaygroundScoresPanel({
       {error && <p className="form-error playground-context__error">{error}</p>}
 
       {loading && !scores && !error && (
-        <p className="muted playground-context__hint">Carregando scores…</p>
+        <PlaygroundPanelSkeleton label="Carregando scores…" rows={3} />
       )}
 
       {scores && (

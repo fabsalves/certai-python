@@ -13,6 +13,7 @@ import {
   type PlaygroundMessage,
   type PlaygroundMessageSource,
 } from "../../lib/playground";
+import { PlaygroundPanelSkeleton } from "./PlaygroundPanelSkeleton";
 import { PlaygroundSessionHead } from "./PlaygroundSessionHead";
 
 interface Props {
@@ -218,7 +219,9 @@ export function PlaygroundChat({
 
       <div className="playground-chat__log" aria-live="polite">
         <div className="playground-chat__thread">
-          {loading && <p className="muted playground-chat__empty">Carregando histórico…</p>}
+          {loading && (
+            <PlaygroundPanelSkeleton label="Carregando histórico…" rows={3} />
+          )}
 
           {!loading && messages.length === 0 && (
             <p className="muted playground-chat__intro">

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { sortedModules, totalLessons, activeLessonsCount, type Track } from "../lib/tracks";
+import { TracksListSkeleton } from "../components/tracks/TracksListSkeleton";
 import { PageHeader } from "../components/layout/PageHeader";
 
 export function Tracks() {
@@ -20,6 +21,10 @@ export function Tracks() {
     loadTracks();
   }, [loadTracks]);
 
+  if (loading) {
+    return <TracksListSkeleton />;
+  }
+
   return (
     <>
       <PageHeader
@@ -32,9 +37,7 @@ export function Tracks() {
         }
       />
 
-      {loading && <p className="muted">Carregando trilhas…</p>}
-
-      {!loading && tracks.length === 0 && (
+      {tracks.length === 0 && (
         <div className="card empty-state">
           <p>Nenhuma trilha ainda.</p>
           <p className="muted" style={{ marginTop: 6 }}>
@@ -46,7 +49,7 @@ export function Tracks() {
         </div>
       )}
 
-      {!loading && tracks.length > 0 && (
+      {tracks.length > 0 && (
         <div className="tracks-list">
           {tracks.map((t) => {
             const modules = sortedModules(t);

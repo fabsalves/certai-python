@@ -5,6 +5,7 @@ import type { StudentAssessment, StudentAssessments } from "../../lib/assessment
 import { sortedLessons, sortedModules, type Track } from "../../lib/tracks";
 import { maskPhoneBR } from "../../lib/validation";
 import { AssessmentLevelBadge } from "./AssessmentLevelBadge";
+import { StudentAssessmentsSkeleton } from "./StudentAssessmentsSkeleton";
 
 interface Props {
   cohortId: string;
@@ -162,11 +163,7 @@ export function StudentAssessmentsPanel({
   }, [data]);
 
   if (loading) {
-    return (
-      <div className="student-assessments-panel">
-        <p className="muted">Carregando avaliações…</p>
-      </div>
-    );
+    return <StudentAssessmentsSkeleton />;
   }
 
   if (error) {

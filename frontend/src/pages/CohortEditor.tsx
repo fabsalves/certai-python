@@ -1,6 +1,7 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
+import { CohortEditorSkeleton } from "../components/cohorts/CohortEditorSkeleton";
 import { CohortEnrollments } from "../components/cohorts/CohortEnrollments";
 import { CohortModuleProfessors } from "../components/cohorts/CohortModuleProfessors";
 import { CohortPathPreview } from "../components/cohorts/CohortPathPreview";
@@ -190,23 +191,22 @@ export function CohortEditor() {
     api
       .get<Cohort>(`/cohorts/${cohortId}`, { signal: controller.signal })
       .then(async ({ data }) => {
+        const [trackRes, progressRes, enrollmentsRes] = await Promise.all([
+          api.get<Track>(`/cohorts/${data.id}/track`, { signal: controller.signal }),
+          api.get<CohortProgress>(`/cohorts/${data.id}/progress`, {
+            signal: controller.signal,
+          }),
+          api.get<Enrollment[]>(`/cohorts/${data.id}/enrollments`, {
+            signal: controller.signal,
+          }),
+        ]);
         setCohort(data);
         setName(data.name);
         setTrackId(data.track_id);
         setModuleAssignments(assignmentsFromCohort(data));
-        const trackRes = await api.get<Track>(`/cohorts/${data.id}/track`, {
-          signal: controller.signal,
-        });
         setTrack(trackRes.data);
-        const progressRes = await api.get<CohortProgress>(`/cohorts/${data.id}/progress`, {
-          signal: controller.signal,
-        });
         setProgress(progressRes.data);
         setSelectedLessonId(progressRes.data.current_lesson_id);
-        const enrollmentsRes = await api.get<Enrollment[]>(
-          `/cohorts/${data.id}/enrollments`,
-          { signal: controller.signal },
-        );
         setEnrollments(enrollmentsRes.data);
       })
       .catch((err) => {
@@ -479,7 +479,9 @@ export function CohortEditor() {
     await reloadCohort();
   }
 
-  if (loading) return <p className="muted">Carregando turma…</p>;
+  if (loading) {
+    return <CohortEditorSkeleton tabCount={isProfessor ? 2 : 4} />;
+  }
   if (loadError && !isNew && !cohort) return <p className="form-error">{loadError}</p>;
 
   const showSidebar = Boolean(

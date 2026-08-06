@@ -1,5 +1,6 @@
 import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Modal } from "../ui/Modal";
+import { Skeleton, SkeletonStatus } from "../ui/Skeleton";
 import { api } from "../../lib/api";
 import { downloadStudentCsvTemplate, parseStudentsCsv } from "../../lib/csv";
 import type { StudentBulkResult, UserCreateInput, UserOption } from "../../lib/users";
@@ -313,9 +314,20 @@ export function StudentEnrollModal({
             </p>
 
             {loadingStudents ? (
-              <p className="muted" style={{ margin: 0, fontSize: 14 }}>
-                Carregando…
-              </p>
+              <SkeletonStatus label="Carregando alunos…">
+                <div className="enroll-picker">
+                  <ul className="enroll-picker__list">
+                    {Array.from({ length: 5 }).map((_, index) => (
+                      <li key={index} style={{ padding: "10px 8px" }}>
+                        <Skeleton variant="text" width="50%" height={16} />
+                        <div style={{ marginTop: 6 }}>
+                          <Skeleton variant="text" width="70%" height={13} />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </SkeletonStatus>
             ) : availableStudents.length === 0 ? (
               <p className="muted" style={{ margin: 0, fontSize: 14 }}>
                 Nenhum aluno disponível para matricular.
