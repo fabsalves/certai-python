@@ -12,6 +12,7 @@ back to the AI to keep reasoning (including scope escalation).
 import uuid
 from typing import Any
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.context_builder import ContextBuilder
@@ -49,7 +50,8 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                 "their own words (explanation, classification, or application) — not "
                 "for self-reported confidence alone ('entendi', 'consegui'). The "
                 "evidence field must cite what they said or did in the conversation. "
-                "Sporadic — not on every message."
+                "Demonstrations that justify closing the lesson must be recorded here "
+                "before conclude_lesson. Sporadic — not on every message."
             ),
             "parameters": {
                 "type": "object",
@@ -85,8 +87,10 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
             "name": "conclude_lesson",
             "description": (
                 "Marca a aula atual como concluída para este aluno após você julgar "
-                "suficiente o estudo desta aula e ter feito a despedida final definitiva "
-                "em um turno anterior. Não use em toda mensagem positiva do aluno."
+                "suficiente o estudo desta aula, ter registrado a demonstração com "
+                "score_understanding e ter feito a despedida final definitiva em um "
+                "turno anterior. Não use quando o aluno só quer pausar a sessão. "
+                "Não use em toda mensagem positiva do aluno."
             ),
             "parameters": {
                 "type": "object",
@@ -183,8 +187,32 @@ async def _conclude_lesson(args: dict[str, Any], ctx: ToolContext) -> str:
         return "Não foi possível concluir: contexto de aluno ou aula ausente."
 
     from app.core.db_events import enqueue_after_commit
+    from app.models.student_progress import StudentLessonProgressStatus
     from app.services.student_progress_service import StudentProgressService
     from app.workers.tasks import assess_student_lesson
+
+    progress = await StudentProgressService._get_progress(
+        ctx.db, ctx.cohort_id, ctx.student_id, ctx.lesson_id
+    )
+    if progress is None or progress.status != StudentLessonProgressStatus.ATIVA:
+        return "Progresso não está ATIVA para conclusão."
+
+    score_count = await ctx.db.scalar(
+        select(func.count())
+        .select_from(MicroScore)
+        .where(
+            MicroScore.cohort_id == ctx.cohort_id,
+            MicroScore.student_id == ctx.student_id,
+            MicroScore.lesson_id == ctx.lesson_id,
+        )
+    )
+    if not score_count:
+        return (
+            "Conclusão da aula adiada: nenhum micro-score nesta aula. "
+            "Se houve demonstração, chame score_understanding e depois "
+            "conclude_lesson. Se o aluno só quer pausar, não conclua a aula — "
+            "encerre só a sessão/call."
+        )
 
     try:
         await StudentProgressService.conclude(

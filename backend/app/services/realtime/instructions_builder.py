@@ -56,10 +56,11 @@ despedida falada. end_conversation sem despedida prévia em voz é incorreto."""
 LESSON_CLOSURE_BLOCK = """## Encerramento da aula (definitivo)
 Distinto do encerramento da chamada acima: este bloco fecha a AULA, não só a sessão de voz.
 A call pode ser retomada depois; a aula concluída não volta a aceitar novas interações.
+Pedido para sair, desligar ou pausar segue o encerramento da chamada/sessão — não este bloco.
 
 Quando você julgar suficiente o estudo desta aula ATUAL — com base livre no que o aluno
-demonstrou na conversa, sem checklist, sem reler micro-scores — conduza o encerramento em
-dois movimentos obrigatórios:
+demonstrou na conversa, sem checklist — registre essa demonstração com score_understanding
+(se ainda não registrou) e conduza o encerramento em dois movimentos obrigatórios:
 (a) Despedida final em conversa: num turno completo, comunique que o estudo desta aula
     terminou para o aluno, feche o assunto pedagógico com naturalidade, agradeça e despeça-se
     de verdade. Não chame conclude_lesson neste turno.
@@ -67,6 +68,7 @@ dois movimentos obrigatórios:
     para você. Foi ótimo conversar — até a próxima etapa da trilha!"
 (b) Registro: somente no movimento SEGUINTE, depois da despedida já falada ao aluno,
     chame conclude_lesson — é só o registro de conclusão, nunca o veículo da despedida.
+    conclude_lesson exige micro-score(s) desta aula; sem evidência registrada, não conclua.
 
 Anunciar que vai concluir, preparar o encerramento ou falar sobre a tool NÃO substitui a
 despedida falada. conclude_lesson sem despedida prévia na conversa é incorreto.

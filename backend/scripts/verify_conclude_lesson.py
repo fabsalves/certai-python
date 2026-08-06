@@ -11,13 +11,14 @@ import sys
 
 sys.path.insert(0, ".")
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import selectinload
 
 from app.ai.tools import ToolContext, dispatch
 from app.core.database import SessionLocal
+from app.models.assessment import Level, MicroScore
 from app.models.cohort import Cohort, Enrollment
-from app.models.student_progress import StudentLessonProgressStatus
+from app.models.student_progress import StudentLessonProgress, StudentLessonProgressStatus
 from app.models.track import Module, Track
 from app.models.user import User
 from app.services.student_progress_service import StudentProgressService
@@ -46,23 +47,32 @@ async def _seed_context(db):
     return cohort, lessons, student
 
 
+async def _reset_student_lesson_state(db, cohort, student, lesson) -> None:
+    """Clear progress + micros so the gate (zero micros) is testable across runs."""
+    await db.execute(
+        delete(MicroScore).where(
+            MicroScore.cohort_id == cohort.id,
+            MicroScore.student_id == student.id,
+            MicroScore.lesson_id == lesson.id,
+        )
+    )
+    existing = (
+        await db.scalars(
+            select(StudentLessonProgress).where(
+                StudentLessonProgress.cohort_id == cohort.id,
+                StudentLessonProgress.student_id == student.id,
+            )
+        )
+    ).all()
+    for row in existing:
+        await db.delete(row)
+    await db.flush()
+
+
 async def test_conclude_lesson_from_ativa() -> None:
     async with SessionLocal() as db:
         cohort, lessons, student = await _seed_context(db)
-
-        from app.models.student_progress import StudentLessonProgress
-
-        existing = (
-            await db.scalars(
-                select(StudentLessonProgress).where(
-                    StudentLessonProgress.cohort_id == cohort.id,
-                    StudentLessonProgress.student_id == student.id,
-                )
-            )
-        ).all()
-        for row in existing:
-            await db.delete(row)
-        await db.flush()
+        await _reset_student_lesson_state(db, cohort, student, lessons[0])
 
         await StudentProgressService.on_professor_complete_lesson(
             db,
@@ -81,6 +91,27 @@ async def test_conclude_lesson_from_ativa() -> None:
             student.id,
             lessons[0].id,
         )
+        out_no_score = await dispatch("conclude_lesson", {"reason": "teste"}, ctx)
+        assert "nenhum micro-score" in out_no_score, out_no_score
+        row_still = await StudentProgressService._get_progress(
+            db, cohort.id, student.id, lessons[0].id
+        )
+        assert row_still is not None
+        assert row_still.status == StudentLessonProgressStatus.ATIVA
+        print("OK conclude_lesson ATIVA sem micro-score → nudge, permanece ATIVA")
+
+        db.add(
+            MicroScore(
+                cohort_id=cohort.id,
+                student_id=student.id,
+                lesson_id=lessons[0].id,
+                competency="verify",
+                level=Level.MEDIUM,
+                evidence="demonstração no smoke test",
+            )
+        )
+        await db.flush()
+
         out = await dispatch("conclude_lesson", {"reason": "teste"}, ctx)
         await db.commit()
 
@@ -97,16 +128,24 @@ async def test_conclude_lesson_from_ativa() -> None:
             db, cohort.id, student.id, lessons[1].id
         )
         assert next_row is None
-        print("OK conclude_lesson ATIVA → CONCLUIDA sem criar próxima aula")
+        print("OK conclude_lesson ATIVA com micro-score → CONCLUIDA sem criar próxima aula")
 
 
 async def test_conclude_lesson_rejects_non_ativa() -> None:
     async with SessionLocal() as db:
         cohort, lessons, student = await _seed_context(db)
+        await _reset_student_lesson_state(db, cohort, student, lessons[0])
+        await StudentProgressService.on_professor_complete_lesson(
+            db,
+            cohort.id,
+            lessons[0].id,
+            await lesson_student_ids(db, cohort.id, lessons[0].id),
+        )
+        await db.commit()
 
         ctx = ToolContext(db, cohort.id, student.id, lessons[0].id)
         out = await dispatch("conclude_lesson", {}, ctx)
-        assert out == "Progresso não está ATIVA para conclusão."
+        assert out == "Progresso não está ATIVA para conclusão.", out
         print("OK conclude_lesson rejeita quando não está ATIVA")
 
 

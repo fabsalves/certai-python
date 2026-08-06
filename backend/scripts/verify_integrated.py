@@ -24,6 +24,7 @@ from sqlalchemy.orm import selectinload
 
 from app.ai.tools import ToolContext, dispatch
 from app.core.database import SessionLocal
+from app.models.assessment import Level, MicroScore
 from app.models.cohort import Cohort, Enrollment
 from app.models.conversation import (
     Author,
@@ -170,6 +171,27 @@ async def test_end_to_end_state_machine() -> None:
         assert active_row.status == StudentLessonProgressStatus.ATIVA
         assert active_row.activated_at is not None
         print("OK 1ª interação → ATIVA")
+
+        from sqlalchemy import delete
+
+        await db.execute(
+            delete(MicroScore).where(
+                MicroScore.cohort_id == cohort_id,
+                MicroScore.student_id == student_whatsapp_id,
+                MicroScore.lesson_id == lesson_n_id,
+            )
+        )
+        db.add(
+            MicroScore(
+                cohort_id=cohort_id,
+                student_id=student_whatsapp_id,
+                lesson_id=lesson_n_id,
+                competency="integrado",
+                level=Level.MEDIUM,
+                evidence="demonstração no fluxo integrado",
+            )
+        )
+        await db.flush()
 
         ctx = ToolContext(db, cohort_id, student_whatsapp_id, lesson_n_id)
         out = await dispatch("conclude_lesson", {"reason": "integrado"}, ctx)
