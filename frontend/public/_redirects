@@ -1,0 +1,2 @@
+/api/*  https://certai-828e20faf2de.herokuapp.com/api/:splat  200!
+/*      /index.html                                           200
