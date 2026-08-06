@@ -40,8 +40,16 @@ export function VoiceSession() {
     () => (handoffToken ? createCertaiVoiceBackend(handoffToken) : null),
     [handoffToken],
   );
-  const { status, error, streamReady, assistantSpeaking, connect, disconnect } =
-    useRealtimeVoice(voiceBackend);
+  const {
+    status,
+    error,
+    streamReady,
+    assistantSpeaking,
+    micMuted,
+    connect,
+    disconnect,
+    toggleMicMuted,
+  } = useRealtimeVoice(voiceBackend);
   const { presence, label: presenceLabel } = useVoicePresenceState({
     status,
     streamReady,
@@ -140,9 +148,11 @@ export function VoiceSession() {
       presenceLabel={presenceLabel}
       error={error}
       unsupportedReason={realtimeUnsupportedReason() ?? undefined}
+      micMuted={micMuted}
       audioRef={audioRef}
       onConnect={() => void connect(audioRef.current)}
       onDisconnect={disconnect}
+      onToggleMic={toggleMicMuted}
     />
   );
 }

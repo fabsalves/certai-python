@@ -87,10 +87,10 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
             "name": "conclude_lesson",
             "description": (
                 "Marca a aula atual como concluída para este aluno após você julgar "
-                "suficiente o estudo desta aula, ter registrado a demonstração com "
-                "score_understanding e ter feito a despedida final definitiva em um "
-                "turno anterior. Não use quando o aluno só quer pausar a sessão. "
-                "Não use em toda mensagem positiva do aluno."
+                "suficiente o estudo desta aula e ter registrado a demonstração com "
+                "score_understanding. Use no mesmo turno da despedida final definitiva "
+                "(a fala é a despedida; esta tool só registra). Não use quando o aluno "
+                "só quer pausar a sessão. Não use em toda mensagem positiva do aluno."
             ),
             "parameters": {
                 "type": "object",
@@ -231,4 +231,9 @@ async def _conclude_lesson(args: dict[str, Any], ctx: ToolContext) -> str:
         str(ctx.student_id),
         str(ctx.lesson_id),
     )
+    if ctx.entry_source == MessageSource.REALTIME_VOICE:
+        return (
+            "Aula marcada como concluída para este aluno. "
+            "Se ainda não chamou end_conversation neste response, chame-a para fechar a call."
+        )
     return "Aula marcada como concluída para este aluno."

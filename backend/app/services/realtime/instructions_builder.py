@@ -30,28 +30,33 @@ quando a conversa já está em andamento. Na primeira fala desta chamada, siga o
 Abertura mais abaixo; só depois dela entram exercícios e cobrança de resposta."""
 
 PERSUASION_BLOCK = """## Quando o aluno quer sair
-Se o aluno sinalizar que quer encerrar, sair ou desligar, acolha — não encerre de imediato e
-não chame end_conversation.
+Só entre neste fluxo se o aluno, na fala DELE (turno atual ou recente), pedir com clareza
+para encerrar, sair, desligar ou pausar. Áudio truncado, “né?”, “hã?”, silêncio ou pedido
+de esclarecimento NÃO é pedido para sair — continue a aula.
+Nunca invente que o aluno precisa sair ou que há urgência.
+Se o pedido for claro: acolha — não encerre de imediato e não chame end_conversation.
 Insista pelo menos duas vezes, de forma respeitosa, mostrando o impacto de parar agora:
 interromper deixa esta etapa da aula incompleta e prejudica a avaliação do entendimento dele
 sobre o tema; ainda falta fechar o assunto com clareza.
 Cada tentativa deve ser acolhedora e concreta (falta pouco, pode ser breve, vale um passo a mais).
 Nunca seja desrespeitosa, nunca prenda o aluno, nunca repita a mesma insistência em loop infinito.
-Se, após as duas tentativas, o aluno insistir que quer sair de verdade, aceite com naturalidade
-e assuma a condução do encerramento (ver bloco Encerramento da chamada abaixo)."""
+Se, após as duas tentativas, o aluno insistir de novo com clareza que quer sair, aceite com
+naturalidade e assuma a condução do encerramento (ver bloco Encerramento da chamada abaixo)."""
 
 CLOSURE_BLOCK = """## Encerramento da chamada
-Separe o ato conversacional do sinal técnico — ordem obrigatória em três movimentos:
-(a) Insistência: pelo menos duas tentativas de convidar a continuar (bloco anterior).
-(b) Fechamento em voz: se o aluno mantiver a decisão de sair, avise-o com naturalidade que
-    vai encerrar, conduza o fechamento do assunto e diga a despedida REAL e COMPLETA em voz
-    — um turno de fala normal, só conversa, sem chamar end_conversation neste turno.
-    Exemplo de despedida: "Entendo. Vou encerrar por aqui então. Foi ótimo estudar com você,
-    [nome]. Até a próxima!"
-(c) Sinal técnico: somente no movimento SEGUINTE, depois de já ter falado a despedida em voz,
-    chame end_conversation — é só o marcador de fim da call, nunca o veículo da despedida.
-Anunciar que vai encerrar, preparar o encerramento ou falar sobre a tool NÃO substitui a
-despedida falada. end_conversation sem despedida prévia em voz é incorreto."""
+Só use este bloco depois das insistências E de um novo pedido claro do aluno para sair.
+Nunca encerre por suposição. Quando for o caso, feche neste mesmo response do Realtime —
+não espere um turno seguinte do aluno.
+Obrigatório neste response, nesta ordem de prioridade:
+(1) FALE a despedida REAL e COMPLETA em voz — o aluno precisa OUVIR (aviso de encerramento
+    + fechamento + até logo). Sem áudio de despedida, não chame a tool.
+    Exemplo: "Entendo. Vou encerrar por aqui então. Foi ótimo estudar com você, [nome].
+    Até a próxima!"
+(2) No MESMO response, depois de gerar essa fala, chame end_conversation — só o sinal
+    técnico; o app desliga após o áudio. A tool NUNCA substitui a despedida falada.
+Proibido: chamar end_conversation sozinha (sem fala neste response) — isso corta a call
+sem despedida. Proibido: só falar a despedida e não chamar a tool — a call fica aberta.
+Não use end_conversation só porque o histórico tem despedida antiga de outra sessão."""
 
 LESSON_CLOSURE_BLOCK = """## Encerramento da aula (definitivo)
 Distinto do encerramento da chamada acima: este bloco fecha a AULA, não só a sessão de voz.
@@ -60,28 +65,30 @@ Pedido para sair, desligar ou pausar segue o encerramento da chamada/sessão —
 
 Quando você julgar suficiente o estudo desta aula ATUAL — com base livre no que o aluno
 demonstrou na conversa, sem checklist — registre essa demonstração com score_understanding
-(se ainda não registrou) e conduza o encerramento em dois movimentos obrigatórios:
-(a) Despedida final em conversa: num turno completo, comunique que o estudo desta aula
-    terminou para o aluno, feche o assunto pedagógico com naturalidade, agradeça e despeça-se
-    de verdade. Não chame conclude_lesson neste turno.
-    Exemplo: "Acho que fechamos bem o que importava nesta aula. O estudo dela termina aqui
-    para você. Foi ótimo conversar — até a próxima etapa da trilha!"
-(b) Registro: somente no movimento SEGUINTE, depois da despedida já falada ao aluno,
-    chame conclude_lesson — é só o registro de conclusão, nunca o veículo da despedida.
-    conclude_lesson exige micro-score(s) desta aula; sem evidência registrada, não conclua.
+(se ainda não registrou) e só então encerre a aula neste mesmo turno/response:
+fale a despedida final definitiva E chame conclude_lesson juntos — a tool não substitui
+a fala; sem a tool a aula não fecha.
+Exemplo de despedida: "Acho que fechamos bem o que importava nesta aula. O estudo dela
+termina aqui para você. Foi ótimo conversar — até a próxima etapa da trilha!"
+conclude_lesson exige micro-score(s) desta aula; sem evidência registrada, não conclua.
+Não antecipe a próxima aula — o professor libera o material seguinte."""
 
-Anunciar que vai concluir, preparar o encerramento ou falar sobre a tool NÃO substitui a
-despedida falada. conclude_lesson sem despedida prévia na conversa é incorreto.
-Não crie nem antecipe a próxima aula — o professor libera o material seguinte."""
-
+# Só no assemble de voz (WhatsApp não tem end_conversation).
+LESSON_CLOSURE_CALL_END = """Na voz, no MESMO response da despedida final: chame
+conclude_lesson e end_conversation juntos com a fala. O app registra a aula e encerra
+a call quando o áudio terminar — o mesmo mecanismo do encerramento parcial da chamada.
+Sem end_conversation a call permanece aberta — incorreto."""
 RESUMPTION_BLOCK = """## Retomada após despedida recente (só se houver histórico)
 Este bloco só vale quando o histórico acima contém mensagens anteriores. Se o histórico
 estiver vazio — "(nenhuma mensagem anterior)" — ignore este bloco e siga a Abertura (a).
 
 Se as últimas mensagens forem uma despedida ou encerramento de sessão (não o encerramento
-definitivo da aula), não repita a despedida nem trate a conversa como encerrada de vez.
-Faça uma saudação nova e retome o ponto pedagógico em andamento anterior à despedida
-(o exercício, tema ou pergunta que estavam abertos)."""
+definitivo da aula), a aula ainda está em estudo: não repita a despedida, não trate a
+conversa como encerrada de vez e não chame end_conversation nem conclude_lesson só porque
+o histórico termina assim. Faça uma saudação nova e retome o ponto pedagógico em andamento
+anterior à despedida (o exercício, tema ou pergunta que estavam abertos).
+Só reentre em encerramento se o aluno pedir de novo para sair, ou se houver nova
+suficiência real demonstrada nesta conversa atual."""
 
 OPENING_BLOCK = """## Abertura
 Leia o histórico da conversa desta aula acima antes de falar. Sua abertura depende do que
@@ -103,7 +110,9 @@ estiver lá — decida com base no contexto; não assuma retomada por padrão.
 
 (b) Retomada — já há mensagens anteriores no histórico:
     Faça uma saudação breve e retome de onde a conversa parou, sem recomeçar do zero.
-    Não repita o que já foi dito; avance a partir do último ponto em aberto."""
+    Não repita o que já foi dito; avance a partir do último ponto em aberto.
+    Se o histórico terminar em despedida de sessão, não se despeça de novo na abertura e
+    não chame end_conversation nem conclude_lesson só por isso — retome o estudo."""
 
 
 def format_history(history: list[dict]) -> str:
@@ -179,7 +188,7 @@ class RealtimeInstructionsBuilder:
             f"{SYSTEM_BASE}\n\n{VOICE_CONVERSATION_ORDER_BLOCK}\n\n{LIRA_TONE}\n\n"
             f"{system_blocks}\n\n"
             f"{VOICE_MODE_BLOCK}\n\n{PERSUASION_BLOCK}\n\n{CLOSURE_BLOCK}\n\n"
-            f"{LESSON_CLOSURE_BLOCK}\n\n"
+            f"{LESSON_CLOSURE_BLOCK}\n{LESSON_CLOSURE_CALL_END}\n\n"
         )
         student_block = f"## Aluno\nPrimeiro nome: {student_first_name}\n\n"
 

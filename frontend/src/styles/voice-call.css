@@ -244,18 +244,103 @@
   touch-action: manipulation;
 }
 
-/* Encerrar — contraste claro no fundo cinza */
-.voice-call__footer > .btn.voice-call__action:not(.btn-primary) {
+/* Call controls — phone-style equal circles (mic + hang up) */
+.voice-call__controls {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: clamp(36px, 12vw, 56px);
+  width: 100%;
+  max-width: 320px;
+}
+
+.voice-call__control {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  color: var(--text-muted);
+}
+
+.voice-call__control-btn {
+  width: 64px;
+  height: 64px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: var(--surface);
   color: var(--ink);
   border: 1px solid var(--border-strong);
-  box-shadow: 0 1px 3px rgba(20, 32, 43, 0.1);
+  box-shadow: 0 2px 8px rgba(20, 32, 43, 0.08);
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
 }
 
-.voice-call__footer > .btn.voice-call__action:not(.btn-primary):hover {
+.voice-call__control-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  color: inherit;
+}
+
+.voice-call__control:hover .voice-call__control-btn {
   background: var(--brand-50);
   border-color: var(--brand);
   color: var(--brand-700);
+}
+
+.voice-call__control:active .voice-call__control-btn {
+  transform: scale(0.96);
+}
+
+.voice-call__control--muted {
+  color: var(--danger);
+}
+
+.voice-call__control--muted .voice-call__control-btn {
+  background: var(--danger-50);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.voice-call__control--muted:hover .voice-call__control-btn {
+  background: var(--danger-50);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.voice-call__control--end {
+  color: var(--danger);
+}
+
+.voice-call__control--end .voice-call__control-btn {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--danger) 35%, transparent);
+}
+
+.voice-call__control--end:hover .voice-call__control-btn {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+  filter: brightness(0.95);
+}
+
+@media (max-width: 380px) {
+  .voice-call__control-btn {
+    width: 58px;
+    height: 58px;
+  }
 }
 
 .voice-call__alert {

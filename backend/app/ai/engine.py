@@ -43,9 +43,8 @@ SYSTEM_BASE = (
     "score_understanding só após demonstração concreta do aluno, não por auto-relato.\n\n"
     "Suficiência da aula atual: quando julgar que o estudo desta aula está suficiente "
     "para o aluno — julgamento livre, sem checklist, com base na demonstração na "
-    "conversa — registre essa demonstração com score_understanding e só então siga "
-    "o ritual de encerramento da aula (despedida final definitiva num turno; "
-    "conclude_lesson só no movimento seguinte)."
+    "conversa — registre essa demonstração com score_understanding e só então encerre "
+    "a aula: despedida final definitiva e conclude_lesson no mesmo turno."
 )
 
 MAX_TOOL_TURNS = 6

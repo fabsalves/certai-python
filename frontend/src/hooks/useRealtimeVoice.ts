@@ -20,6 +20,7 @@ export function useRealtimeVoice(backend: VoiceBackend | null) {
   const [streamReady, setStreamReady] = useState(false);
   const [turnCount, setTurnCount] = useState(0);
   const [assistantSpeaking, setAssistantSpeaking] = useState(false);
+  const [micMuted, setMicMuted] = useState(false);
 
   const clientRef = useRef<RealtimeWebRTCClient | null>(null);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -68,6 +69,7 @@ export function useRealtimeVoice(backend: VoiceBackend | null) {
       }
       client.disconnect();
       setStreamReady(false);
+      setMicMuted(false);
       clearAssistantSpeaking("call.finished");
       setError("");
       setStatus("ended");
@@ -88,6 +90,7 @@ export function useRealtimeVoice(backend: VoiceBackend | null) {
       setStatus("connecting");
       setError("");
       setStreamReady(false);
+      setMicMuted(false);
       clearAssistantSpeaking("connect.reset");
 
       try {
@@ -175,6 +178,14 @@ export function useRealtimeVoice(backend: VoiceBackend | null) {
     void finishCall();
   }, [finishCall]);
 
+  const toggleMicMuted = useCallback(() => {
+    setMicMuted((prev) => {
+      const next = !prev;
+      client.setMicMuted(next);
+      return next;
+    });
+  }, [client]);
+
   useEffect(() => {
     return () => {
       stopHeartbeat();
@@ -189,7 +200,9 @@ export function useRealtimeVoice(backend: VoiceBackend | null) {
     streamReady,
     turnCount,
     assistantSpeaking,
+    micMuted,
     connect,
     disconnect,
+    toggleMicMuted,
   };
 }

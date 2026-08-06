@@ -35,6 +35,7 @@ from app.services.realtime.instructions_builder import (
     CLOSURE_BLOCK,
     INSTRUCTIONS_CHAR_LIMIT,
     LESSON_CLOSURE_BLOCK,
+    LESSON_CLOSURE_CALL_END,
     OPENING_BLOCK,
     PERSUASION_BLOCK,
     RESUMPTION_BLOCK,
@@ -116,7 +117,7 @@ def _assemble_voice_instructions(
         f"{SYSTEM_BASE}\n\n{VOICE_CONVERSATION_ORDER_BLOCK}\n\n{LIRA_TONE}\n\n"
         f"{system_blocks}\n\n"
         f"{VOICE_MODE_BLOCK}\n\n{PERSUASION_BLOCK}\n\n{CLOSURE_BLOCK}\n\n"
-        f"{LESSON_CLOSURE_BLOCK}\n\n"
+        f"{LESSON_CLOSURE_BLOCK}\n{LESSON_CLOSURE_CALL_END}\n\n"
     )
     student_block = f"## Aluno\nPrimeiro nome: {student_first_name}\n\n"
     hist_block = format_history(history)
@@ -128,7 +129,7 @@ def _assemble_voice_instructions(
     )
     fixed_after_blocks = (
         f"\n\n{VOICE_MODE_BLOCK}\n\n{PERSUASION_BLOCK}\n\n{CLOSURE_BLOCK}\n\n"
-        f"{LESSON_CLOSURE_BLOCK}\n\n"
+        f"{LESSON_CLOSURE_BLOCK}\n{LESSON_CLOSURE_CALL_END}\n\n"
     )
 
     full = (

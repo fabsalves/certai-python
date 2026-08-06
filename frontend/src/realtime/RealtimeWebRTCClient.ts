@@ -11,7 +11,12 @@ import { REALTIME_MIC_CONSTRAINTS } from "../lib/realtimeMic";
 import type { VoiceBackend, VoiceTurnPayload } from "../voice/types";
 
 const REALTIME_CALLS_URL = "https://api.openai.com/v1/realtime/calls";
-const GRACEFUL_END_FALLBACK_MS = 5_000;
+/**
+ * Safety only if output_audio_buffer.stopped never arrives.
+ * Primary path: ack end_conversation via function_call_output, then wait for stopped
+ * (Realtime withholds stopped while a tool call is unanswered).
+ */
+const GRACEFUL_END_FALLBACK_MS = 20_000;
 
 export interface ResponseDoneInfo {
   hasAudioOutput: boolean;
@@ -113,6 +118,11 @@ export class RealtimeWebRTCClient {
     this.callbacks?.onConnected();
   }
 
+  setMicMuted(muted: boolean): void {
+    const track = this.micStream?.getAudioTracks()[0];
+    if (track) track.enabled = !muted;
+  }
+
   disconnect(): void {
     this.clearGracefulEndTimer();
     this.pendingGracefulEnd = false;
@@ -167,13 +177,37 @@ export class RealtimeWebRTCClient {
     }
   }
 
-  private async handleServerToolRoundtrip(
+  private ackFunctionCallOutputs(
+    dc: RTCDataChannel,
+    calls: Array<{ call_id: string }>,
+    output: string,
+  ): void {
+    for (const call of calls) {
+      if (!call.call_id) continue;
+      try {
+        dc.send(
+          JSON.stringify({
+            type: "conversation.item.create",
+            item: {
+              type: "function_call_output",
+              call_id: call.call_id,
+              output,
+            },
+          }),
+        );
+      } catch (err) {
+        console.error("[realtime] function_call_output failed", call.call_id, err);
+      }
+    }
+  }
+
+  private async runServerTools(
     dc: RTCDataChannel,
     functionCalls: Array<{ name: string; call_id: string; arguments: string }>,
-  ): Promise<void> {
-    if (!this.backend) return;
+  ): Promise<boolean> {
+    if (!this.backend) return false;
     const serverCalls = functionCalls.filter((call) => this.backend!.serverTools.has(call.name));
-    if (serverCalls.length === 0) return;
+    if (serverCalls.length === 0) return false;
 
     for (const call of serverCalls) {
       try {
@@ -183,26 +217,23 @@ export class RealtimeWebRTCClient {
           parseFunctionCallArgs(call),
         );
         if (!result) continue;
-        dc.send(
-          JSON.stringify({
-            type: "conversation.item.create",
-            item: {
-              type: "function_call_output",
-              call_id: result.call_id,
-              output: result.output,
-            },
-          }),
-        );
+        this.ackFunctionCallOutputs(dc, [{ call_id: result.call_id }], result.output);
       } catch (err) {
         console.error("[realtime] tool bridge failed", call.name, err);
       }
     }
+    return true;
+  }
 
-    try {
-      dc.send(JSON.stringify({ type: "response.create" }));
-    } catch {
-      /* ignore */
-    }
+  private beginGracefulEnd(
+    dc: RTCDataChannel,
+    endCalls: Array<{ name: string; call_id: string; arguments: string }>,
+  ): void {
+    // Realtime withholds output_audio_buffer.stopped while a tool call is unanswered.
+    this.ackFunctionCallOutputs(dc, endCalls, "ended");
+    console.log("[realtime] end_conversation acked; waiting for audio stopped");
+    this.pendingGracefulEnd = true;
+    this.scheduleGracefulEndFallback();
   }
 
   private async handleDataChannelMessage(event: MessageEvent): Promise<void> {
@@ -275,7 +306,6 @@ export class RealtimeWebRTCClient {
         });
         const assistantText = extractAssistantText(output);
         const functionCalls = collectFunctionCallsFromOutput(output);
-        const shouldEndConversation = functionCalls.some((call) => call.name === "end_conversation");
 
         const turns: VoiceTurnPayload[] = [];
 
@@ -297,14 +327,22 @@ export class RealtimeWebRTCClient {
 
         await this.persistTurns(turns);
 
-        if (shouldEndConversation) {
-          this.pendingGracefulEnd = true;
-          this.scheduleGracefulEndFallback();
+        // Server tools first (e.g. conclude_lesson), then client end_conversation.
+        // Same hangup contract for pause and lesson close: ack end → wait stopped.
+        const ranServerTools = await this.runServerTools(dc, functionCalls);
+        const endCalls = functionCalls.filter((call) => call.name === "end_conversation");
+
+        if (endCalls.length > 0) {
+          this.beginGracefulEnd(dc, endCalls);
           return;
         }
 
-        if (functionCalls.some((call) => backend.serverTools.has(call.name))) {
-          await this.handleServerToolRoundtrip(dc, functionCalls);
+        if (ranServerTools) {
+          try {
+            dc.send(JSON.stringify({ type: "response.create" }));
+          } catch {
+            /* ignore */
+          }
         }
       }
     } catch (err) {
