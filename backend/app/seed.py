@@ -184,10 +184,11 @@ def _make_user(
 
 
 async def ensure_schema() -> None:
-    """Garante tabelas base e aplica migrations pendentes (ex.: cohort_module_professors)."""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    """Aplica migrations pendentes. create_all só no bootstrap sem alembic_version.
 
+    Rodar create_all antes do upgrade cria tabelas novas dos models e faz a
+    migration correspondente falhar com DuplicateTableError (caso Heroku).
+    """
     async with engine.connect() as conn:
         has_alembic = await conn.scalar(text("SELECT to_regclass('public.alembic_version')"))
         has_legacy_professor = await conn.scalar(
@@ -198,6 +199,8 @@ async def ensure_schema() -> None:
         )
 
     if not has_alembic:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
         if has_legacy_professor:
             _run_alembic("stamp", "002_is_active")
         else:

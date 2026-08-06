@@ -15,6 +15,12 @@ depends_on = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    existing_tables = set(inspector.get_table_names())
+
+    # Heroku release used to call create_all before alembic, which can leave
+    # cohort_module_students already created while alembic is still on 012.
     op.drop_constraint(
         "uq_cohort_module_professor", "cohort_module_professors", type_="unique"
     )
@@ -24,46 +30,47 @@ def upgrade() -> None:
         ["cohort_id", "module_id", "professor_id"],
     )
 
-    op.create_table(
-        "cohort_module_students",
-        sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("module_professor_id", sa.UUID(), nullable=False),
-        sa.Column("student_id", sa.UUID(), nullable=False),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.ForeignKeyConstraint(
+    if "cohort_module_students" not in existing_tables:
+        op.create_table(
+            "cohort_module_students",
+            sa.Column("id", sa.UUID(), nullable=False),
+            sa.Column("module_professor_id", sa.UUID(), nullable=False),
+            sa.Column("student_id", sa.UUID(), nullable=False),
+            sa.Column(
+                "created_at",
+                sa.DateTime(timezone=True),
+                server_default=sa.text("now()"),
+                nullable=False,
+            ),
+            sa.Column(
+                "updated_at",
+                sa.DateTime(timezone=True),
+                server_default=sa.text("now()"),
+                nullable=False,
+            ),
+            sa.ForeignKeyConstraint(
+                ["module_professor_id"],
+                ["cohort_module_professors.id"],
+                ondelete="CASCADE",
+            ),
+            sa.ForeignKeyConstraint(["student_id"], ["users.id"], ondelete="CASCADE"),
+            sa.PrimaryKeyConstraint("id"),
+            sa.UniqueConstraint(
+                "module_professor_id", "student_id", name="uq_cohort_module_student"
+            ),
+        )
+        op.create_index(
+            op.f("ix_cohort_module_students_module_professor_id"),
+            "cohort_module_students",
             ["module_professor_id"],
-            ["cohort_module_professors.id"],
-            ondelete="CASCADE",
-        ),
-        sa.ForeignKeyConstraint(["student_id"], ["users.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "module_professor_id", "student_id", name="uq_cohort_module_student"
-        ),
-    )
-    op.create_index(
-        op.f("ix_cohort_module_students_module_professor_id"),
-        "cohort_module_students",
-        ["module_professor_id"],
-        unique=False,
-    )
-    op.create_index(
-        op.f("ix_cohort_module_students_student_id"),
-        "cohort_module_students",
-        ["student_id"],
-        unique=False,
-    )
+            unique=False,
+        )
+        op.create_index(
+            op.f("ix_cohort_module_students_student_id"),
+            "cohort_module_students",
+            ["student_id"],
+            unique=False,
+        )
 
     # Existing rows had exactly one professor per module (the constraint dropped
     # above guaranteed it), so the class is unambiguous.
