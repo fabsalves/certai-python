@@ -46,7 +46,11 @@ RNG_SEED = 42
 DEMO_PASSWORD = "aluno12345"
 
 PROF_FUNDAMENTOS_EMAIL = "prof@certai.app"
-PROF_PRATICA_EMAIL = "marcos.ferreira@certai.app"
+PROF_PRATICA_EMAILS = (
+    "marcos.ferreira@certai.app",
+    "prof@certai.app",
+    "camila.oliveira@certai.app",
+)
 
 LEVEL_ENUM = {
     "high": Level.HIGH,
@@ -82,7 +86,9 @@ def _lesson_anchor(now: datetime, lesson_index: int) -> datetime:
     return _utc(now - timedelta(days=days_ago, hours=10))
 
 
-async def _require_base(db) -> tuple[Track, list[Module], list[Lesson], User, User]:
+async def _require_base(
+    db,
+) -> tuple[Track, list[Module], list[Lesson], User, list[User]]:
     track = await db.scalar(
         select(Track)
         .where(Track.title == TRACK_TITLE)
@@ -116,15 +122,25 @@ async def _require_base(db) -> tuple[Track, list[Module], list[Lesson], User, Us
     prof_fundamentos = await db.scalar(
         select(User).where(User.email == PROF_FUNDAMENTOS_EMAIL)
     )
-    prof_pratica = await db.scalar(select(User).where(User.email == PROF_PRATICA_EMAIL))
-    if prof_fundamentos is None or prof_pratica is None:
+    pratica_profs: list[User] = []
+    for email in PROF_PRATICA_EMAILS:
+        prof = await db.scalar(select(User).where(User.email == email))
+        if prof is None:
+            print(
+                f"Professor {email} não encontrado. Rode antes: bin/db-reset",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+        pratica_profs.append(prof)
+
+    if prof_fundamentos is None:
         print(
             "Professores do seed base não encontrados. Rode antes: bin/db-reset",
             file=sys.stderr,
         )
         raise SystemExit(1)
 
-    return track, modules, lessons, prof_fundamentos, prof_pratica
+    return track, modules, lessons, prof_fundamentos, pratica_profs
 
 
 async def _wipe_demo(db) -> None:
@@ -189,8 +205,9 @@ def _print_summary(
     print("")
     print("Logins (seed base):")
     print("  admin@certai.app / admin12345")
-    print("  prof@certai.app / prof12345  (Fundamentos + metade da Prática)")
-    print("  marcos.ferreira@certai.app / prof12345  (outra metade da Prática)")
+    print("  prof@certai.app / prof12345  (Ana — Fundamentos + 1/3 da Prática)")
+    print("  marcos.ferreira@certai.app / prof12345  (Marcos — 1/3 da Prática)")
+    print("  camila.oliveira@certai.app / prof12345  (Camila — 1/3 da Prática)")
     print(f"Alunos demo: senha {DEMO_PASSWORD} (e-mails *@demo.certai.app)")
 
 
@@ -202,15 +219,15 @@ async def seed_demo() -> None:
     password_hash = hash_password(DEMO_PASSWORD)
 
     async with SessionLocal() as db:
-        track, modules, lessons, prof_fundamentos, prof_pratica = await _require_base(db)
+        track, modules, lessons, prof_fundamentos, pratica_profs = await _require_base(db)
         await _wipe_demo(db)
 
         cohort = Cohort(name=DEMO_COHORT_NAME, track_id=track.id)
         db.add(cohort)
         await db.flush()
 
-        # Fundamentos has a single professor; Prática is split between the two,
-        # so the demo exercises both shapes out of the box.
+        # Fundamentos: 1 professor (Ana). Prática: 3 professors with even roster
+        # so the demo exercises both single- and multi-professor module shapes.
         fundamentos_class = CohortModuleProfessor(
             cohort_id=cohort.id,
             module_id=modules[0].id,
@@ -220,13 +237,9 @@ async def seed_demo() -> None:
             CohortModuleProfessor(
                 cohort_id=cohort.id,
                 module_id=modules[1].id,
-                professor_id=prof_pratica.id,
-            ),
-            CohortModuleProfessor(
-                cohort_id=cohort.id,
-                module_id=modules[1].id,
-                professor_id=prof_fundamentos.id,
-            ),
+                professor_id=prof.id,
+            )
+            for prof in pratica_profs
         ]
         db.add_all([fundamentos_class, *pratica_classes])
         await db.flush()
@@ -290,7 +303,9 @@ async def seed_demo() -> None:
         for position, meta in enumerate(students_meta):
             db.add(
                 CohortModuleStudent(
-                    module_professor_id=pratica_classes[position % 2].id,
+                    module_professor_id=pratica_classes[
+                        position % len(pratica_classes)
+                    ].id,
                     student_id=users_by_email[meta.email].id,
                 )
             )

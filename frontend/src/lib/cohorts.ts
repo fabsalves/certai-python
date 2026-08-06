@@ -125,6 +125,137 @@ export function classForStudent(
   return classes.find((item) => item.student_ids.includes(studentId));
 }
 
+/** One teaching class (or unassigned bucket) in the Alunos tab list. */
+export interface StudentClassSection {
+  key: string;
+  moduleId: string;
+  moduleTitle: string;
+  professorId: string | null;
+  professorName: string | null;
+  /** Viewer professor's class inside a split module — show "Sua turma". */
+  isOwnClass: boolean;
+  isUnassigned: boolean;
+  isSplitModule: boolean;
+  studentIds: string[];
+}
+
+/**
+ * Build Alunos-tab sections from module classes.
+ * - 1 professor/module → one section with all enrollments (no unassigned).
+ * - N professors → one section per class; optional unassigned for admin.
+ * - Professor viewer → only their own classes.
+ */
+export function buildStudentSections(options: {
+  moduleProfessors: ModuleProfessor[];
+  enrollments: Enrollment[];
+  moduleOrder: { id: string; title: string; position: number }[];
+  viewerProfessorId?: string | null;
+  includeUnassigned?: boolean;
+}): StudentClassSection[] {
+  const {
+    moduleProfessors,
+    enrollments,
+    moduleOrder,
+    viewerProfessorId = null,
+    includeUnassigned = false,
+  } = options;
+
+  const enrolledIds = enrollments.map((item) => item.student_id);
+  const enrolledSet = new Set(enrolledIds);
+  const byModule = new Map<string, ModuleProfessor[]>();
+  for (const mp of moduleProfessors) {
+    const list = byModule.get(mp.module_id) ?? [];
+    list.push(mp);
+    byModule.set(mp.module_id, list);
+  }
+
+  const order =
+    moduleOrder.length > 0
+      ? [...moduleOrder].sort((a, b) => a.position - b.position)
+      : [...byModule.keys()].map((id, index) => ({
+          id,
+          title: byModule.get(id)?.[0]?.module_title ?? "Módulo",
+          position: index,
+        }));
+
+  const sections: StudentClassSection[] = [];
+
+  for (const mod of order) {
+    const classes = byModule.get(mod.id) ?? [];
+    if (classes.length === 0) continue;
+
+    const moduleTitle = classes[0]?.module_title || mod.title;
+    const split = classes.length > 1;
+
+    if (!split) {
+      const only = classes[0];
+      if (viewerProfessorId && only.professor_id !== viewerProfessorId) continue;
+      sections.push({
+        key: `${mod.id}:${only.professor_id}`,
+        moduleId: mod.id,
+        moduleTitle,
+        professorId: only.professor_id,
+        professorName: only.professor_name,
+        // Professor viewer: always "Sua turma" on their class, even with 1 professor.
+        isOwnClass: Boolean(
+          viewerProfessorId && only.professor_id === viewerProfessorId,
+        ),
+        isUnassigned: false,
+        isSplitModule: false,
+        studentIds: [...enrolledIds],
+      });
+      continue;
+    }
+
+    for (const cls of classes) {
+      if (viewerProfessorId && cls.professor_id !== viewerProfessorId) continue;
+      const studentIds = cls.student_ids.filter((id) => enrolledSet.has(id));
+      sections.push({
+        key: `${mod.id}:${cls.professor_id}`,
+        moduleId: mod.id,
+        moduleTitle,
+        professorId: cls.professor_id,
+        professorName: cls.professor_name,
+        isOwnClass: Boolean(
+          viewerProfessorId && cls.professor_id === viewerProfessorId,
+        ),
+        isUnassigned: false,
+        isSplitModule: true,
+        studentIds,
+      });
+    }
+
+    if (includeUnassigned && !viewerProfessorId) {
+      const allAssigned = new Set(
+        classes.flatMap((cls) =>
+          cls.student_ids.filter((id) => enrolledSet.has(id)),
+        ),
+      );
+      const unassignedIds = enrolledIds.filter((id) => !allAssigned.has(id));
+      if (unassignedIds.length > 0) {
+        sections.push({
+          key: `${mod.id}:unassigned`,
+          moduleId: mod.id,
+          moduleTitle,
+          professorId: null,
+          professorName: null,
+          isOwnClass: false,
+          isUnassigned: true,
+          isSplitModule: true,
+          studentIds: unassignedIds,
+        });
+      }
+    }
+  }
+
+  return sections;
+}
+
+/** Alunos tab starts with every class section collapsed. */
+export function defaultOpenSectionKeys(_sections: StudentClassSection[]): string[] {
+  return [];
+}
+
 /** Whether one professor already closed this lesson for their own class. */
 export function lessonClosedByProfessor(
   progress: CohortProgress | null | undefined,

@@ -146,6 +146,7 @@ STAFF_USERS = [
 PROFESSOR_USERS = [
     ("prof@certai.app", "Ana Paula Ribeiro", "prof12345"),
     ("marcos.ferreira@certai.app", "Marcos Ferreira", "prof12345"),
+    ("camila.oliveira@certai.app", "Camila Oliveira", "prof12345"),
 ]
 
 STUDENT_USERS = [
@@ -320,6 +321,7 @@ async def seed(*, force: bool = False) -> None:
         print("  admin@certai.app / admin12345")
         print("  prof@certai.app / prof12345  (Ana Paula — Fundamentos)")
         print("  marcos.ferreira@certai.app / prof12345  (Marcos — Prática)")
+        print("  camila.oliveira@certai.app / prof12345  (Camila — disponível p/ multi-prof)")
         print("  aluno@certai.app / aluno12345  (Mariana Costa)")
         print("  eriko@certai.app / aluno12345  (Ériko Sampaio — WhatsApp real)")
         print("")

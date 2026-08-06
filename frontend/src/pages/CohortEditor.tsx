@@ -620,6 +620,7 @@ export function CohortEditor() {
                   {cohort && track && (
                     <CohortEnrollments
                       cohortId={cohort.id}
+                      cohort={cohort}
                       track={track}
                       onChanged={reloadCohort}
                     />
@@ -668,7 +669,9 @@ export function CohortEditor() {
                   {cohort && track && (
                     <CohortEnrollments
                       cohortId={cohort.id}
+                      cohort={cohort}
                       track={track}
+                      viewerProfessorId={isProfessor ? user?.id : undefined}
                       onChanged={reloadCohort}
                     />
                   )}

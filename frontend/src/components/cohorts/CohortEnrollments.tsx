@@ -10,8 +10,14 @@ import {
   type LevelFilter,
   type TrackLevelSummary,
 } from "../../lib/assessments";
-import type { Enrollment } from "../../lib/cohorts";
-import type { Track } from "../../lib/tracks";
+import {
+  buildStudentSections,
+  defaultOpenSectionKeys,
+  type Cohort,
+  type Enrollment,
+  type StudentClassSection,
+} from "../../lib/cohorts";
+import { sortedModules, type Track } from "../../lib/tracks";
 import { useAuth } from "../../lib/auth";
 import { useConfirm } from "../../lib/confirm";
 import { useApiAction } from "../../lib/useApiAction";
@@ -26,7 +32,9 @@ import { StudentEnrollModal } from "./StudentEnrollModal";
 
 interface Props {
   cohortId: string;
+  cohort: Cohort;
   track: Track;
+  viewerProfessorId?: string;
   onChanged: () => void;
 }
 
@@ -58,11 +66,22 @@ function isNarrowViewport(): boolean {
   return typeof window !== "undefined" && window.matchMedia("(max-width: 900px)").matches;
 }
 
-export function CohortEnrollments({ cohortId, track, onChanged }: Props) {
+function sectionTitle(section: StudentClassSection): string {
+  if (section.isUnassigned) return "Sem grupo";
+  if (section.isOwnClass) return "Sua turma";
+  return section.professorName ?? "Professor";
+}
+
+export function CohortEnrollments({
+  cohortId,
+  cohort,
+  track,
+  viewerProfessorId,
+  onChanged,
+}: Props) {
   const { user } = useAuth();
   const confirm = useConfirm();
   const runAction = useApiAction();
-  // Professor is read-only on this tab: never enroll/remove.
   const canManageEnrollments =
     user?.role === "admin" || user?.role === "designer";
   const detailRef = useRef<HTMLDivElement>(null);
@@ -78,6 +97,8 @@ export function CohortEnrollments({ cohortId, track, onChanged }: Props) {
   const [staleSelectionNotice, setStaleSelectionNotice] = useState<string | null>(null);
   const [trackLevels, setTrackLevels] = useState<Record<string, TrackLevelSummary>>({});
   const [levelsLoading, setLevelsLoading] = useState(false);
+  const [openKeys, setOpenKeys] = useState<Set<string>>(new Set());
+  const [sectionsFingerprint, setSectionsFingerprint] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -113,7 +134,6 @@ export function CohortEnrollments({ cohortId, track, onChanged }: Props) {
       })
       .catch(() => {
         if (cancelled) return;
-        // Fail closed: mark enrolled students as missing only after the request ends.
         const next: Record<string, TrackLevelSummary> = {};
         for (const enrollment of enrollments) {
           next[enrollment.student_id] = { kind: "missing" };
@@ -133,30 +153,86 @@ export function CohortEnrollments({ cohortId, track, onChanged }: Props) {
     [enrollments],
   );
 
-  const filteredEnrollments = useMemo(() => {
+  const enrollmentById = useMemo(
+    () => new Map(enrollments.map((item) => [item.student_id, item])),
+    [enrollments],
+  );
+
+  const sections = useMemo(
+    () =>
+      buildStudentSections({
+        moduleProfessors: cohort.module_professors,
+        enrollments,
+        moduleOrder: sortedModules(track)
+          .filter((mod) => mod.is_active)
+          .map((mod) => ({
+            id: mod.id,
+            title: mod.title,
+            position: mod.position,
+          })),
+        viewerProfessorId: viewerProfessorId ?? null,
+        includeUnassigned: canManageEnrollments,
+      }),
+    [
+      cohort.module_professors,
+      enrollments,
+      track,
+      viewerProfessorId,
+      canManageEnrollments,
+    ],
+  );
+
+  useEffect(() => {
+    const fingerprint = sections.map((item) => item.key).join("|");
+    if (fingerprint === sectionsFingerprint) return;
+    setSectionsFingerprint(fingerprint);
+    setOpenKeys(new Set(defaultOpenSectionKeys(sections)));
+  }, [sections, sectionsFingerprint]);
+
+  const filteredByStudent = useMemo(() => {
     const q = query.trim().toLowerCase();
-    let list = enrollments.filter((e) => {
+    const matched = new Set<string>();
+    for (const e of enrollments) {
       if (
         q &&
         !e.student_name.toLowerCase().includes(q) &&
         !e.student_email.toLowerCase().includes(q)
       ) {
-        return false;
+        continue;
       }
-      return matchesLevelFilter(trackLevels[e.student_id], levelFilter);
-    });
+      if (!matchesLevelFilter(trackLevels[e.student_id], levelFilter)) continue;
+      matched.add(e.student_id);
+    }
+    return matched;
+  }, [enrollments, query, levelFilter, trackLevels]);
 
-    list = [...list].sort((a, b) => {
-      if (sortMode === "level") {
-        const rankDiff =
-          trackLevelSortRank(trackLevels[a.student_id]) -
-          trackLevelSortRank(trackLevels[b.student_id]);
-        if (rankDiff !== 0) return rankDiff;
-      }
-      return a.student_name.localeCompare(b.student_name, "pt-BR");
-    });
-    return list;
-  }, [enrollments, query, levelFilter, sortMode, trackLevels]);
+  const visibleSections = useMemo(() => {
+    return sections
+      .map((section) => {
+        let studentIds = section.studentIds.filter((id) => filteredByStudent.has(id));
+        studentIds = [...studentIds].sort((a, b) => {
+          const ea = enrollmentById.get(a);
+          const eb = enrollmentById.get(b);
+          if (!ea || !eb) return 0;
+          if (sortMode === "level") {
+            const rankDiff =
+              trackLevelSortRank(trackLevels[a]) - trackLevelSortRank(trackLevels[b]);
+            if (rankDiff !== 0) return rankDiff;
+          }
+          return ea.student_name.localeCompare(eb.student_name, "pt-BR");
+        });
+        return { ...section, studentIds };
+      })
+      .filter((section) => section.studentIds.length > 0);
+  }, [sections, filteredByStudent, enrollmentById, sortMode, trackLevels]);
+
+  const visibleStudentCount = useMemo(() => {
+    const ids = new Set<string>();
+    for (const section of visibleSections) {
+      for (const id of section.studentIds) ids.add(id);
+    }
+    return ids.size;
+  }, [visibleSections]);
 
   const selectedEnrollment = useMemo(
     () => enrollments.find((e) => e.student_id === selectedStudentId) ?? null,
@@ -180,6 +256,15 @@ export function CohortEnrollments({ cohortId, track, onChanged }: Props) {
         detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
     }
+  }
+
+  function toggleSection(key: string) {
+    setOpenKeys((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   }
 
   const handleAssessmentsNotEnrolled = useCallback(() => {
@@ -213,6 +298,8 @@ export function CohortEnrollments({ cohortId, track, onChanged }: Props) {
     setRemovingId(null);
   }
 
+  const filterActive = query.trim().length > 0 || levelFilter !== "all";
+
   if (loading) return <CohortStudentsSkeleton />;
 
   return (
@@ -220,7 +307,7 @@ export function CohortEnrollments({ cohortId, track, onChanged }: Props) {
       <div className="cohort-students__toolbar">
         <div className="muted cohort-students__hint">
           <p className="cohort-students__hint-text">
-            Selecione um aluno para ver as avaliações da trilha, módulos e aulas.
+            Alunos organizados por módulo e turma. Selecione um para ver as avaliações.
           </p>
           <Tooltip content={ASSESSMENT_OVERVIEW_HINT}>
             <button
@@ -305,67 +392,127 @@ export function CohortEnrollments({ cohortId, track, onChanged }: Props) {
           </div>
 
           <p className="muted cohort-students__count">
-            {filteredEnrollments.length} de {enrollments.length}
+            {visibleStudentCount} aluno{visibleStudentCount === 1 ? "" : "s"}
+            {" · "}
+            {visibleSections.length} turma{visibleSections.length === 1 ? "" : "s"}
+            {filterActive ? " · filtrado" : ""}
             {levelsLoading ? " · carregando níveis…" : ""}
           </p>
 
           <div className="cohort-students__layout">
             <div className="cohort-students__list-col">
-              {filteredEnrollments.length === 0 ? (
+              {visibleSections.length === 0 ? (
                 <p className="muted cohort-students__filter-empty">Nenhum aluno encontrado.</p>
               ) : (
-                <ul className="cohort-students__list">
-                  {filteredEnrollments.map((e) => {
-                    const selected = e.student_id === selectedStudentId;
-                    const summary = trackLevels[e.student_id];
+                <div className="cohort-students__sections">
+                  {visibleSections.map((section) => {
+                    const open = openKeys.has(section.key);
                     return (
-                      <li key={e.id}>
-                        <div
-                          className={`cohort-students__row${selected ? " is-selected" : ""}${
-                            canManageEnrollments ? " cohort-students__row--manageable" : ""
-                          }`}
+                      <section
+                        key={section.key}
+                        className={[
+                          "cohort-students__section",
+                          section.isOwnClass ? "is-own" : "",
+                          section.isUnassigned ? "is-unassigned" : "",
+                          open ? "is-open" : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                      >
+                        <button
+                          type="button"
+                          className="cohort-students__section-head"
+                          onClick={() => toggleSection(section.key)}
+                          aria-expanded={open}
                         >
-                          <button
-                            type="button"
-                            className="cohort-students__select"
-                            onClick={() => selectStudent(e.student_id)}
-                          >
-                            <span className="cohort-students__name-slot">
-                              <Tooltip content={e.student_name}>
-                                <span className="cohort-students__name">{e.student_name}</span>
-                              </Tooltip>
+                          <span className="cohort-students__section-copy">
+                            <span className="cohort-students__section-module">
+                              {section.moduleTitle}
                             </span>
-                            <span className="cohort-students__badge-slot">
-                              {levelsLoading && summary == null ? (
-                                <AssessmentLevelBadgeSkeleton />
-                              ) : summary?.kind === "level" ? (
-                                <AssessmentLevelBadge level={summary.level} compact />
-                              ) : (
-                                <AssessmentLevelBadge missing compact />
-                              )}
+                            <span className="cohort-students__section-title">
+                              {sectionTitle(section)}
                             </span>
-                          </button>
-                          {canManageEnrollments ? (
-                            <button
-                              type="button"
-                              className="cohort-students__remove"
-                              disabled={removingId === e.student_id}
-                              onClick={(ev) => {
-                                ev.preventDefault();
-                                ev.stopPropagation();
-                                void removeEnrollment(e.student_id);
-                              }}
-                              aria-label={`Remover ${e.student_name}`}
-                              title="Remover da turma"
+                          </span>
+                          <span className="cohort-students__section-meta">
+                            <span className="cohort-students__section-count">
+                              {section.studentIds.length}
+                            </span>
+                            <span
+                              className={`cohort-students__section-chevron${open ? " is-open" : ""}`}
+                              aria-hidden
                             >
-                              {removingId === e.student_id ? "…" : "×"}
-                            </button>
-                          ) : null}
-                        </div>
-                      </li>
+                              ▾
+                            </span>
+                          </span>
+                        </button>
+
+                        {open && (
+                          <ul className="cohort-students__list">
+                            {section.studentIds.map((studentId) => {
+                              const e = enrollmentById.get(studentId);
+                              if (!e) return null;
+                              const selected = e.student_id === selectedStudentId;
+                              const summary = trackLevels[e.student_id];
+                              return (
+                                <li key={`${section.key}:${e.id}`}>
+                                  <div
+                                    className={`cohort-students__row${selected ? " is-selected" : ""}${
+                                      canManageEnrollments
+                                        ? " cohort-students__row--manageable"
+                                        : ""
+                                    }`}
+                                  >
+                                    <button
+                                      type="button"
+                                      className="cohort-students__select"
+                                      onClick={() => selectStudent(e.student_id)}
+                                    >
+                                      <span className="cohort-students__name-slot">
+                                        <Tooltip content={e.student_name}>
+                                          <span className="cohort-students__name">
+                                            {e.student_name}
+                                          </span>
+                                        </Tooltip>
+                                      </span>
+                                      <span className="cohort-students__badge-slot">
+                                        {levelsLoading && summary == null ? (
+                                          <AssessmentLevelBadgeSkeleton />
+                                        ) : summary?.kind === "level" ? (
+                                          <AssessmentLevelBadge
+                                            level={summary.level}
+                                            compact
+                                          />
+                                        ) : (
+                                          <AssessmentLevelBadge missing compact />
+                                        )}
+                                      </span>
+                                    </button>
+                                    {canManageEnrollments ? (
+                                      <button
+                                        type="button"
+                                        className="cohort-students__remove"
+                                        disabled={removingId === e.student_id}
+                                        onClick={(ev) => {
+                                          ev.preventDefault();
+                                          ev.stopPropagation();
+                                          void removeEnrollment(e.student_id);
+                                        }}
+                                        aria-label={`Remover ${e.student_name}`}
+                                        title="Remover da turma"
+                                      >
+                                        {removingId === e.student_id ? "…" : "×"}
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </section>
                     );
                   })}
-                </ul>
+                </div>
               )}
             </div>
 
