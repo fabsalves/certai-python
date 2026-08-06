@@ -445,7 +445,7 @@
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 100;
+  z-index: 400;
   background: rgba(20, 32, 43, 0.45);
   display: flex;
   align-items: center;
@@ -1960,16 +1960,21 @@ html.modal-scroll-lock body {
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--ink);
+  color: var(--brand);
   font: inherit;
   font-size: 13px;
+  font-weight: 550;
   text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in srgb, var(--brand) 45%, transparent);
   cursor: pointer;
 }
 
 .cohort-assessment-dist__student:hover {
   background: var(--surface-sunken);
   color: var(--brand);
+  text-decoration-color: var(--brand);
 }
 
 .cohort-assessment-dist__student-static {
@@ -1982,6 +1987,188 @@ html.modal-scroll-lock body {
 .cohort-assessment-dist__hint {
   margin: 10px 0 0;
   font-size: 12px;
+}
+
+.cohort-assessment-dist__student-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cohort-assessment-dist__student-row .cohort-assessment-dist__student,
+.cohort-assessment-dist__student-row .cohort-assessment-dist__student-static {
+  flex: 1;
+  min-width: 0;
+}
+
+.cohort-assessment-dist__evidence {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 4px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--brand);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in srgb, var(--brand) 45%, transparent);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cohort-assessment-dist__evidence:hover {
+  color: var(--brand);
+  background: var(--surface-sunken);
+  text-decoration-color: var(--brand);
+}
+
+/* Micro-scores modal — scrollable body, denser cards, skeleton load */
+.micro-scores-modal.modal {
+  max-width: 560px;
+}
+
+.micro-scores-modal .modal__body {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 20px;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--ink) 22%, transparent) transparent;
+}
+
+.micro-scores-modal .modal__body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.micro-scores-modal .modal__body::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--ink) 22%, transparent);
+  border-radius: 999px;
+}
+
+.micro-scores-modal .modal__body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.micro-scores-modal__meta {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.micro-scores-modal__empty {
+  margin: 0;
+  font-size: 14px;
+}
+
+.micro-scores-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.micro-scores-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.micro-scores-list__item {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface-sunken) 70%, var(--surface));
+}
+
+.micro-scores-list__item--skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.micro-scores-list__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.micro-scores-list__item--skeleton .micro-scores-list__head {
+  margin-bottom: 0;
+}
+
+.micro-scores-list__competency {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--ink);
+  line-height: 1.35;
+}
+
+.micro-scores-list__evidence {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
+  white-space: pre-wrap;
+}
+
+.micro-scores-list__when {
+  margin: 0;
+  font-size: 12px;
+  text-align: right;
+}
+
+.student-assessment-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 16px 14px;
+}
+
+.student-assessment-card__body + .student-assessment-card__footer {
+  padding-top: 0;
+  margin-top: -2px;
+}
+
+.student-assessment-card__footer .student-assessment-card__when {
+  margin: 0;
+  min-width: 0;
+}
+
+.student-assessment-card__evidence {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin: 0;
+  margin-left: auto;
+  padding: 2px 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--brand);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in srgb, var(--brand) 45%, transparent);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.student-assessment-card__evidence:hover {
+  color: var(--brand);
+  background: transparent;
+  text-decoration-color: var(--brand);
 }
 
 .assessment-level-badge {

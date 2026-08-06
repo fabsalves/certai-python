@@ -10,6 +10,7 @@ import {
 import { sortedLessons, sortedModules, type Track } from "../../lib/tracks";
 import { maskPhoneBR } from "../../lib/validation";
 import { AssessmentLevelBadge } from "./AssessmentLevelBadge";
+import { MicroScoresModal } from "./MicroScoresModal";
 import { StudentAssessmentsSkeleton } from "./StudentAssessmentsSkeleton";
 
 interface Props {
@@ -31,6 +32,7 @@ function AssessmentScopeCard({
   row,
   defaultOpen,
   nested,
+  onViewEvidence,
 }: {
   eyebrow: ScopeEyebrow;
   title: string;
@@ -38,13 +40,14 @@ function AssessmentScopeCard({
   defaultOpen: boolean;
   /** Lesson cards rendered inside this card when open. */
   nested?: ReactNode;
+  /** Lesson-only: open micro-scores modal. */
+  onViewEvidence?: () => void;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const hasNested = nested != null;
-  const canExpand = row != null || hasNested;
+  const canExpand = row != null || hasNested || Boolean(onViewEvidence);
   const gapsText = row?.gaps.trim() ?? "";
   const assessmentText = row?.assessment.trim() ?? "";
-  const hasBody = assessmentText.length > 0 || gapsText.length > 0 || Boolean(row?.created_at);
 
   return (
     <article
@@ -85,7 +88,7 @@ function AssessmentScopeCard({
           aria-hidden={!open}
         >
           <div className="student-assessment-card__collapse-inner">
-            {row && hasBody && (
+            {row && (assessmentText.length > 0 || gapsText.length > 0) && (
               <div className="student-assessment-card__body">
                 {assessmentText ? (
                   <div className="student-assessment-card__field">
@@ -99,10 +102,28 @@ function AssessmentScopeCard({
                     <p className="student-assessment-card__text">{gapsText}</p>
                   </div>
                 ) : null}
-                {row.created_at ? (
+              </div>
+            )}
+            {(row?.created_at || onViewEvidence) && (
+              <div className="student-assessment-card__footer">
+                {row?.created_at ? (
                   <p className="muted student-assessment-card__when">
                     Avaliado em {formatAssessmentWhen(row.created_at)}
                   </p>
+                ) : (
+                  <span />
+                )}
+                {onViewEvidence ? (
+                  <button
+                    type="button"
+                    className="student-assessment-card__evidence"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onViewEvidence();
+                    }}
+                  >
+                    Evidências
+                  </button>
                 ) : null}
               </div>
             )}
@@ -128,6 +149,10 @@ export function StudentAssessmentsPanel({
   const [data, setData] = useState<StudentAssessments | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [evidenceLesson, setEvidenceLesson] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -284,6 +309,9 @@ export function StudentAssessmentsPanel({
                         title={lesson.title}
                         row={byKey.get(`lesson:${lesson.id}`) ?? null}
                         defaultOpen={false}
+                        onViewEvidence={() =>
+                          setEvidenceLesson({ id: lesson.id, title: lesson.title })
+                        }
                       />
                     ))}
                   </>
@@ -293,6 +321,16 @@ export function StudentAssessmentsPanel({
           );
         })}
       </div>
+
+      <MicroScoresModal
+        open={evidenceLesson != null}
+        onClose={() => setEvidenceLesson(null)}
+        cohortId={cohortId}
+        studentId={studentId}
+        lessonId={evidenceLesson?.id ?? ""}
+        studentName={studentName}
+        lessonTitle={evidenceLesson?.title}
+      />
     </div>
   );
 }

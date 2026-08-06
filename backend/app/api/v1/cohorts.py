@@ -35,6 +35,8 @@ from app.schemas import (
     LessonAssessmentsOut,
     LessonClassesOut,
     LessonClassStatusOut,
+    LessonMicroScoreOut,
+    LessonMicroScoresOut,
     ModuleProfessorIn,
     ModuleProfessorOut,
     PendingAssessmentStudentOut,
@@ -46,6 +48,7 @@ from app.schemas import (
     TranscriptionOut,
 )
 from app.models.assessment import CohortLessonNote
+from app.services.assessment.micro_score_read_service import MicroScoreReadService
 from app.services.assessment.read_service import (
     AssessmentReadRow,
     StudentAssessmentReadService,
@@ -969,6 +972,54 @@ async def list_student_assessments(
         student_id=result.student_id,
         student_name=result.student_name,
         assessments=[_assessment_out(row) for row in result.assessments],
+    )
+
+
+@router.get(
+    "/{cohort_id}/students/{student_id}/lessons/{lesson_id}/micro-scores",
+    response_model=LessonMicroScoresOut,
+    dependencies=[Depends(can_view)],
+)
+async def list_student_lesson_micro_scores(
+    cohort_id: uuid.UUID,
+    student_id: uuid.UUID,
+    lesson_id: uuid.UUID,
+    user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Point-in-time Lira micro-scores for one student in one lesson (professor UI)."""
+    cohort = await _get_cohort_or_404(db, cohort_id)
+    await _assert_cohort_access(db, user, cohort)
+
+    visible = await _visible_student_ids(db, user, cohort)
+    if visible is not None and student_id not in visible:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "Este aluno não está em nenhuma turma sua"
+        )
+    try:
+        result = await MicroScoreReadService.list_for_student_lesson(
+            db,
+            cohort_id=cohort_id,
+            student_id=student_id,
+            lesson_id=lesson_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    return LessonMicroScoresOut(
+        student_id=result.student_id,
+        student_name=result.student_name,
+        lesson_id=result.lesson_id,
+        lesson_title=result.lesson_title,
+        scores=[
+            LessonMicroScoreOut(
+                id=row.id,
+                competency=row.competency,
+                level=row.level,
+                evidence=row.evidence,
+                created_at=row.created_at,
+            )
+            for row in result.scores
+        ],
     )
 
 

@@ -339,6 +339,22 @@ class StudentAssessmentsOut(BaseModel):
     assessments: list[StudentAssessmentOut] = []
 
 
+class LessonMicroScoreOut(BaseModel):
+    id: uuid.UUID
+    competency: str = ""
+    level: str
+    evidence: str = ""
+    created_at: datetime
+
+
+class LessonMicroScoresOut(BaseModel):
+    student_id: uuid.UUID
+    student_name: str
+    lesson_id: uuid.UUID
+    lesson_title: str
+    scores: list[LessonMicroScoreOut] = []
+
+
 class CohortTrackLevelOut(BaseModel):
     student_id: uuid.UUID
     level: str | None = None  # null = insufficient evidence, or no assessment

@@ -9,6 +9,7 @@ import {
 } from "../../lib/assessments";
 import { Tooltip } from "../ui/Tooltip";
 import { LessonAssessmentDistSkeleton } from "./LessonAssessmentDistSkeleton";
+import { MicroScoresModal } from "./MicroScoresModal";
 
 interface Props {
   cohortId: string;
@@ -76,6 +77,7 @@ export function LessonAssessmentDistribution({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [openKey, setOpenKey] = useState<string | null>(null);
+  const [evidenceStudent, setEvidenceStudent] = useState<BucketStudent | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -221,7 +223,7 @@ export function LessonAssessmentDistribution({
               {open && (
                 <ul className="cohort-assessment-dist__students">
                   {item.students.map((student) => (
-                    <li key={student.student_id}>
+                    <li key={student.student_id} className="cohort-assessment-dist__student-row">
                       {onOpenStudent ? (
                         <button
                           type="button"
@@ -235,6 +237,14 @@ export function LessonAssessmentDistribution({
                           {student.student_name}
                         </span>
                       )}
+                      <button
+                        type="button"
+                        className="cohort-assessment-dist__evidence"
+                        onClick={() => setEvidenceStudent(student)}
+                        aria-label={`Ver evidências de ${student.student_name}`}
+                      >
+                        Evidências
+                      </button>
                     </li>
                   ))}
                 </ul>
@@ -245,9 +255,22 @@ export function LessonAssessmentDistribution({
       </ul>
       {onOpenStudent ? (
         <p className="muted cohort-assessment-dist__hint">
-          Abra um nível e toque no nome para ver a compreensão na trilha.
+          Toque no nome para a trilha; em Evidências, os registros da Lira nesta aula.
         </p>
-      ) : null}
+      ) : (
+        <p className="muted cohort-assessment-dist__hint">
+          Em Evidências, os registros da Lira nesta aula.
+        </p>
+      )}
+
+      <MicroScoresModal
+        open={evidenceStudent != null}
+        onClose={() => setEvidenceStudent(null)}
+        cohortId={cohortId}
+        studentId={evidenceStudent?.student_id ?? ""}
+        lessonId={lessonId}
+        studentName={evidenceStudent?.student_name ?? ""}
+      />
     </div>
   );
 }

@@ -1,3 +1,5 @@
+import { api } from "./api";
+
 export type AssessmentScope = "lesson" | "module" | "track";
 
 export type AssessmentLevel = "very_low" | "low" | "medium" | "high";
@@ -32,6 +34,33 @@ export interface StudentAssessments {
   student_id: string;
   student_name: string;
   assessments: StudentAssessment[];
+}
+
+/** Point-in-time Lira evidence for one student/lesson (professor UI modal). */
+export interface LessonMicroScore {
+  id: string;
+  competency: string;
+  level: AssessmentLevel;
+  evidence: string;
+  created_at: string;
+}
+
+export interface LessonMicroScores {
+  student_id: string;
+  student_name: string;
+  lesson_id: string;
+  lesson_title: string;
+  scores: LessonMicroScore[];
+}
+
+export function fetchLessonMicroScores(
+  cohortId: string,
+  studentId: string,
+  lessonId: string,
+) {
+  return api.get<LessonMicroScores>(
+    `/cohorts/${cohortId}/students/${studentId}/lessons/${lessonId}/micro-scores`,
+  );
 }
 
 /** Batch track-level row from GET /cohorts/{id}/students/track-levels */
