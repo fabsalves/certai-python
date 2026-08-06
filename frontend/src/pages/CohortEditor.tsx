@@ -16,69 +16,61 @@ import { isNonEmpty, trimmed } from "../lib/validation";
 import type {
   Cohort,
   CohortProgress,
+  Enrollment,
+  ModuleAssignments,
+  ModuleClassDraft,
   ModuleProfessor,
-  ModuleProfessorAssignment,
   ProfessorOption,
   TrackOption,
 } from "../lib/cohorts";
-import { professorForModule, uniqueProfessorNames } from "../lib/cohorts";
+import {
+  assignmentsEqual,
+  assignmentsFromCohort,
+  assignmentsPayload,
+  pathProgressForViewer,
+  professorsForModule,
+  suggestSplit,
+  uniqueProfessorNames,
+} from "../lib/cohorts";
 import { activeLessonsCount, sortedLessons, sortedModules, type Module, type ModuleLevel, type Track } from "../lib/tracks";
 
 type EditorTab = "meta" | "professors" | "students" | "progress";
 
-function assignmentsFromCohort(cohort: Cohort): Record<string, string> {
-  return Object.fromEntries(
-    cohort.module_professors.map((mp) => [mp.module_id, mp.professor_id]),
-  );
-}
-
-function assignmentsEqual(
-  current: Record<string, string>,
-  saved: Cohort["module_professors"],
-): boolean {
-  if (Object.keys(current).length !== saved.length) return false;
-  return saved.every((mp) => current[mp.module_id] === mp.professor_id);
-}
-
 function buildModuleAssignments(
   modules: Module[],
   professors: ProfessorOption[],
-  previous: Record<string, string> = {},
-): Record<string, string> {
+  previous: ModuleAssignments = {},
+): ModuleAssignments {
   const defaultProfessorId = professors[0]?.id ?? "";
-  const next: Record<string, string> = {};
+  const next: ModuleAssignments = {};
   for (const mod of modules) {
     if (!mod.is_active) continue;
-    next[mod.id] = previous[mod.id] ?? defaultProfessorId;
+    next[mod.id] = previous[mod.id] ?? [{ professorId: defaultProfessorId, studentIds: [] }];
   }
   return next;
 }
 
-function assignmentsPayload(assignments: Record<string, string>): ModuleProfessorAssignment[] {
-  return Object.entries(assignments).map(([module_id, professor_id]) => ({
-    module_id,
-    professor_id,
-  }));
-}
-
 function buildPreviewModuleProfessors(
   modules: Module[],
-  assignments: Record<string, string>,
+  assignments: ModuleAssignments,
   professors: ProfessorOption[],
 ): ModuleProfessor[] {
-  return modules
-    .map((mod) => {
-      const professorId = assignments[mod.id];
-      const professor = professors.find((item) => item.id === professorId);
-      if (!professor) return null;
-      return {
-        module_id: mod.id,
-        module_title: mod.title,
-        professor_id: professor.id,
-        professor_name: professor.name,
-      };
-    })
-    .filter((item): item is ModuleProfessor => item != null);
+  return modules.flatMap((mod) =>
+    (assignments[mod.id] ?? []).flatMap((item, index) => {
+      const professor = professors.find((option) => option.id === item.professorId);
+      if (!professor) return [];
+      return [
+        {
+          id: `${mod.id}-${index}`,
+          module_id: mod.id,
+          module_title: mod.title,
+          professor_id: professor.id,
+          professor_name: professor.name,
+          student_ids: item.studentIds,
+        },
+      ];
+    }),
+  );
 }
 
 export function CohortEditor() {
@@ -97,10 +89,11 @@ export function CohortEditor() {
   const [progress, setProgress] = useState<CohortProgress | null>(null);
   const [tracks, setTracks] = useState<TrackOption[]>([]);
   const [professors, setProfessors] = useState<ProfessorOption[]>([]);
+  const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [loading, setLoading] = useState(!isNew);
   const [name, setName] = useState("");
   const [trackId, setTrackId] = useState("");
-  const [moduleAssignments, setModuleAssignments] = useState<Record<string, string>>({});
+  const [moduleAssignments, setModuleAssignments] = useState<ModuleAssignments>({});
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [tab, setTab] = useState<EditorTab>("meta");
@@ -132,6 +125,11 @@ export function CohortEditor() {
     setSelectedLessonId((current) => current ?? data.current_lesson_id);
   }, []);
 
+  const reloadEnrollments = useCallback(async (id: string) => {
+    const { data } = await api.get<Enrollment[]>(`/cohorts/${id}/enrollments`);
+    setEnrollments(data);
+  }, []);
+
   const reloadCohort = useCallback(async () => {
     if (!cohortId || isNew) return;
     setLoadError("");
@@ -145,13 +143,14 @@ export function CohortEditor() {
       const [trackRes] = await Promise.all([
         api.get<Track>(`/cohorts/${data.id}/track`),
         reloadProgress(data.id),
+        reloadEnrollments(data.id),
       ]);
       setTrack(trackRes.data);
     } catch (err) {
       if (axios.isCancel(err)) return;
       setLoadError("Turma não encontrada.");
     }
-  }, [cohortId, isNew, reloadProgress]);
+  }, [cohortId, isNew, reloadProgress, reloadEnrollments]);
 
   useEffect(() => {
     if (isNew) {
@@ -204,6 +203,11 @@ export function CohortEditor() {
         });
         setProgress(progressRes.data);
         setSelectedLessonId(progressRes.data.current_lesson_id);
+        const enrollmentsRes = await api.get<Enrollment[]>(
+          `/cohorts/${data.id}/enrollments`,
+          { signal: controller.signal },
+        );
+        setEnrollments(enrollmentsRes.data);
       })
       .catch((err) => {
         if (controller.signal.aborted || axios.isCancel(err)) return;
@@ -255,23 +259,126 @@ export function CohortEditor() {
     : Object.keys(moduleAssignments).length > 0;
 
   const activeLessonId = selectedLessonId ?? progress?.current_lesson_id ?? null;
-  const activeModuleAssignment = useMemo(() => {
-    if (!track || !activeLessonId) return undefined;
+  const activeModuleClasses = useMemo(() => {
+    if (!track || !activeLessonId) return [];
     for (const mod of sortedModules(track)) {
       if (sortedLessons(mod).some((lesson) => lesson.id === activeLessonId)) {
-        return professorForModule(cohort, mod.id);
+        return professorsForModule(cohort, mod.id);
       }
     }
-    return undefined;
+    return [];
   }, [track, activeLessonId, cohort]);
 
-  const canCompleteLesson =
-    isProfessor &&
-    user != null &&
-    activeModuleAssignment?.professor_id === user.id;
+  const ownClass = useMemo(
+    () =>
+      user != null
+        ? activeModuleClasses.find((item) => item.professor_id === user.id)
+        : undefined,
+    [activeModuleClasses, user],
+  );
+
+  const canCompleteLesson = isProfessor && ownClass != null;
+
+  const enrolledIds = useMemo(
+    () => enrollments.map((item) => item.student_id),
+    [enrollments],
+  );
+
+  const previousModuleId = useCallback(
+    (moduleId: string) => {
+      const index = formModules.findIndex((mod) => mod.id === moduleId);
+      return index > 0 ? formModules[index - 1].id : null;
+    },
+    [formModules],
+  );
+
+  function updateModuleClasses(
+    moduleId: string,
+    update: (classes: ModuleClassDraft[], current: ModuleAssignments) => ModuleClassDraft[],
+  ) {
+    setModuleAssignments((current) => ({
+      ...current,
+      [moduleId]: update(current[moduleId] ?? [], current),
+    }));
+  }
+
+  function changeProfessor(moduleId: string, index: number, professorId: string) {
+    updateModuleClasses(moduleId, (classes) =>
+      classes.map((item, position) =>
+        position === index ? { ...item, professorId } : item,
+      ),
+    );
+  }
+
+  function addProfessor(moduleId: string) {
+    updateModuleClasses(moduleId, (classes, current) => {
+      const used = new Set(classes.map((item) => item.professorId));
+      const nextProfessor = professors.find((prof) => !used.has(prof.id));
+      if (!nextProfessor) return classes;
+
+      const previousId = previousModuleId(moduleId);
+      const previousClasses = previousId ? (current[previousId] ?? []) : [];
+      return suggestSplit(
+        [...classes, { professorId: nextProfessor.id, studentIds: [] }],
+        enrolledIds,
+        previousClasses,
+      );
+    });
+  }
+
+  function removeProfessor(moduleId: string, index: number) {
+    updateModuleClasses(moduleId, (classes) => {
+      const remaining = classes.filter((_item, position) => position !== index);
+      if (remaining.length <= 1) {
+        return remaining.map((item) => ({ ...item, studentIds: [] }));
+      }
+      const orphans = classes[index]?.studentIds ?? [];
+      return remaining.map((item, position) =>
+        position === 0 ? { ...item, studentIds: [...item.studentIds, ...orphans] } : item,
+      );
+    });
+  }
+
+  async function applyDivision(
+    moduleId: string,
+    classes: ModuleClassDraft[],
+  ): Promise<boolean> {
+    const nextAssignments: ModuleAssignments = {
+      ...moduleAssignments,
+      [moduleId]: classes.map((item) => ({
+        ...item,
+        studentIds: [...item.studentIds],
+      })),
+    };
+    setModuleAssignments(nextAssignments);
+
+    // New cohort: draft only — persisted when the turma is created.
+    if (isNew || !cohort) return true;
+
+    setSaving(true);
+    const result = await runAction({
+      run: () =>
+        api.patch<Cohort>(`/cohorts/${cohort.id}`, {
+          module_professors: assignmentsPayload(nextAssignments),
+        }),
+      successMessage: "Divisão salva.",
+      errorMessage: "Não foi possível salvar a divisão.",
+      onSuccess: ({ data }) => {
+        setCohort(data);
+        setModuleAssignments(assignmentsFromCohort(data));
+      },
+    });
+    setSaving(false);
+    return result != null;
+  }
 
   const previewTrack = track ?? (selectedTrack as Track | null);
-  const previewProgress = progress ?? { completed_lesson_ids: [], current_lesson_id: null };
+  const previewProgress = progress ?? {
+    completed_lesson_ids: [],
+    partial_lesson_ids: [],
+    current_lesson_id: null,
+    lesson_classes: [],
+  };
   const previewModuleProfessors =
     cohort?.module_professors ??
     buildPreviewModuleProfessors(formModules, moduleAssignments, professors);
@@ -379,7 +486,9 @@ export function CohortEditor() {
     previewTrack &&
       ((cohort && progress) || (isNew && tab === "professors")),
   );
-  const completedCount = progress?.completed_lesson_ids.length ?? 0;
+  const completedCount = progress
+    ? pathProgressForViewer(progress, isProfessor ? user?.id : undefined).doneCount
+    : 0;
 
   return (
     <div className="track-editor cohort-editor">
@@ -420,7 +529,7 @@ export function CohortEditor() {
                     id: "students",
                     label: "Alunos",
                     disabled: !cohort,
-                    count: cohort?.enrollment_count,
+                    count: cohort ? enrollments.length : undefined,
                   },
                   {
                     id: "progress",
@@ -491,16 +600,15 @@ export function CohortEditor() {
                     modules={formModules}
                     professors={professors}
                     assignments={moduleAssignments}
+                    enrollments={enrollments}
                     trackTitle={trackTitle}
                     isNew={isNew}
                     saving={saving}
                     dirty={professorsDirty}
-                    onAssignmentChange={(moduleId, professorId) =>
-                      setModuleAssignments((current) => ({
-                        ...current,
-                        [moduleId]: professorId,
-                      }))
-                    }
+                    onProfessorChange={changeProfessor}
+                    onAddProfessor={addProfessor}
+                    onRemoveProfessor={removeProfessor}
+                    onApplyDivision={applyDivision}
                     onCreateProfessor={() => setProfModalOpen(true)}
                     onSubmit={saveProfessors}
                   />
@@ -524,7 +632,8 @@ export function CohortEditor() {
                       progress={progress}
                       selectedLessonId={selectedLessonId}
                       canComplete={canCompleteLesson}
-                      professorName={activeModuleAssignment?.professor_name}
+                      professorName={ownClass?.professor_name}
+                      viewerProfessorId={isProfessor ? user?.id : undefined}
                       onCompleted={onProgressChanged}
                     />
                   )}
@@ -537,7 +646,7 @@ export function CohortEditor() {
                     id: "students",
                     label: "Alunos",
                     disabled: !cohort,
-                    count: cohort?.enrollment_count,
+                    count: cohort ? enrollments.length : undefined,
                   },
                   {
                     id: "progress",
@@ -575,7 +684,8 @@ export function CohortEditor() {
                       progress={progress}
                       selectedLessonId={selectedLessonId}
                       canComplete={canCompleteLesson}
-                      professorName={activeModuleAssignment?.professor_name}
+                      professorName={ownClass?.professor_name}
+                      viewerProfessorId={isProfessor ? user?.id : undefined}
                       onCompleted={onProgressChanged}
                     />
                   )}
@@ -592,6 +702,7 @@ export function CohortEditor() {
               progress={previewProgress}
               selectedLessonId={selectedLessonId}
               moduleProfessors={previewModuleProfessors}
+              viewerProfessorId={isProfessor ? user?.id : undefined}
               onSelectLesson={(lessonId) => {
                 if (cohort) selectLesson(lessonId);
               }}
@@ -609,7 +720,9 @@ export function CohortEditor() {
             setModuleAssignments((current) => {
               const next = { ...current };
               for (const mod of formModules) {
-                if (!next[mod.id]) next[mod.id] = prof.id;
+                if (!next[mod.id]?.length) {
+                  next[mod.id] = [{ professorId: prof.id, studentIds: [] }];
+                }
               }
               return next;
             });

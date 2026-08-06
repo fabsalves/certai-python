@@ -41,6 +41,7 @@ from app.services.lesson_completion_service import complete_lesson
 from app.services.realtime.voice_session_service import VoiceSessionService
 from app.services.student_progress_service import StudentProgressService
 from app.services.whatsapp.inbound_service import persist_inbound
+from scripts.class_helpers import lesson_class_id, lesson_student_ids
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 VERIFY_SCRIPTS = [
@@ -133,7 +134,13 @@ async def test_end_to_end_state_machine() -> None:
         other_student_id = next(sid for sid in student_ids if sid != student_whatsapp_id)
         await _clear_progress(db, cohort_id)
 
-        await complete_lesson(db, cohort_id, lesson_n_id, "Relato integrado N")
+        await complete_lesson(
+            db,
+            cohort_id,
+            lesson_n_id,
+            "Relato integrado N",
+            module_professor_id=await lesson_class_id(db, cohort_id, lesson_n_id),
+        )
         await db.commit()
 
         for student_id in student_ids:
@@ -183,7 +190,13 @@ async def test_end_to_end_state_machine() -> None:
         print("OK conclude_lesson → CONCLUIDA sem criar próxima aula")
 
         await _clear_progress(db, cohort_id)
-        await complete_lesson(db, cohort_id, lesson_n_id, "Relato N reset")
+        await complete_lesson(
+            db,
+            cohort_id,
+            lesson_n_id,
+            "Relato N reset",
+            module_professor_id=await lesson_class_id(db, cohort_id, lesson_n_id),
+        )
         await db.commit()
         conv2 = await get_or_create_conversation(
             db, cohort_id, student_whatsapp_id, lesson_n_id
@@ -199,7 +212,13 @@ async def test_end_to_end_state_machine() -> None:
         assert other_row is not None
         assert other_row.status == StudentLessonProgressStatus.DISPARADA
 
-        await complete_lesson(db, cohort_id, lesson_n1_id, "Relato N+1")
+        await complete_lesson(
+            db,
+            cohort_id,
+            lesson_n1_id,
+            "Relato N+1",
+            module_professor_id=await lesson_class_id(db, cohort_id, lesson_n1_id),
+        )
         await db.commit()
 
         closed = await StudentProgressService._get_progress(
@@ -229,7 +248,10 @@ async def test_end_to_end_state_machine() -> None:
 
         await _clear_progress(db, cohort_id)
         await StudentProgressService.on_professor_complete_lesson(
-            db, cohort_id, lesson_n_id
+            db,
+            cohort_id,
+            lesson_n_id,
+            await lesson_student_ids(db, cohort_id, lesson_n_id),
         )
         row = await StudentProgressService._get_progress(
             db, cohort_id, student_whatsapp_id, lesson_n_id
@@ -247,7 +269,10 @@ async def test_end_to_end_state_machine() -> None:
 
         await _clear_progress(db, cohort_id)
         await StudentProgressService.on_professor_complete_lesson(
-            db, cohort_id, lesson_n_id
+            db,
+            cohort_id,
+            lesson_n_id,
+            await lesson_student_ids(db, cohort_id, lesson_n_id),
         )
         first = await get_or_create_conversation(
             db, cohort_id, student_whatsapp_id, lesson_n_id
@@ -281,7 +306,10 @@ async def test_voice_session_does_not_change_lesson_progress() -> None:
 
         await _clear_progress(db, cohort_id)
         await StudentProgressService.on_professor_complete_lesson(
-            db, cohort_id, lesson_n_id
+            db,
+            cohort_id,
+            lesson_n_id,
+            await lesson_student_ids(db, cohort_id, lesson_n_id),
         )
         await StudentProgressService.activate_on_first_interaction(
             db, cohort_id, student_whatsapp_id, lesson_n_id

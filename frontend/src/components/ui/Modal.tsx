@@ -6,9 +6,17 @@ interface ModalProps {
   title: string;
   children: ReactNode;
   wide?: boolean;
+  className?: string;
 }
 
-export function Modal({ open, onClose, title, children, wide = false }: ModalProps) {
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  wide = false,
+  className = "",
+}: ModalProps) {
   const pointerDownOnBackdrop = useRef(false);
 
   useEffect(() => {
@@ -33,7 +41,7 @@ export function Modal({ open, onClose, title, children, wide = false }: ModalPro
       }}
     >
       <div
-        className={`modal card${wide ? " modal--wide" : ""}`}
+        className={`modal card${wide ? " modal--wide" : ""}${className ? ` ${className}` : ""}`}
         role="dialog"
         aria-modal
         aria-labelledby="modal-title"

@@ -7,11 +7,10 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from app.models.cohort import Cohort, Enrollment
+from app.models.cohort import Cohort
 from app.models.student_progress import StudentLessonProgress, StudentLessonProgressStatus
-from app.models.track import Module, Track
+from app.services.track_structure import ordered_active_lessons
 
 
 class LessonNotInteractiveError(Exception):
@@ -184,7 +183,11 @@ class StudentProgressService:
         student_id: uuid.UUID,
         lesson_id: uuid.UUID,
     ) -> StudentLessonProgress | None:
-        """DISPARADA/ATIVA → ENCERRADA_POR_AVANCO when the professor unlocks the next lesson."""
+        """DISPARADA/ATIVA → ENCERRADA_POR_AVANCO when the professor unlocks the next lesson.
+
+        Enqueues lesson assessment so advancement never silently skips the
+        evaluation chain (empty conversation → level null + gaps is valid).
+        """
         row = await StudentProgressService._get_progress(
             db, cohort_id, student_id, lesson_id
         )
@@ -201,6 +204,17 @@ class StudentProgressService:
         row.status = StudentLessonProgressStatus.ENCERRADA_POR_AVANCO
         row.encerrada_por_avanco_at = now
         await db.flush()
+
+        from app.core.db_events import enqueue_after_commit
+        from app.workers.tasks import assess_student_lesson
+
+        enqueue_after_commit(
+            db,
+            assess_student_lesson,
+            str(cohort_id),
+            str(student_id),
+            str(lesson_id),
+        )
         return row
 
     @staticmethod
@@ -208,17 +222,16 @@ class StudentProgressService:
         db: AsyncSession,
         cohort_id: uuid.UUID,
         lesson_id: uuid.UUID,
+        student_ids: list[uuid.UUID],
     ) -> None:
-        """DISPARADA for all enrolled students; close previous lesson if still open."""
+        """DISPARADA for the professor's own students; close their previous lesson.
+
+        Restricted to the class that studied the lesson -- a professor advancing
+        must never close the window of another professor's students.
+        """
         previous_lesson_id = await StudentProgressService._previous_lesson_id(
             db, cohort_id, lesson_id
         )
-
-        student_ids = (
-            await db.scalars(
-                select(Enrollment.student_id).where(Enrollment.cohort_id == cohort_id)
-            )
-        ).all()
 
         for student_id in student_ids:
             if previous_lesson_id is not None:
@@ -270,14 +283,10 @@ class StudentProgressService:
                 )
             )
         ).all()
-        if not others:
-            return
-
-        now = _utcnow()
         for row in others:
-            row.status = StudentLessonProgressStatus.ENCERRADA_POR_AVANCO
-            row.encerrada_por_avanco_at = now
-        await db.flush()
+            await StudentProgressService.close_by_advance(
+                db, cohort_id, student_id, row.lesson_id
+            )
 
     @staticmethod
     async def _get_progress(
@@ -317,20 +326,5 @@ class StudentProgressService:
         cohort = await db.get(Cohort, cohort_id)
         if cohort is None:
             return []
-
-        track = await db.scalar(
-            select(Track)
-            .where(Track.id == cohort.track_id)
-            .options(selectinload(Track.modules).selectinload(Module.lessons))
-        )
-        if track is None:
-            return []
-
-        lesson_ids: list[uuid.UUID] = []
-        for mod in sorted(track.modules, key=lambda m: m.position):
-            if not mod.is_active:
-                continue
-            for lesson in sorted(mod.lessons, key=lambda l: l.position):
-                if lesson.is_active:
-                    lesson_ids.append(lesson.id)
-        return lesson_ids
+        lessons = await ordered_active_lessons(db, cohort.track_id)
+        return [lesson.id for lesson in lessons]

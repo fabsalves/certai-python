@@ -154,7 +154,9 @@ class RealtimeInstructionsBuilder:
         student_id: uuid.UUID,
         student_first_name: str,
     ) -> str:
-        bundle = await ContextBuilder(self._db).build_lesson(cohort_id, lesson_id)
+        bundle = await ContextBuilder(self._db).build_lesson(
+            cohort_id, lesson_id, student_id=student_id
+        )
         system_blocks = bundle.to_system_blocks()
         history = await lesson_conversation_history(self._db, cohort_id, student_id, lesson_id)
 

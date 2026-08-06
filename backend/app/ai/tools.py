@@ -139,11 +139,18 @@ async def dispatch(name: str, args: dict[str, Any], ctx: ToolContext) -> str:
 
 
 async def _escalate_scope(args: dict[str, Any], ctx: ToolContext) -> str:
+    if ctx.student_id is None:
+        return "No student in context; scope cannot be widened."
+
     level = args.get("target_level", "track")
     if level == "module" and ctx.lesson_id:
-        bundle = await ctx.builder.build_module(ctx.cohort_id, ctx.lesson_id)
+        bundle = await ctx.builder.build_module(
+            ctx.cohort_id, ctx.lesson_id, student_id=ctx.student_id
+        )
     else:
-        bundle = await ctx.builder.build_track(ctx.cohort_id)
+        bundle = await ctx.builder.build_track(
+            ctx.cohort_id, student_id=ctx.student_id
+        )
     return bundle.to_system_blocks()
 
 

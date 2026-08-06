@@ -22,8 +22,10 @@ from app.schemas import (
     PlaygroundTrackMaterialOut,
     TranscriptionOut,
 )
+from app.services.cohort import ModuleClassService
 from app.services.playground_context_service import build_playground_context
 from app.services.playground_scores_service import build_playground_scores
+from app.services.track_structure import ordered_active_lessons
 from app.services.conversation_service import list_lesson_messages, student_lesson_message
 from app.services.lesson_completion_service import complete_lesson
 from app.services.student_progress_service import LessonNotInteractiveError
@@ -68,12 +70,12 @@ async def _ensure_enrolled_student(
     return student
 
 
-async def _ensure_module_professor(
+async def _professor_class(
     db: AsyncSession,
     cohort_id: uuid.UUID,
     professor_id: uuid.UUID,
     lesson_id: uuid.UUID,
-) -> User:
+) -> CohortModuleProfessor:
     professor = await db.get(User, professor_id)
     if professor is None or professor.role != Role.PROFESSOR:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Professor inválido")
@@ -82,49 +84,36 @@ async def _ensure_module_professor(
     if lesson is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Aula não encontrada")
 
-    assigned = await db.scalar(
-        select(CohortModuleProfessor.id).where(
-            CohortModuleProfessor.cohort_id == cohort_id,
-            CohortModuleProfessor.module_id == lesson.module_id,
-            CohortModuleProfessor.professor_id == professor_id,
-        )
+    module_class = await ModuleClassService.class_of_professor(
+        db, cohort_id, lesson.module_id, professor_id
     )
-    if assigned is None:
+    if module_class is None:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
             "O professor selecionado não leciona o módulo desta aula",
         )
-    return professor
+    return module_class
 
 
-async def _current_lesson_id(db: AsyncSession, cohort: Cohort) -> uuid.UUID | None:
-    from sqlalchemy.orm import selectinload
-
-    from app.models.track import Module, Track
-
-    completed = set(
+async def _next_lesson_for_class(
+    db: AsyncSession, cohort: Cohort, module_class: CohortModuleProfessor
+) -> uuid.UUID | None:
+    """First active lesson of the class's module it has not closed yet."""
+    closed = set(
         (
-            await db.execute(
-                select(CohortProgress.lesson_id).where(CohortProgress.cohort_id == cohort.id)
+            await db.scalars(
+                select(CohortProgress.lesson_id).where(
+                    CohortProgress.cohort_id == cohort.id,
+                    CohortProgress.module_professor_id == module_class.id,
+                )
             )
-        ).scalars().all()
+        ).all()
     )
-    track = await db.scalar(
-        select(Track)
-        .where(Track.id == cohort.track_id)
-        .options(selectinload(Track.modules).selectinload(Module.lessons))
-    )
-    if track is None:
-        return None
-
-    for mod in sorted(track.modules, key=lambda m: m.position):
-        if not mod.is_active:
+    for lesson in await ordered_active_lessons(db, cohort.track_id):
+        if lesson.module_id != module_class.module_id:
             continue
-        for lesson in sorted(mod.lessons, key=lambda l: l.position):
-            if not lesson.is_active:
-                continue
-            if lesson.id not in completed:
-                return lesson.id
+        if lesson.id not in closed:
+            return lesson.id
     return None
 
 
@@ -135,16 +124,19 @@ async def _current_lesson_id(db: AsyncSession, cohort: Cohort) -> uuid.UUID | No
 async def get_lesson_context(
     cohort_id: uuid.UUID,
     lesson_id: uuid.UUID,
+    student_id: Annotated[uuid.UUID, Query(description="Aluno espelhado no contexto")],
     user: Annotated[User, Depends(admin_only)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """Snapshot of the context bundle and ingestions the Lira receives for this lesson."""
+    """Snapshot of the context bundle and ingestions the Lira receives for this
+    lesson, as seen by one student -- classes of the same module differ."""
     await _get_cohort_or_404(db, cohort_id)
     if await db.get(Lesson, lesson_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Aula não encontrada")
+    await _ensure_enrolled_student(db, cohort_id, student_id)
 
     try:
-        data = await build_playground_context(db, cohort_id, lesson_id)
+        data = await build_playground_context(db, cohort_id, lesson_id, student_id)
     except ValueError as e:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(e)) from e
 
@@ -259,8 +251,8 @@ async def transcribe_lesson_report(
     audio: Annotated[UploadFile, File(description="Áudio do relato da aula")],
 ):
     """Transcreve relato como professor do módulo — somente admin."""
-    cohort = await _get_cohort_or_404(db, cohort_id)
-    await _ensure_module_professor(db, cohort_id, professor_id, lesson_id)
+    await _get_cohort_or_404(db, cohort_id)
+    await _professor_class(db, cohort_id, professor_id, lesson_id)
 
     if not is_allowed_report_audio(audio.content_type, audio.filename):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Arquivo deve ser de áudio")
@@ -299,13 +291,23 @@ async def complete_lesson_as_professor(
 ):
     """Encerra aula como professor do módulo — somente admin."""
     cohort = await _get_cohort_or_404(db, cohort_id)
-    await _ensure_module_professor(db, cohort_id, professor_id, lesson_id)
+    module_class = await _professor_class(db, cohort_id, professor_id, lesson_id)
 
-    current = await _current_lesson_id(db, cohort)
+    unassigned = await ModuleClassService.unassigned_student_ids(
+        db, cohort_id, module_class.module_id
+    )
+    if unassigned:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"{len(unassigned)} aluno(s) da turma ainda não foram divididos entre os "
+            "professores deste módulo.",
+        )
+
+    current = await _next_lesson_for_class(db, cohort, module_class)
     if current is not None and lesson_id != current:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            "Só é possível encerrar a aula atual da turma",
+            "Só é possível encerrar a aula atual da turma deste professor",
         )
 
     stored_attachment = await parse_report_attachment(attachment)
@@ -317,6 +319,7 @@ async def complete_lesson_as_professor(
             cohort_id,
             lesson_id,
             transcript,
+            module_professor_id=module_class.id,
             attachment=stored_attachment,
             audio=stored_audio,
             audio_source=audio_source or None,

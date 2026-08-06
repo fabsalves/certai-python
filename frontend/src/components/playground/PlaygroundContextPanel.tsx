@@ -4,6 +4,8 @@ import { fetchPlaygroundContext, type PlaygroundContext } from "../../lib/playgr
 interface Props {
   cohortId: string;
   lessonId: string | null;
+  /** O contexto é sempre o de um aluno: a turma dele define o que está liberado. */
+  studentId: string | null;
   refreshKey?: number;
 }
 
@@ -68,26 +70,31 @@ function ingestionLabel(status: string | null | undefined): string {
   return INGESTION_LABELS[status] ?? status;
 }
 
-export function PlaygroundContextPanel({ cohortId, lessonId, refreshKey = 0 }: Props) {
+export function PlaygroundContextPanel({
+  cohortId,
+  lessonId,
+  studentId,
+  refreshKey = 0,
+}: Props) {
   const [context, setContext] = useState<PlaygroundContext | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const load = useCallback(() => {
-    if (!cohortId || !lessonId) {
+    if (!cohortId || !lessonId || !studentId) {
       setContext(null);
       return;
     }
     setLoading(true);
     setError("");
-    fetchPlaygroundContext(cohortId, lessonId)
+    fetchPlaygroundContext(cohortId, lessonId, studentId)
       .then(setContext)
       .catch(() => {
         setContext(null);
         setError("Não foi possível carregar o contexto da Lira.");
       })
       .finally(() => setLoading(false));
-  }, [cohortId, lessonId]);
+  }, [cohortId, lessonId, studentId]);
 
   useEffect(() => {
     load();
@@ -106,10 +113,14 @@ export function PlaygroundContextPanel({ cohortId, lessonId, refreshKey = 0 }: P
     return () => window.clearInterval(timer);
   }, [hasIngesting, load]);
 
-  if (!lessonId) {
+  if (!lessonId || !studentId) {
     return (
       <div className="playground-context">
-        <p className="muted playground-context__hint">Selecione uma aula para ver o contexto.</p>
+        <p className="muted playground-context__hint">
+          {lessonId
+            ? "Selecione um aluno para ver o contexto da turma dele."
+            : "Selecione uma aula para ver o contexto."}
+        </p>
       </div>
     );
   }

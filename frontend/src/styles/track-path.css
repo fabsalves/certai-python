@@ -212,6 +212,14 @@
   background: var(--brand-50);
 }
 
+/* Encerrada por parte dos professores: adiantada em relação a "locked", ainda
+   longe de "done". */
+.track-path__bubble--partial .track-path__ring {
+  border-color: var(--brand);
+  border-style: dashed;
+  background: var(--surface);
+}
+
 .track-path__bubble--locked .track-path__ring,
 .track-path__bubble--inactive .track-path__ring {
   border-color: var(--border-strong);
@@ -278,6 +286,12 @@
   background: var(--accent-50);
   color: #8a5f1a;
   border: 1px solid rgba(176, 125, 43, 0.25);
+}
+
+.track-path__label-badge--late {
+  background: var(--danger-50, #fdeceb);
+  color: var(--danger, #a33a30);
+  border-color: rgba(163, 58, 48, 0.25);
 }
 
 .track-path__label-badge--muted {

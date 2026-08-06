@@ -1,6 +1,13 @@
 import { levelLabel, sortedLessons, sortedModules, type Track } from "../../lib/tracks";
 
-export type PathNodeState = "default" | "inactive" | "selected" | "done" | "current" | "locked";
+export type PathNodeState =
+  | "default"
+  | "inactive"
+  | "selected"
+  | "done"
+  | "partial"
+  | "current"
+  | "locked";
 
 export interface PathNodeItem {
   id: string;
@@ -13,6 +20,8 @@ export interface PathNodeItem {
   professorLabel?: string;
   /** Módulo ainda sem aulas — placeholder no percurso. */
   emptyModule?: boolean;
+  /** Um professor ainda não encerrou, enquanto a turma já avançou. */
+  delayed?: boolean;
   onClick?: () => void;
 }
 
@@ -80,6 +89,15 @@ export function buildPathFromTrackWithProgress(
     showInactive?: boolean;
     allowLockedSelect?: boolean;
     moduleProfessorByModuleId?: Record<string, string>;
+    /** Encerradas por parte dos professores do módulo. */
+    partialLessonIds?: Set<string>;
+    /** Pendentes para algum professor enquanto a turma já avançou. */
+    delayedLessonIds?: Set<string>;
+    /**
+     * Explicit "aula atual" from business rules. When set (including null),
+     * replaces the heuristic that picked the first non-done lesson.
+     */
+    currentLessonId?: string | null;
   } = {},
 ): PathNodeItem[] {
   const {
@@ -88,10 +106,14 @@ export function buildPathFromTrackWithProgress(
     showInactive = true,
     allowLockedSelect = false,
     moduleProfessorByModuleId,
+    partialLessonIds,
+    delayedLessonIds,
+    currentLessonId,
   } = options;
   const items: PathNodeItem[] = [];
   let step = 0;
   let foundCurrent = false;
+  const useExplicitCurrent = currentLessonId !== undefined;
 
   for (const mod of sortedModules(track)) {
     if (!mod.is_active && !showInactive) continue;
@@ -122,6 +144,14 @@ export function buildPathFromTrackWithProgress(
         state = "inactive";
       } else if (completedLessonIds.has(lesson.id)) {
         state = "done";
+      } else if (useExplicitCurrent && lesson.id === currentLessonId) {
+        state = "current";
+        foundCurrent = true;
+      } else if (partialLessonIds?.has(lesson.id)) {
+        state = "partial";
+      } else if (useExplicitCurrent) {
+        // Never invent another "aula atual" outside business current.
+        state = "locked";
       } else if (!foundCurrent) {
         state = "current";
         foundCurrent = true;
@@ -150,6 +180,7 @@ export function buildPathFromTrackWithProgress(
         levelLabel: li === 0 ? levelLabel(mod.level) : undefined,
         professorLabel:
           li === 0 ? moduleProfessorByModuleId?.[mod.id] : undefined,
+        delayed: delayedLessonIds?.has(lesson.id),
         onClick: clickable ? () => onSelectLesson(lesson.id, mod.id) : undefined,
       });
     });

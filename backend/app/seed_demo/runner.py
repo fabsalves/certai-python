@@ -12,7 +12,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from random import Random
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import selectinload
 
 from app.core.database import SessionLocal
@@ -24,7 +24,13 @@ from app.models.assessment import (
     MicroScore,
     StudentAssessment,
 )
-from app.models.cohort import Cohort, CohortModuleProfessor, CohortProgress, Enrollment
+from app.models.cohort import (
+    Cohort,
+    CohortModuleProfessor,
+    CohortModuleStudent,
+    CohortProgress,
+    Enrollment,
+)
 from app.models.student_progress import StudentLessonProgress, StudentLessonProgressStatus
 from app.models.track import Lesson, Module, Track
 from app.models.user import Role, User
@@ -124,6 +130,15 @@ async def _require_base(db) -> tuple[Track, list[Module], list[Lesson], User, Us
 async def _wipe_demo(db) -> None:
     existing = await db.scalar(select(Cohort).where(Cohort.name == DEMO_COHORT_NAME))
     if existing is not None:
+        # Notes and progress reference the classes, which the cohort delete also
+        # removes -- clear them first so the ordering never trips the FK.
+        await db.execute(
+            delete(CohortLessonNote).where(CohortLessonNote.cohort_id == existing.id)
+        )
+        await db.execute(
+            delete(CohortProgress).where(CohortProgress.cohort_id == existing.id)
+        )
+        await db.flush()
         await db.delete(existing)
         await db.flush()
 
@@ -174,8 +189,8 @@ def _print_summary(
     print("")
     print("Logins (seed base):")
     print("  admin@certai.app / admin12345")
-    print("  prof@certai.app / prof12345")
-    print("  marcos.ferreira@certai.app / prof12345")
+    print("  prof@certai.app / prof12345  (Fundamentos + metade da Prática)")
+    print("  marcos.ferreira@certai.app / prof12345  (outra metade da Prática)")
     print(f"Alunos demo: senha {DEMO_PASSWORD} (e-mails *@demo.certai.app)")
 
 
@@ -194,47 +209,62 @@ async def seed_demo() -> None:
         db.add(cohort)
         await db.flush()
 
-        db.add_all(
-            [
-                CohortModuleProfessor(
-                    cohort_id=cohort.id,
-                    module_id=modules[0].id,
-                    professor_id=prof_fundamentos.id,
-                ),
-                CohortModuleProfessor(
-                    cohort_id=cohort.id,
-                    module_id=modules[1].id,
-                    professor_id=prof_pratica.id,
-                ),
-            ]
+        # Fundamentos has a single professor; Prática is split between the two,
+        # so the demo exercises both shapes out of the box.
+        fundamentos_class = CohortModuleProfessor(
+            cohort_id=cohort.id,
+            module_id=modules[0].id,
+            professor_id=prof_fundamentos.id,
         )
+        pratica_classes = [
+            CohortModuleProfessor(
+                cohort_id=cohort.id,
+                module_id=modules[1].id,
+                professor_id=prof_pratica.id,
+            ),
+            CohortModuleProfessor(
+                cohort_id=cohort.id,
+                module_id=modules[1].id,
+                professor_id=prof_fundamentos.id,
+            ),
+        ]
+        db.add_all([fundamentos_class, *pratica_classes])
+        await db.flush()
+
+        classes_by_module = {
+            modules[0].id: [fundamentos_class],
+            modules[1].id: pratica_classes,
+        }
 
         notes_by_key = {n.lesson_key: n for n in LESSON_NOTES}
         for idx, lesson in enumerate(lessons):
             key = LESSON_TITLE_TO_KEY[lesson.title]
             note = notes_by_key[key]
             anchor = _lesson_anchor(now, idx)
-            db.add(
-                CohortLessonNote(
-                    cohort_id=cohort.id,
-                    lesson_id=lesson.id,
-                    summary=note.summary,
-                    unclear_points=note.unclear_points,
-                    professor_transcript=note.professor_transcript,
-                    ingestion_status="done",
-                    created_at=anchor,
-                    updated_at=anchor,
+            for module_class in classes_by_module[lesson.module_id]:
+                db.add(
+                    CohortLessonNote(
+                        cohort_id=cohort.id,
+                        lesson_id=lesson.id,
+                        module_professor_id=module_class.id,
+                        summary=note.summary,
+                        unclear_points=note.unclear_points,
+                        professor_transcript=note.professor_transcript,
+                        ingestion_status="done",
+                        created_at=anchor,
+                        updated_at=anchor,
+                    )
                 )
-            )
-            db.add(
-                CohortProgress(
-                    cohort_id=cohort.id,
-                    lesson_id=lesson.id,
-                    global_position=idx + 1,
-                    created_at=anchor + timedelta(minutes=5),
-                    updated_at=anchor + timedelta(minutes=5),
+                db.add(
+                    CohortProgress(
+                        cohort_id=cohort.id,
+                        lesson_id=lesson.id,
+                        module_professor_id=module_class.id,
+                        global_position=idx + 1,
+                        created_at=anchor + timedelta(minutes=5),
+                        updated_at=anchor + timedelta(minutes=5),
+                    )
                 )
-            )
 
         users: list[User] = []
         for meta in students_meta:
@@ -253,6 +283,14 @@ async def seed_demo() -> None:
             db.add(
                 Enrollment(
                     cohort_id=cohort.id,
+                    student_id=users_by_email[meta.email].id,
+                )
+            )
+
+        for position, meta in enumerate(students_meta):
+            db.add(
+                CohortModuleStudent(
+                    module_professor_id=pratica_classes[position % 2].id,
                     student_id=users_by_email[meta.email].id,
                 )
             )

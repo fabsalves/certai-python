@@ -58,6 +58,7 @@ async def _test_dispatch_voice_invite_sends_template_with_jwt_button() -> None:
     lesson_id = uuid.uuid4()
     student_id = uuid.uuid4()
     conversation_id = uuid.uuid4()
+    module_professor_id = uuid.uuid4()
     fixed_token = "fixed-handoff-jwt-for-regression"
 
     cohort = MagicMock()
@@ -84,10 +85,16 @@ async def _test_dispatch_voice_invite_sends_template_with_jwt_button() -> None:
         scope=ConversationScope.STUDENT_LESSON,
     )
 
+    module_class = MagicMock()
+    module_class.id = module_professor_id
+    module_class.cohort_id = cohort_id
+    module_class.module_id = lesson.module_id
+
     db = MagicMock()
     db.get = AsyncMock(side_effect=lambda _model, _id: {
         cohort_id: cohort,
         lesson_id: lesson,
+        module_professor_id: module_class,
     }.get(_id))
     db.scalar = AsyncMock(return_value=None)
     db.execute = AsyncMock(
@@ -126,8 +133,14 @@ async def _test_dispatch_voice_invite_sends_template_with_jwt_button() -> None:
             "app.services.whatsapp.dispatch_service.record_message",
             new=AsyncMock(),
         ) as record_message_mock,
+        patch(
+            "app.services.whatsapp.dispatch_service.ModuleClassService.student_ids_of",
+            new=AsyncMock(return_value=[student_id]),
+        ),
     ):
-        result = await dispatch_service.dispatch_lesson_invites(db, cohort_id, lesson_id)
+        result = await dispatch_service.dispatch_lesson_invites(
+            db, cohort_id, lesson_id, module_professor_id
+        )
 
     assert result["status"] == "planned"
     assert result["sent"] == 1
@@ -155,22 +168,41 @@ async def _test_dispatch_voice_invite_sends_template_with_jwt_button() -> None:
 async def _test_dispatch_skips_when_already_dispatched() -> None:
     cohort_id = uuid.uuid4()
     lesson_id = uuid.uuid4()
+    module_professor_id = uuid.uuid4()
 
     cohort = MagicMock()
     cohort.id = cohort_id
     cohort.track_id = uuid.uuid4()
     lesson = Lesson(id=lesson_id, title="Aula", module_id=uuid.uuid4())
+    module_class = MagicMock()
+    module_class.id = module_professor_id
+    module_class.cohort_id = cohort_id
+    module_class.module_id = lesson.module_id
 
     db = MagicMock()
-    db.get = AsyncMock(side_effect=lambda _model, _id: {cohort_id: cohort, lesson_id: lesson}.get(_id))
+    db.get = AsyncMock(
+        side_effect=lambda _model, _id: {
+            cohort_id: cohort,
+            lesson_id: lesson,
+            module_professor_id: module_class,
+        }.get(_id)
+    )
     db.scalar = AsyncMock(return_value=None)
     db.execute = AsyncMock(
         return_value=MagicMock(scalars=MagicMock(return_value=MagicMock(all=lambda: [])))
     )
     db.commit = AsyncMock()
 
-    with patch.object(settings, "WHATSAPP_INVITE_USE_VOICE_TEMPLATE", True):
-        result = await dispatch_service.dispatch_lesson_invites(db, cohort_id, lesson_id)
+    with (
+        patch.object(settings, "WHATSAPP_INVITE_USE_VOICE_TEMPLATE", True),
+        patch(
+            "app.services.whatsapp.dispatch_service.ModuleClassService.student_ids_of",
+            new=AsyncMock(return_value=[uuid.uuid4()]),
+        ),
+    ):
+        result = await dispatch_service.dispatch_lesson_invites(
+            db, cohort_id, lesson_id, module_professor_id
+        )
 
     assert result["sent"] == 0
     assert result["skipped"] == 0

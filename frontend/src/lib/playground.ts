@@ -85,12 +85,16 @@ export interface PlaygroundContext {
   lesson_notes: PlaygroundLessonNoteContext[];
 }
 
+/** The bundle mirrors one student: with two professors in a module, each class
+ *  sees a different context. */
 export async function fetchPlaygroundContext(
   cohortId: string,
   lessonId: string,
+  studentId: string,
 ): Promise<PlaygroundContext> {
   const { data } = await api.get<PlaygroundContext>(
     `/admin/playground/cohorts/${cohortId}/lessons/${lessonId}/context`,
+    { params: { student_id: studentId } },
   );
   return data;
 }

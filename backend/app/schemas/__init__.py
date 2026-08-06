@@ -175,11 +175,16 @@ class TrackOut(TrackCreate):
 
 # --- Cohort ---
 class ModuleProfessorIn(BaseModel):
+    """One teaching class. student_ids is only meaningful when the module has
+    more than one professor; with a single one the whole cohort is the class."""
+
     module_id: uuid.UUID
     professor_id: uuid.UUID
+    student_ids: list[uuid.UUID] = []
 
 
 class ModuleProfessorOut(ModuleProfessorIn):
+    id: uuid.UUID
     module_title: str
     professor_name: str
 
@@ -235,9 +240,41 @@ class EnrollmentOut(BaseModel):
     enrolled_at: datetime
 
 
+class UnassignedStudentOut(BaseModel):
+    student_id: uuid.UUID
+    student_name: str
+    student_email: str
+
+
+class ClaimClassStudentIn(BaseModel):
+    student_id: uuid.UUID
+
+
+class LessonClassStatusOut(BaseModel):
+    """How one class stands on one lesson."""
+
+    module_professor_id: uuid.UUID
+    professor_id: uuid.UUID
+    professor_name: str
+    closed: bool
+    closed_at: datetime | None = None
+
+
+class LessonClassesOut(BaseModel):
+    lesson_id: uuid.UUID
+    classes: list[LessonClassStatusOut] = []
+    # Some class closed it, another has not -- and a later lesson already moved on.
+    delayed: bool = False
+
+
 class CohortProgressOut(BaseModel):
+    # Lessons every class of their module has closed.
     completed_lesson_ids: list[uuid.UUID]
+    # Closed by at least one class, still pending for another.
+    partial_lesson_ids: list[uuid.UUID] = []
+    # Next lesson for the requester (their own class, when a professor).
     current_lesson_id: uuid.UUID | None = None
+    lesson_classes: list[LessonClassesOut] = []
 
 
 class StudentLessonProgressOut(BaseModel):
@@ -258,6 +295,9 @@ class StudentLessonProgressOut(BaseModel):
 
 class CohortLessonNoteOut(BaseModel):
     lesson_id: uuid.UUID
+    module_professor_id: uuid.UUID
+    professor_id: uuid.UUID
+    professor_name: str
     attachment_filename: str | None = None
     has_attachment: bool = False
     has_audio: bool = False

@@ -21,6 +21,7 @@ from app.models.student_progress import StudentLessonProgressStatus
 from app.models.track import Module, Track
 from app.models.user import User
 from app.services.student_progress_service import StudentProgressService
+from scripts.class_helpers import lesson_student_ids
 
 
 async def _seed_context(db):
@@ -64,7 +65,10 @@ async def test_conclude_lesson_from_ativa() -> None:
         await db.flush()
 
         await StudentProgressService.on_professor_complete_lesson(
-            db, cohort.id, lessons[0].id
+            db,
+            cohort.id,
+            lessons[0].id,
+            await lesson_student_ids(db, cohort.id, lessons[0].id),
         )
         await StudentProgressService.activate_on_first_interaction(
             db, cohort.id, student.id, lessons[0].id

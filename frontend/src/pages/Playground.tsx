@@ -8,7 +8,12 @@ import { PlaygroundSessionHead } from "../components/playground/PlaygroundSessio
 import { Select } from "../components/ui/Select";
 import { api } from "../lib/api";
 import type { Cohort, CohortProgress, Enrollment } from "../lib/cohorts";
-import { professorForModule } from "../lib/cohorts";
+import {
+  lessonClosedByProfessor,
+  lessonUnlockedForStudent,
+  nextLessonIdForProfessor,
+  pathProgressForStudent,
+} from "../lib/cohorts";
 import {
   playgroundCompletePath,
   playgroundTranscribePath,
@@ -168,17 +173,6 @@ export function Playground() {
     return findLessonModule(track, selectedLessonId);
   }, [track, selectedLessonId]);
 
-  const lessonProfessor = useMemo(() => {
-    if (!cohort || !selectedLesson) return undefined;
-    return professorForModule(cohort, selectedLesson.module.id);
-  }, [cohort, selectedLesson]);
-
-  useEffect(() => {
-    if (mode === "professor" && lessonProfessor) {
-      setProfessorId(lessonProfessor.professor_id);
-    }
-  }, [mode, lessonProfessor, selectedLessonId]);
-
   useEffect(() => {
     if (!settingsOpen) return;
     function onKeyDown(ev: KeyboardEvent) {
@@ -188,21 +182,57 @@ export function Playground() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [settingsOpen]);
 
-  const completedSet = useMemo(
-    () => new Set(progress?.completed_lesson_ids ?? []),
-    [progress],
+  const orderedLessons = useMemo(() => {
+    if (!track) return [];
+    return sortedModules(track).flatMap((mod) =>
+      sortedLessons(mod)
+        .filter((lesson) => mod.is_active && lesson.is_active)
+        .map((lesson) => ({ id: lesson.id, moduleId: mod.id })),
+    );
+  }, [track]);
+
+  const taughtModuleIds = useMemo(() => {
+    if (!cohort || !professorId) return new Set<string>();
+    return new Set(
+      cohort.module_professors
+        .filter((mp) => mp.professor_id === professorId)
+        .map((mp) => mp.module_id),
+    );
+  }, [cohort, professorId]);
+
+  const professorNextLessonId = useMemo(
+    () => nextLessonIdForProfessor(progress, orderedLessons, professorId, taughtModuleIds),
+    [progress, orderedLessons, professorId, taughtModuleIds],
   );
+
+  const professorClosedSelected =
+    !!selectedLessonId &&
+    !!professorId &&
+    lessonClosedByProfessor(progress, selectedLessonId, professorId);
 
   const canStudentChat =
     !!selectedLessonId &&
-    (selectedLessonId === progress?.current_lesson_id || completedSet.has(selectedLessonId));
+    !!selectedLesson &&
+    lessonUnlockedForStudent(
+      progress,
+      cohort,
+      selectedLessonId,
+      selectedLesson.module.id,
+      studentId,
+    );
+
+  const professorTeachesSelected =
+    !!selectedLesson && taughtModuleIds.has(selectedLesson.module.id);
 
   const canProfessorComplete =
     mode === "professor" &&
     !!selectedLessonId &&
-    selectedLessonId === progress?.current_lesson_id &&
-    !!lessonProfessor &&
-    professorId === lessonProfessor.professor_id;
+    selectedLessonId === professorNextLessonId;
+
+  const studentPathView = useMemo(() => {
+    if (mode !== "student" || !progress || !cohort || !studentId) return undefined;
+    return pathProgressForStudent(progress, cohort, studentId, orderedLessons);
+  }, [mode, progress, cohort, studentId, orderedLessons]);
 
   const selectedStudent = enrollments.find((e) => e.student_id === studentId);
   const selectedProfessor = professors.find((p) => p.professor_id === professorId);
@@ -314,7 +344,12 @@ export function Playground() {
               />
               <div className="playground-professor__scroll">
                 <div className="playground-professor__inner">
-                  {selectedLessonId === progress.current_lesson_id ? (
+                  {!professorTeachesSelected ? (
+                    <p className="muted" style={{ margin: 0 }}>
+                      Este professor não leciona este módulo. Troque o professor na sessão ou
+                      selecione uma aula dos módulos dele.
+                    </p>
+                  ) : selectedLessonId === professorNextLessonId ? (
                     <LessonReportCapture
                       key={`${professorId}-${selectedLessonId}`}
                       cohortId={cohortId}
@@ -325,13 +360,15 @@ export function Playground() {
                       completePath={playgroundCompletePath(cohortId, professorId)}
                       onCompleted={() => refreshProgress(cohortId)}
                     />
-                  ) : completedSet.has(selectedLessonId!) ? (
+                  ) : professorClosedSelected ? (
                     <p className="muted" style={{ margin: 0 }}>
-                      Aula já encerrada. Selecione a aula atual da turma para testar o encerramento.
+                      Sua turma já encerrou esta aula. Selecione a próxima aula da sua turma para
+                      testar o encerramento.
                     </p>
                   ) : (
                     <p className="muted" style={{ margin: 0 }}>
-                      Esta aula ainda não foi liberada. Encerre as anteriores ou avance a turma pelo fluxo normal.
+                      Esta aula ainda não está liberada para a sua turma. Encerre as anteriores
+                      primeiro.
                     </p>
                   )}
                 </div>
@@ -386,12 +423,16 @@ export function Playground() {
               progress={progress}
               selectedLessonId={selectedLessonId}
               moduleProfessors={cohort.module_professors}
+              viewerProfessorId={mode === "professor" ? professorId : undefined}
+              pathView={studentPathView}
+              currentLessonId={mode === "professor" ? professorNextLessonId : undefined}
               onSelectLesson={(lessonId) => setSelectedLessonId(lessonId)}
             />
           ) : railTab === "context" ? (
             <PlaygroundContextPanel
               cohortId={cohortId}
               lessonId={selectedLessonId}
+              studentId={studentId}
               refreshKey={contextRefreshKey}
             />
           ) : (

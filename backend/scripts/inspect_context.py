@@ -311,7 +311,9 @@ async def run(
             db, cohort_id, lesson_id
         )
 
-        bundle = await ContextBuilder(db).build_lesson(cohort_id, lesson_id)
+        bundle = await ContextBuilder(db).build_lesson(
+            cohort_id, lesson_id, student_id=student_id
+        )
         system_blocks = bundle.to_system_blocks()
         blocks = _serialize_blocks(bundle)
         history = await lesson_conversation_history(

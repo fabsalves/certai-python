@@ -1,7 +1,13 @@
 from app.models.base import Base
 from app.models.user import Role, User
 from app.models.track import Lesson, Module, ModuleLevel, Track
-from app.models.cohort import Cohort, CohortModuleProfessor, CohortProgress, Enrollment
+from app.models.cohort import (
+    Cohort,
+    CohortModuleProfessor,
+    CohortModuleStudent,
+    CohortProgress,
+    Enrollment,
+)
 from app.models.conversation import (
     Author,
     Conversation,
@@ -29,6 +35,7 @@ __all__ = [
     "ModuleLevel",
     "Cohort",
     "CohortModuleProfessor",
+    "CohortModuleStudent",
     "Enrollment",
     "CohortProgress",
     "Conversation",

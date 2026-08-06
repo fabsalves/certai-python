@@ -68,22 +68,33 @@ async def module_lessons_all_concluded(
     student_id: uuid.UUID,
     module_id: uuid.UUID,
 ) -> bool:
+    """True when every active lesson of the module is terminal for the student.
+
+    Terminal = CONCLUIDA (finished with Lira) or ENCERRADA_POR_AVANCO (class
+    moved on). Either path yields a lesson assessment, so the module chain
+    must not stall on advance-only lessons.
+    """
     lessons = await active_lessons_for_module(db, module_id)
     if not lessons:
         return False
 
     lesson_ids = [lesson.id for lesson in lessons]
-    concluded = (
+    settled = (
         await db.scalars(
             select(StudentLessonProgress.lesson_id).where(
                 StudentLessonProgress.cohort_id == cohort_id,
                 StudentLessonProgress.student_id == student_id,
                 StudentLessonProgress.lesson_id.in_(lesson_ids),
-                StudentLessonProgress.status == StudentLessonProgressStatus.CONCLUIDA,
+                StudentLessonProgress.status.in_(
+                    (
+                        StudentLessonProgressStatus.CONCLUIDA,
+                        StudentLessonProgressStatus.ENCERRADA_POR_AVANCO,
+                    )
+                ),
             )
         )
     ).all()
-    return set(concluded) == set(lesson_ids)
+    return set(settled) == set(lesson_ids)
 
 
 async def track_modules_all_assessed(

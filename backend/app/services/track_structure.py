@@ -3,12 +3,36 @@ import uuid
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from app.models.track import Lesson, Module
+from app.models.track import Lesson, Module, Track
 
 
 def normalize_title(title: str) -> str:
     return title.strip().casefold()
+
+
+async def ordered_active_lessons(
+    db: AsyncSession, track_id: uuid.UUID
+) -> list[Lesson]:
+    """Active lessons of a track in teaching order. The one sequence everything
+    else (progression, completion gate, advancement) reads."""
+    track = await db.scalar(
+        select(Track)
+        .where(Track.id == track_id)
+        .options(selectinload(Track.modules).selectinload(Module.lessons))
+    )
+    if track is None:
+        return []
+
+    lessons: list[Lesson] = []
+    for module in sorted(track.modules, key=lambda item: item.position):
+        if not module.is_active:
+            continue
+        for lesson in sorted(module.lessons, key=lambda item: item.position):
+            if lesson.is_active:
+                lessons.append(lesson)
+    return lessons
 
 
 async def ensure_unique_module_title(

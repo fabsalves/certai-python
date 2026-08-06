@@ -1,4 +1,4 @@
-"""Dispatch lesson invite templates to enrolled students via WhatsApp."""
+"""Dispatch lesson invite templates via WhatsApp to the class that studied it."""
 
 from __future__ import annotations
 
@@ -9,11 +9,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
-from app.models.cohort import Cohort, Enrollment
+from app.models.cohort import Cohort, CohortModuleProfessor
 from app.models.conversation import Author, Message, MessageSource
 from app.models.track import Lesson, Module, Track
 from app.models.user import Role, User
 from app.services.cinndi.outbound import CinndiOutboundError, send_template_message
+from app.services.cohort import ModuleClassService
 from app.services.conversation_service import get_or_create_conversation, record_message
 from app.services.realtime.voice_link_service import VoiceLinkService
 
@@ -81,7 +82,7 @@ async def _already_dispatched(db, conversation_id: uuid.UUID) -> bool:
 
 
 async def dispatch_lesson_invites(
-    db, cohort_id: uuid.UUID, lesson_id: uuid.UUID
+    db, cohort_id: uuid.UUID, lesson_id: uuid.UUID, module_professor_id: uuid.UUID
 ) -> dict:
     cohort = await db.get(Cohort, cohort_id)
     if cohort is None:
@@ -91,6 +92,10 @@ async def dispatch_lesson_invites(
     if lesson is None:
         return {"status": "lesson_not_found"}
 
+    module_class = await db.get(CohortModuleProfessor, module_professor_id)
+    if module_class is None:
+        return {"status": "module_class_not_found"}
+
     track = await db.scalar(
         select(Track)
         .where(Track.id == cohort.track_id)
@@ -98,15 +103,24 @@ async def dispatch_lesson_invites(
     )
     track_title = track.title if track else ""
 
-    stmt = (
-        select(User)
-        .join(Enrollment, Enrollment.student_id == User.id)
-        .where(
-            Enrollment.cohort_id == cohort_id,
-            User.role == Role.STUDENT,
-            User.is_active.is_(True),
-            User.whatsapp.is_not(None),
-        )
+    student_ids = await ModuleClassService.student_ids_of(db, module_class)
+    if not student_ids:
+        return {
+            "status": "planned",
+            "cohort_id": str(cohort_id),
+            "lesson_id": str(lesson_id),
+            "module_professor_id": str(module_professor_id),
+            "sent": 0,
+            "skipped": 0,
+            "errors": 0,
+            "voice_template": settings.WHATSAPP_INVITE_USE_VOICE_TEMPLATE,
+        }
+
+    stmt = select(User).where(
+        User.id.in_(student_ids),
+        User.role == Role.STUDENT,
+        User.is_active.is_(True),
+        User.whatsapp.is_not(None),
     )
     students = (await db.execute(stmt)).scalars().all()
 
@@ -191,6 +205,7 @@ async def dispatch_lesson_invites(
         "status": "planned",
         "cohort_id": str(cohort_id),
         "lesson_id": str(lesson_id),
+        "module_professor_id": str(module_professor_id),
         "sent": sent,
         "skipped": skipped,
         "errors": errors,

@@ -165,7 +165,9 @@ async def generate_lesson_reply(
     entry_source: MessageSource = MessageSource.IN_APP_TEXT,
 ) -> str:
     history = await conversation_history(conversation.id, db)
-    bundle = await ContextBuilder(db).build_lesson(cohort_id, lesson_id)
+    bundle = await ContextBuilder(db).build_lesson(
+        cohort_id, lesson_id, student_id=student_id
+    )
     tool_ctx = ToolContext(
         db,
         cohort_id,

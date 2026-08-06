@@ -5,11 +5,15 @@ to the AI. The ContextBuilder hands the AI:
 
   - the track MAP (sequence, titles, where each thing lives) -> always, so the AI
     can orient ("you'll see this in Lesson 6");
-  - the current lesson CONTENT -> full catalog + full cohort note;
+  - the current lesson CONTENT -> full catalog + full class note;
   - prior unlocked lessons -> note summary/unclear_points only (no catalog, no KB).
 
 A future lesson has no content in the bundle. The AI cannot teach it because it
 does not exist in the context -- with no textual rule.
+
+The same principle scopes the bundle to the student's own class: when a module
+is taught by two professors, only what that student's professor closed and
+reported reaches them.
 """
 
 import uuid
@@ -22,6 +26,7 @@ from sqlalchemy.orm import selectinload
 from app.models.assessment import CohortLessonNote
 from app.models.track import Lesson, Module, Track
 from app.models.cohort import Cohort, CohortProgress
+from app.services.cohort import ModuleClassService
 from app.services.ingestion import INGESTION_DONE
 
 
@@ -70,16 +75,36 @@ class ContextBuilder:
         )
         return (await self.db.execute(stmt)).scalar_one()
 
-    async def _unlocked_lessons(self, cohort_id: uuid.UUID) -> set[uuid.UUID]:
-        stmt = select(CohortProgress.lesson_id).where(CohortProgress.cohort_id == cohort_id)
+    async def _student_class_ids(
+        self, cohort_id: uuid.UUID, student_id: uuid.UUID
+    ) -> set[uuid.UUID]:
+        """The classes this student belongs to, one per module. Everything the
+        student may see is scoped to them."""
+        resolved = await ModuleClassService.classes_by_module_for_student(
+            self.db, cohort_id, student_id
+        )
+        return set(resolved.values())
+
+    async def _unlocked_lessons(
+        self, cohort_id: uuid.UUID, class_ids: set[uuid.UUID]
+    ) -> set[uuid.UUID]:
+        """Only what the student's own professor already closed. Another class
+        moving ahead never unlocks content here."""
+        if not class_ids:
+            return set()
+        stmt = select(CohortProgress.lesson_id).where(
+            CohortProgress.cohort_id == cohort_id,
+            CohortProgress.module_professor_id.in_(class_ids),
+        )
         return set((await self.db.execute(stmt)).scalars().all())
 
     async def build_lesson(
-        self, cohort_id: uuid.UUID, lesson_id: uuid.UUID
+        self, cohort_id: uuid.UUID, lesson_id: uuid.UUID, *, student_id: uuid.UUID
     ) -> ContextBundle:
         """Context scoped to a specific lesson (student conversation)."""
         track = await self._track_of_cohort(cohort_id)
-        unlocked = await self._unlocked_lessons(cohort_id)
+        class_ids = await self._student_class_ids(cohort_id, student_id)
+        unlocked = await self._unlocked_lessons(cohort_id, class_ids)
 
         track_map: list[dict] = []
         content: list[dict] = []
@@ -110,7 +135,7 @@ class ContextBuilder:
                     }
 
         notes = await self._notes(
-            cohort_id, list(unlocked), current_lesson_id=lesson_id
+            cohort_id, list(unlocked), class_ids, current_lesson_id=lesson_id
         )
         return ContextBundle(
             scope="lesson",
@@ -125,16 +150,27 @@ class ContextBuilder:
             ),
         )
 
-    async def build_module(self, cohort_id: uuid.UUID, module_anchor_id: uuid.UUID) -> ContextBundle:
+    async def build_module(
+        self,
+        cohort_id: uuid.UUID,
+        module_anchor_id: uuid.UUID,
+        *,
+        student_id: uuid.UUID,
+    ) -> ContextBundle:
         """Scope widened to the module. Used when the AI escalates scope."""
-        bundle = await self.build_lesson(cohort_id, module_anchor_id)  # reuses the map
+        bundle = await self.build_lesson(
+            cohort_id, module_anchor_id, student_id=student_id
+        )  # reuses the map
         bundle.scope = "module"
         return bundle
 
-    async def build_track(self, cohort_id: uuid.UUID) -> ContextBundle:
+    async def build_track(
+        self, cohort_id: uuid.UUID, *, student_id: uuid.UUID
+    ) -> ContextBundle:
         """Widest scope: the whole track (limited to unlocked content)."""
         track = await self._track_of_cohort(cohort_id)
-        unlocked = await self._unlocked_lessons(cohort_id)
+        class_ids = await self._student_class_ids(cohort_id, student_id)
+        unlocked = await self._unlocked_lessons(cohort_id, class_ids)
         track_map = [
             {"module": m.title, "lesson": l.title, "unlocked": l.id in unlocked}
             for m in track.modules
@@ -164,10 +200,13 @@ class ContextBuilder:
         self,
         cohort_id: uuid.UUID,
         lesson_ids: list[uuid.UUID],
+        class_ids: set[uuid.UUID],
         *,
         current_lesson_id: uuid.UUID | None = None,
     ) -> list[dict]:
-        if not lesson_ids:
+        """Reports written by this student's own professors. When a module has
+        two professors, the other one's report never reaches this student."""
+        if not lesson_ids or not class_ids:
             return []
         stmt = (
             select(CohortLessonNote, Lesson.title)
@@ -175,6 +214,7 @@ class ContextBuilder:
             .where(
                 CohortLessonNote.cohort_id == cohort_id,
                 CohortLessonNote.lesson_id.in_(lesson_ids),
+                CohortLessonNote.module_professor_id.in_(class_ids),
                 CohortLessonNote.ingestion_status == INGESTION_DONE,
             )
         )

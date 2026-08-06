@@ -32,14 +32,40 @@ sys.path.insert(0, ".")
 
 
 def test_trigger_wiring() -> None:
-    """Assert conclude → lesson task; lesson task → module; module task → track."""
+    """Assert conclude/advance → lesson task; lesson task → module; module → track."""
     from app.ai import tools
+    from app.services.assessment import completion as completion_mod
+    from app.services.assessment import lesson_assessment_service, read_service
+    from app.services.student_progress_service import StudentProgressService
     from app.workers import tasks
 
     conclude_src = inspect.getsource(tools._conclude_lesson)
     assert "enqueue_after_commit" in conclude_src
     assert "assess_student_lesson" in conclude_src
     print("OK _conclude_lesson enfileira assess_student_lesson via enqueue_after_commit")
+
+    advance_src = inspect.getsource(StudentProgressService.close_by_advance)
+    assert "enqueue_after_commit" in advance_src
+    assert "assess_student_lesson" in advance_src
+    print("OK close_by_advance enfileira assess_student_lesson via enqueue_after_commit")
+
+    other_src = inspect.getsource(StudentProgressService._close_other_active_lessons)
+    assert "close_by_advance" in other_src
+    print("OK _close_other_active_lessons reusa close_by_advance")
+
+    gate_src = inspect.getsource(completion_mod.module_lessons_all_concluded)
+    assert "ENCERRADA_POR_AVANCO" in gate_src
+    assert "CONCLUIDA" in gate_src
+    print("OK module_lessons_all_concluded aceita CONCLUIDA | ENCERRADA_POR_AVANCO")
+
+    lesson_svc_src = inspect.getsource(lesson_assessment_service)
+    assert "encerrada_por_avanco" in lesson_svc_src
+    assert "Como esta aula foi encerrada" in lesson_svc_src
+    print("OK prompt de aula inclui status de encerramento / evidência")
+
+    read_src = inspect.getsource(read_service.StudentAssessmentReadService.latest_lesson_assessments)
+    assert "ENCERRADA_POR_AVANCO" in read_src
+    print("OK pending da aula inclui ENCERRADA_POR_AVANCO")
 
     lesson_src = inspect.getsource(tasks._assess_student_lesson)
     assert "module_lessons_all_concluded" in lesson_src
@@ -64,6 +90,42 @@ def test_trigger_wiring() -> None:
     assert "conversation_service" not in module_src
     assert "conversation_service" not in track_src
     print("OK módulo e trilha NÃO leem conversas (sem conversation_service)")
+
+
+async def test_settled_gating_mixed_statuses() -> None:
+    """Module gate treats CONCLUIDA + ENCERRADA_POR_AVANCO as a full set."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.models.student_progress import StudentLessonProgressStatus
+    from app.services.assessment.completion import module_lessons_all_concluded
+
+    lesson_a = MagicMock(id=uuid.uuid4())
+    lesson_b = MagicMock(id=uuid.uuid4())
+    captured: dict = {}
+
+    async def fake_scalars(stmt):
+        captured["stmt"] = stmt
+        return MagicMock(all=MagicMock(return_value=[lesson_a.id, lesson_b.id]))
+
+    db = AsyncMock()
+    db.scalars = fake_scalars
+
+    with patch(
+        "app.services.assessment.completion.active_lessons_for_module",
+        new=AsyncMock(return_value=[lesson_a, lesson_b]),
+    ):
+        ok = await module_lessons_all_concluded(
+            db,
+            cohort_id=uuid.uuid4(),
+            student_id=uuid.uuid4(),
+            module_id=uuid.uuid4(),
+        )
+    assert ok is True
+
+    sql = str(captured["stmt"].compile(compile_kwargs={"literal_binds": True}))
+    assert StudentLessonProgressStatus.CONCLUIDA.value in sql
+    assert StudentLessonProgressStatus.ENCERRADA_POR_AVANCO.value in sql
+    print("OK gating misto: query inclui CONCLUIDA e ENCERRADA_POR_AVANCO")
 
 
 async def _print_persisted(row) -> None:
@@ -148,7 +210,8 @@ async def run_direct_module(
         )
         if not complete:
             msg = (
-                "Nem todas as aulas ativas do módulo estão CONCLUIDA "
+                "Nem todas as aulas ativas do módulo estão terminais "
+                "(CONCLUIDA ou ENCERRADA_POR_AVANCO) "
                 f"(cohort={cohort_id} student={student_id} module={module_id})."
             )
             if force:
@@ -266,6 +329,7 @@ def main() -> None:
 
     if args.check_trigger:
         test_trigger_wiring()
+        asyncio.run(test_settled_gating_mixed_statuses())
         print("\nChecagem do gatilho passou.")
         return
 

@@ -1,16 +1,19 @@
 """Lesson completion -- the trigger that ties the cycle together.
 
-When the professor signals that the cohort has studied a lesson (fast path,
+When a professor signals that their class has studied a lesson (fast path,
 no LLM inside the HTTP request):
   1. optionally persist audio + document attachment;
   2. record the raw transcript in a note with ingestion_status=pending;
-  3. write progress -> this UNLOCKS the lesson context for students;
+  3. write progress -> this UNLOCKS the lesson context for that class;
   4. enqueue the AI ingestion (extraction + consolidation) in Celery.
 
 The WhatsApp dispatch is chained at the END of the ingestion task: students
 only hear from the AI after the material is fully ingested.
 
-Cohort advancement and context unlocking are the same event.
+Everything here is scoped to the professor's own class: a module taught by two
+professors produces two reports, two unlocks and two dispatches.
+
+Class advancement and context unlocking are the same event.
 """
 
 import uuid
@@ -24,7 +27,7 @@ from app.core.config import settings
 from app.core.db_events import enqueue_after_commit
 from app.models.assessment import CohortLessonNote
 from app.models.track import Lesson
-from app.models.cohort import CohortProgress
+from app.models.cohort import CohortModuleProfessor, CohortProgress
 from app.services.storage import get_storage
 
 CONSOLIDATION_SYSTEM_PROMPT = (
@@ -98,6 +101,7 @@ async def complete_lesson(
     lesson_id: uuid.UUID,
     transcript: str,
     *,
+    module_professor_id: uuid.UUID,
     attachment: StoredFile | None = None,
     audio: StoredFile | None = None,
     audio_source: str | None = None,
@@ -135,6 +139,7 @@ async def complete_lesson(
     note = CohortLessonNote(
         cohort_id=cohort_id,
         lesson_id=lesson_id,
+        module_professor_id=module_professor_id,
         summary="",
         unclear_points="",
         professor_transcript=transcript,
@@ -149,31 +154,45 @@ async def complete_lesson(
     )
     db.add(note)
 
-    # Unlock the context: create progress if it does not exist yet.
+    # Unlock the context for this class: create progress if it does not exist yet.
     exists = await db.scalar(
         select(CohortProgress).where(
-            CohortProgress.cohort_id == cohort_id, CohortProgress.lesson_id == lesson_id
+            CohortProgress.cohort_id == cohort_id,
+            CohortProgress.lesson_id == lesson_id,
+            CohortProgress.module_professor_id == module_professor_id,
         )
     )
     if exists is None:
         next_position = (
             await db.scalar(
                 select(func.coalesce(func.max(CohortProgress.global_position), 0)).where(
-                    CohortProgress.cohort_id == cohort_id
+                    CohortProgress.cohort_id == cohort_id,
+                    CohortProgress.module_professor_id == module_professor_id,
                 )
             )
         ) + 1
         db.add(
             CohortProgress(
-                cohort_id=cohort_id, lesson_id=lesson_id, global_position=next_position
+                cohort_id=cohort_id,
+                lesson_id=lesson_id,
+                module_professor_id=module_professor_id,
+                global_position=next_position,
             )
         )
 
     await db.flush()
 
+    from app.services.cohort import ModuleClassService
     from app.services.student_progress_service import StudentProgressService
 
-    await StudentProgressService.on_professor_complete_lesson(db, cohort_id, lesson_id)
+    module_class = await db.get(CohortModuleProfessor, module_professor_id)
+    if module_class is None:
+        raise ValueError("Turma do professor não encontrada")
+
+    student_ids = await ModuleClassService.student_ids_of(db, module_class)
+    await StudentProgressService.on_professor_complete_lesson(
+        db, cohort_id, lesson_id, student_ids
+    )
 
     # AI ingestion runs after commit; the WhatsApp dispatch is chained at the
     # end of the ingestion task (never before the ingestion is done).

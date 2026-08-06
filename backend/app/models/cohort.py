@@ -29,11 +29,19 @@ class Cohort(Base):
 
 
 class CohortModuleProfessor(Base):
-    """Professor assigned to a module within a cohort's track."""
+    """A teaching class: professor + module + cohort.
+
+    A module may have several of these. When it has more than one, the enrolled
+    students are split between them (see CohortModuleStudent) and each professor
+    closes lessons for their own group only. With a single professor the whole
+    cohort is their group and no roster exists.
+    """
 
     __tablename__ = "cohort_module_professors"
     __table_args__ = (
-        UniqueConstraint("cohort_id", "module_id", name="uq_cohort_module_professor"),
+        UniqueConstraint(
+            "cohort_id", "module_id", "professor_id", name="uq_cohort_module_professor"
+        ),
     )
 
     cohort_id: Mapped[uuid.UUID] = mapped_column(
@@ -47,6 +55,38 @@ class CohortModuleProfessor(Base):
     )
 
     cohort: Mapped[Cohort] = relationship(back_populates="module_professors")
+    students: Mapped[list["CohortModuleStudent"]] = relationship(
+        back_populates="module_professor", cascade="all, delete-orphan"
+    )
+
+
+class CohortModuleStudent(Base):
+    """Which students study a module with which professor.
+
+    Only written when the module has more than one professor. A student belongs
+    to a single class per module -- enforced by the service layer, which always
+    replaces the whole module roster in one go.
+    """
+
+    __tablename__ = "cohort_module_students"
+    __table_args__ = (
+        UniqueConstraint(
+            "module_professor_id", "student_id", name="uq_cohort_module_student"
+        ),
+    )
+
+    module_professor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cohort_module_professors.id", ondelete="CASCADE"),
+        index=True,
+    )
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+
+    module_professor: Mapped[CohortModuleProfessor] = relationship(
+        back_populates="students"
+    )
 
 
 class Enrollment(Base):
@@ -66,14 +106,19 @@ class Enrollment(Base):
 
 
 class CohortProgress(Base):
-    """Lessons the cohort has studied. Written when the professor signals completion.
+    """Lessons a class has studied. Written when its professor signals completion.
 
-    The existence of a row here is what unlocks the lesson context for students.
-    A future lesson has no row -> not in the AI context. Structural restriction.
+    The existence of a row here is what unlocks the lesson context for that
+    class's students. A future lesson has no row -> not in the AI context.
+    Structural restriction.
     """
 
     __tablename__ = "cohort_progress"
-    __table_args__ = (UniqueConstraint("cohort_id", "lesson_id", name="uq_progress"),)
+    __table_args__ = (
+        UniqueConstraint(
+            "cohort_id", "lesson_id", "module_professor_id", name="uq_progress"
+        ),
+    )
 
     cohort_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("cohorts.id", ondelete="CASCADE"), index=True
@@ -81,6 +126,12 @@ class CohortProgress(Base):
     lesson_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("lessons.id", ondelete="CASCADE"), index=True
     )
-    global_position: Mapped[int] = mapped_column(Integer, default=0)  # linear position completed
+    module_professor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cohort_module_professors.id", ondelete="RESTRICT"),
+        index=True,
+        nullable=False,
+    )
+    global_position: Mapped[int] = mapped_column(Integer, default=0)  # position within the class
 
     cohort: Mapped[Cohort] = relationship(back_populates="progress")

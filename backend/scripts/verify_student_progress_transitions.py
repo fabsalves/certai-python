@@ -24,6 +24,7 @@ from app.models.user import User
 from app.services.conversation_service import record_message
 from app.services.lesson_completion_service import complete_lesson
 from app.services.student_progress_service import StudentProgressService
+from scripts.class_helpers import lesson_class_id, lesson_student_ids
 
 
 async def _seed_context(db):
@@ -103,7 +104,13 @@ async def test_complete_lesson_creates_disparada() -> None:
         cohort, lessons, student = await _seed_context(db)
         await _clear_progress(db, cohort.id)
 
-        await complete_lesson(db, cohort.id, lessons[0].id, "Relato teste")
+        await complete_lesson(
+            db,
+            cohort.id,
+            lessons[0].id,
+            "Relato teste",
+            module_professor_id=await lesson_class_id(db, cohort.id, lessons[0].id),
+        )
         await db.commit()
 
         row = await db.scalar(
@@ -124,7 +131,10 @@ async def test_first_interaction_activates() -> None:
         await _clear_progress(db, cohort.id)
 
         await StudentProgressService.on_professor_complete_lesson(
-            db, cohort.id, lessons[0].id
+            db,
+            cohort.id,
+            lessons[0].id,
+            await lesson_student_ids(db, cohort.id, lessons[0].id),
         )
 
         conversation = await _get_or_create_conversation(
@@ -157,7 +167,13 @@ async def test_second_complete_lesson_closes_previous() -> None:
         cohort, lessons, student = await _seed_context(db)
         await _clear_progress(db, cohort.id)
 
-        await complete_lesson(db, cohort.id, lessons[0].id, "Aula 1")
+        await complete_lesson(
+            db,
+            cohort.id,
+            lessons[0].id,
+            "Aula 1",
+            module_professor_id=await lesson_class_id(db, cohort.id, lessons[0].id),
+        )
         await db.commit()
 
         conversation = await _get_or_create_conversation(
@@ -168,7 +184,13 @@ async def test_second_complete_lesson_closes_previous() -> None:
         )
         await db.commit()
 
-        await complete_lesson(db, cohort.id, lessons[1].id, "Aula 2")
+        await complete_lesson(
+            db,
+            cohort.id,
+            lessons[1].id,
+            "Aula 2",
+            module_professor_id=await lesson_class_id(db, cohort.id, lessons[1].id),
+        )
         await db.commit()
 
         prev = await db.scalar(
@@ -199,10 +221,16 @@ async def test_one_ativa_per_student() -> None:
         await _clear_progress(db, cohort.id)
 
         await StudentProgressService.on_professor_complete_lesson(
-            db, cohort.id, lessons[0].id
+            db,
+            cohort.id,
+            lessons[0].id,
+            await lesson_student_ids(db, cohort.id, lessons[0].id),
         )
         await StudentProgressService.on_professor_complete_lesson(
-            db, cohort.id, lessons[1].id
+            db,
+            cohort.id,
+            lessons[1].id,
+            await lesson_student_ids(db, cohort.id, lessons[1].id),
         )
 
         row0 = await StudentProgressService._get_progress(
@@ -240,7 +268,10 @@ async def test_resolve_routable_lesson() -> None:
         await _clear_progress(db, cohort.id)
 
         await StudentProgressService.on_professor_complete_lesson(
-            db, cohort.id, lessons[0].id
+            db,
+            cohort.id,
+            lessons[0].id,
+            await lesson_student_ids(db, cohort.id, lessons[0].id),
         )
         await StudentProgressService.activate_on_first_interaction(
             db, cohort.id, student.id, lessons[0].id

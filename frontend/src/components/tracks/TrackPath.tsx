@@ -156,6 +156,14 @@ export function TrackPath({ nodes, selectedId }: Props) {
                   {node.state === "current" && (
                     <span className="track-path__label-badge">Aula atual</span>
                   )}
+                  {node.state === "partial" && (
+                    <span className="track-path__label-badge">Parcial</span>
+                  )}
+                  {node.delayed && (
+                    <span className="track-path__label-badge track-path__label-badge--late">
+                      Professor atrasado
+                    </span>
+                  )}
                   {node.state === "inactive" && !node.emptyModule && (
                     <span className="track-path__label-badge track-path__label-badge--muted">Desativada</span>
                   )}

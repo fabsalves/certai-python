@@ -26,10 +26,14 @@ def transcribe_audio(self, audio_path: str, conversation_id: str) -> dict:
 
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=15)
-def plan_dispatch(self, cohort_id: str, lesson_id: str) -> dict:
-    """After a lesson is completed, dispatch WhatsApp invites to enrolled students."""
+def plan_dispatch(self, cohort_id: str, lesson_id: str, module_professor_id: str) -> dict:
+    """After a lesson is completed, invite the students of that professor's class."""
     try:
-        return run_async(_plan_dispatch(UUID(cohort_id), UUID(lesson_id)))
+        return run_async(
+            _plan_dispatch(
+                UUID(cohort_id), UUID(lesson_id), UUID(module_professor_id)
+            )
+        )
     except Exception as exc:  # noqa: BLE001
         raise self.retry(exc=exc)
 
@@ -160,12 +164,16 @@ async def _transcribe_audio(audio_path: str, conversation_id: UUID) -> dict:
     return {"conversation_id": str(conversation_id), "chars": len(text)}
 
 
-async def _plan_dispatch(cohort_id: UUID, lesson_id: UUID) -> dict:
+async def _plan_dispatch(
+    cohort_id: UUID, lesson_id: UUID, module_professor_id: UUID
+) -> dict:
     from app.core.database import SessionLocal
     from app.services.whatsapp.dispatch_service import dispatch_lesson_invites
 
     async with SessionLocal() as db:
-        return await dispatch_lesson_invites(db, cohort_id, lesson_id)
+        return await dispatch_lesson_invites(
+            db, cohort_id, lesson_id, module_professor_id
+        )
 
 
 async def _ingest_lesson_completion(note_id: UUID) -> dict:
@@ -175,10 +183,11 @@ async def _ingest_lesson_completion(note_id: UUID) -> dict:
     async with SessionLocal() as db:
         note = await ingest_lesson_note(db, note_id)
         cohort_id, lesson_id = str(note.cohort_id), str(note.lesson_id)
+        module_professor_id = str(note.module_professor_id)
         await db.commit()
 
     # Dispatch only on the transition to done, after the ingestion is committed.
-    plan_dispatch.delay(cohort_id, lesson_id)
+    plan_dispatch.delay(cohort_id, lesson_id, module_professor_id)
     return {"note_id": str(note_id), "status": "done", "dispatch": "enqueued"}
 
 

@@ -87,7 +87,10 @@ class StudentAssessmentReadService:
         *,
         cohort_id: uuid.UUID,
         lesson_id: uuid.UUID,
+        student_ids: set[uuid.UUID] | None = None,
     ) -> LessonAssessmentsResult:
+        """student_ids restricts the reading to a professor's own class; None
+        means the whole cohort."""
         cohort = await db.get(Cohort, cohort_id)
         if cohort is None:
             raise ValueError("Turma não encontrada")
@@ -100,18 +103,21 @@ class StudentAssessmentReadService:
         if lesson is None:
             raise ValueError("Aula não encontrada nesta turma")
 
-        assessment_rows = (
-            await db.execute(
-                select(StudentAssessment, User.name)
-                .join(User, StudentAssessment.student_id == User.id)
-                .where(
-                    StudentAssessment.cohort_id == cohort_id,
-                    StudentAssessment.scope == AssessmentScope.LESSON,
-                    StudentAssessment.lesson_id == lesson_id,
-                )
-                .order_by(StudentAssessment.created_at.desc())
+        assessment_stmt = (
+            select(StudentAssessment, User.name)
+            .join(User, StudentAssessment.student_id == User.id)
+            .where(
+                StudentAssessment.cohort_id == cohort_id,
+                StudentAssessment.scope == AssessmentScope.LESSON,
+                StudentAssessment.lesson_id == lesson_id,
             )
-        ).all()
+            .order_by(StudentAssessment.created_at.desc())
+        )
+        if student_ids is not None:
+            assessment_stmt = assessment_stmt.where(
+                StudentAssessment.student_id.in_(student_ids)
+            )
+        assessment_rows = (await db.execute(assessment_stmt)).all()
 
         latest_by_student: dict[uuid.UUID, tuple[StudentAssessment, str]] = {}
         for row, student_name in assessment_rows:
@@ -140,19 +146,26 @@ class StudentAssessmentReadService:
             )
         ]
 
-        concluded_rows = (
-            await db.execute(
-                select(StudentLessonProgress.student_id, User.name)
-                .join(User, StudentLessonProgress.student_id == User.id)
-                .where(
-                    StudentLessonProgress.cohort_id == cohort_id,
-                    StudentLessonProgress.lesson_id == lesson_id,
-                    StudentLessonProgress.status
-                    == StudentLessonProgressStatus.CONCLUIDA,
-                )
-                .order_by(User.name)
+        concluded_stmt = (
+            select(StudentLessonProgress.student_id, User.name)
+            .join(User, StudentLessonProgress.student_id == User.id)
+            .where(
+                StudentLessonProgress.cohort_id == cohort_id,
+                StudentLessonProgress.lesson_id == lesson_id,
+                StudentLessonProgress.status.in_(
+                    (
+                        StudentLessonProgressStatus.CONCLUIDA,
+                        StudentLessonProgressStatus.ENCERRADA_POR_AVANCO,
+                    )
+                ),
             )
-        ).all()
+            .order_by(User.name)
+        )
+        if student_ids is not None:
+            concluded_stmt = concluded_stmt.where(
+                StudentLessonProgress.student_id.in_(student_ids)
+            )
+        concluded_rows = (await db.execute(concluded_stmt)).all()
 
         assessed_ids = set(latest_by_student.keys())
         pending = [
@@ -302,20 +315,22 @@ class StudentAssessmentReadService:
         db: AsyncSession,
         *,
         cohort_id: uuid.UUID,
+        student_ids: set[uuid.UUID] | None = None,
     ) -> CohortTrackLevelsResult:
         """Latest track-scope level per enrolled student (one query, no AI)."""
         cohort = await db.get(Cohort, cohort_id)
         if cohort is None:
             raise ValueError("Turma não encontrada")
 
-        enrolled = (
-            await db.execute(
-                select(Enrollment.student_id, User.name)
-                .join(User, Enrollment.student_id == User.id)
-                .where(Enrollment.cohort_id == cohort_id)
-                .order_by(User.name)
-            )
-        ).all()
+        enrolled_stmt = (
+            select(Enrollment.student_id, User.name)
+            .join(User, Enrollment.student_id == User.id)
+            .where(Enrollment.cohort_id == cohort_id)
+            .order_by(User.name)
+        )
+        if student_ids is not None:
+            enrolled_stmt = enrolled_stmt.where(Enrollment.student_id.in_(student_ids))
+        enrolled = (await db.execute(enrolled_stmt)).all()
 
         assessment_rows = (
             await db.execute(

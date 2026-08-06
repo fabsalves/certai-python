@@ -29,6 +29,7 @@ from app.services.student_progress_service import (
 )
 from app.services.whatsapp.inbound_service import persist_inbound
 from app.services.cinndi.types import CinndiMessage, CinndiParseResult
+from scripts.class_helpers import lesson_class_id, lesson_student_ids
 
 
 async def _seed_context(db):
@@ -95,7 +96,10 @@ async def test_resolve_routable_route_prioritizes_ativa() -> None:
         await _clear_state(db, cohort.id)
 
         await StudentProgressService.on_professor_complete_lesson(
-            db, cohort.id, lessons[0].id
+            db,
+            cohort.id,
+            lessons[0].id,
+            await lesson_student_ids(db, cohort.id, lessons[0].id),
         )
         await StudentProgressService.activate_on_first_interaction(
             db, cohort.id, student.id, lessons[0].id
@@ -112,7 +116,13 @@ async def test_inbound_routes_to_active_lesson() -> None:
         cohort, lessons, student = await _seed_context(db)
         await _clear_state(db, cohort.id)
 
-        await complete_lesson(db, cohort.id, lessons[0].id, "Relato")
+        await complete_lesson(
+            db,
+            cohort.id,
+            lessons[0].id,
+            "Relato",
+            module_professor_id=await lesson_class_id(db, cohort.id, lessons[0].id),
+        )
         await db.commit()
 
         parsed = _inbound_parse("Oi Lira", student.whatsapp or "")
@@ -139,8 +149,20 @@ async def test_inbound_blocks_encerrada_por_avanco() -> None:
         cohort, lessons, student = await _seed_context(db)
         await _clear_state(db, cohort.id)
 
-        await complete_lesson(db, cohort.id, lessons[0].id, "Aula 1")
-        await complete_lesson(db, cohort.id, lessons[1].id, "Aula 2")
+        await complete_lesson(
+            db,
+            cohort.id,
+            lessons[0].id,
+            "Aula 1",
+            module_professor_id=await lesson_class_id(db, cohort.id, lessons[0].id),
+        )
+        await complete_lesson(
+            db,
+            cohort.id,
+            lessons[1].id,
+            "Aula 2",
+            module_professor_id=await lesson_class_id(db, cohort.id, lessons[1].id),
+        )
         await db.commit()
 
         old_progress = await StudentProgressService._get_progress(
@@ -167,7 +189,10 @@ async def test_inbound_lesson_closed_when_not_interactive() -> None:
         await _clear_state(db, cohort.id)
 
         await StudentProgressService.on_professor_complete_lesson(
-            db, cohort.id, lessons[0].id
+            db,
+            cohort.id,
+            lessons[0].id,
+            await lesson_student_ids(db, cohort.id, lessons[0].id),
         )
         row = await StudentProgressService._get_progress(
             db, cohort.id, student.id, lessons[0].id
@@ -188,8 +213,20 @@ async def test_voice_handoff_blocks_stale_lesson() -> None:
         cohort, lessons, student = await _seed_context(db)
         await _clear_state(db, cohort.id)
 
-        await complete_lesson(db, cohort.id, lessons[0].id, "Aula 1")
-        await complete_lesson(db, cohort.id, lessons[1].id, "Aula 2")
+        await complete_lesson(
+            db,
+            cohort.id,
+            lessons[0].id,
+            "Aula 1",
+            module_professor_id=await lesson_class_id(db, cohort.id, lessons[0].id),
+        )
+        await complete_lesson(
+            db,
+            cohort.id,
+            lessons[1].id,
+            "Aula 2",
+            module_professor_id=await lesson_class_id(db, cohort.id, lessons[1].id),
+        )
         await db.commit()
 
         try:
@@ -218,7 +255,10 @@ async def test_in_app_blocks_encerrada() -> None:
         await _clear_state(db, cohort.id)
 
         await StudentProgressService.on_professor_complete_lesson(
-            db, cohort.id, lessons[0].id
+            db,
+            cohort.id,
+            lessons[0].id,
+            await lesson_student_ids(db, cohort.id, lessons[0].id),
         )
         row = await StudentProgressService._get_progress(
             db, cohort.id, student.id, lessons[0].id

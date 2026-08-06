@@ -87,8 +87,9 @@ class StudentAssessment(Base):
 
 
 class CohortLessonNote(Base):
-    """Notes about a specific cohort's lesson. Consolidated by the AI at completion.
-    Tied to cohort+lesson -- never to the lesson content (which is immutable)."""
+    """Notes about a lesson as taught by one professor to their class.
+    Consolidated by the AI at completion. Tied to the class that studied it --
+    never to the lesson content (which is immutable)."""
 
     __tablename__ = "cohort_lesson_notes"
 
@@ -97,6 +98,12 @@ class CohortLessonNote(Base):
     )
     lesson_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("lessons.id", ondelete="CASCADE"), index=True
+    )
+    module_professor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cohort_module_professors.id", ondelete="RESTRICT"),
+        index=True,
+        nullable=False,
     )
     summary: Mapped[str] = mapped_column(Text, default="")            # AI consolidation
     unclear_points: Mapped[str] = mapped_column(Text, default="")

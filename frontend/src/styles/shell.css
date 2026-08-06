@@ -476,6 +476,10 @@ html.modal-scroll-lock body {
   max-width: 720px;
 }
 
+.modal--division {
+  max-width: min(1080px, 100%);
+}
+
 .modal__head {
   display: flex;
   align-items: center;
@@ -842,14 +846,256 @@ html.modal-scroll-lock body {
 }
 
 .cohort-professors__item {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(200px, 280px);
-  gap: 16px;
-  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   padding: 16px 18px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface);
+}
+
+.cohort-professors__item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cohort-professors__classes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cohort-professors__class {
+  display: grid;
+  grid-template-columns: minmax(200px, 280px) auto auto;
+  gap: 12px;
+  align-items: center;
+  justify-content: start;
+}
+
+.cohort-professors__class-count {
+  font-size: 13px;
+}
+
+.cohort-professors__division {
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+
+.cohort-professors__division-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.cohort-professors__students {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cohort-professors__student {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 240px);
+  gap: 12px;
+  align-items: center;
+}
+
+.cohort-professors__warning {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--danger, #a33a30);
+}
+
+.cohort-professors__division-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+}
+
+.cohort-professors__division-counts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  font-size: 13px;
+}
+
+.cohort-professors__division-counts li {
+  display: flex;
+  gap: 6px;
+}
+
+.module-division__hint {
+  margin: 0 0 12px;
+  font-size: 14px;
+}
+
+.module-division__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+
+.module-division__search {
+  flex: 1;
+  min-width: 200px;
+  margin: 0;
+}
+
+.module-division__bulk {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.module-division__move,
+.module-division__unassigned-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.module-division__move-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.module-division__columns {
+  display: grid;
+  grid-template-columns: repeat(var(--division-cols, 3), minmax(180px, 1fr));
+  gap: 12px;
+  min-height: 280px;
+  max-height: min(52vh, 480px);
+}
+
+.module-division__column {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.module-division__column-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.module-division__list {
+  list-style: none;
+  margin: 0;
+  padding: 6px 0;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.module-division__empty {
+  padding: 12px;
+  font-size: 13px;
+}
+
+.module-division__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.module-division__row:hover {
+  background: var(--surface-sunken);
+}
+
+.module-division__row input {
+  margin-top: 3px;
+}
+
+.module-division__name {
+  display: block;
+}
+
+.module-division__email {
+  display: block;
+  font-size: 12px;
+}
+
+@media (max-width: 800px) {
+  .module-division__columns {
+    grid-template-columns: 1fr;
+    max-height: none;
+  }
+
+  .module-division__column {
+    max-height: 220px;
+  }
+}
+
+.cohort-progress-panel__classes {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+}
+
+.cohort-progress-panel__classes li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.cohort-progress-panel__delayed {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: var(--danger, #a33a30);
+}
+
+.cohort-progress-panel__unassigned {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger, #a33a30) 6%, transparent);
+}
+
+.cohort-progress-panel__unassigned-title {
+  margin: 0;
+  flex: 1;
+  min-width: 180px;
+  font-size: 13px;
+  color: var(--danger, #a33a30);
 }
 
 .cohort-professors__item-main {
@@ -872,7 +1118,8 @@ html.modal-scroll-lock body {
 }
 
 @media (max-width: 640px) {
-  .cohort-professors__item {
+  .cohort-professors__class,
+  .cohort-professors__student {
     grid-template-columns: 1fr;
   }
 }

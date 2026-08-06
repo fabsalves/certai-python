@@ -10,6 +10,7 @@ from app.ai.context_builder import ContextBuilder
 from app.models.assessment import CohortLessonNote
 from app.models.cohort import Cohort, CohortProgress
 from app.models.track import Lesson, Module, Track
+from app.services.cohort import ModuleClassService
 from app.services.ingestion import INGESTION_DONE
 
 
@@ -17,9 +18,16 @@ async def build_playground_context(
     db: AsyncSession,
     cohort_id: uuid.UUID,
     lesson_id: uuid.UUID,
+    student_id: uuid.UUID,
 ) -> dict:
-    """Return the structured bundle the Lira receives plus ingestion metadata."""
-    bundle = await ContextBuilder(db).build_lesson(cohort_id, lesson_id)
+    """Return the structured bundle the Lira receives plus ingestion metadata.
+
+    Mirrors exactly one student: with several professors in a module, what shows
+    up here is what that student's own class has unlocked.
+    """
+    bundle = await ContextBuilder(db).build_lesson(
+        cohort_id, lesson_id, student_id=student_id
+    )
 
     cohort = await db.get(Cohort, cohort_id)
     track = await db.scalar(
@@ -30,13 +38,25 @@ async def build_playground_context(
     if track is None:
         raise ValueError("Trilha não encontrada")
 
-    unlocked_ids = set(
+    class_ids = set(
         (
-            await db.execute(
-                select(CohortProgress.lesson_id).where(CohortProgress.cohort_id == cohort_id)
+            await ModuleClassService.classes_by_module_for_student(
+                db, cohort_id, student_id
             )
-        ).scalars().all()
+        ).values()
     )
+    unlocked_ids: set[uuid.UUID] = set()
+    if class_ids:
+        unlocked_ids = set(
+            (
+                await db.execute(
+                    select(CohortProgress.lesson_id).where(
+                        CohortProgress.cohort_id == cohort_id,
+                        CohortProgress.module_professor_id.in_(class_ids),
+                    )
+                )
+            ).scalars().all()
+        )
 
     lesson_titles: dict[uuid.UUID, str] = {}
     for module in track.modules:
@@ -51,6 +71,7 @@ async def build_playground_context(
                 .where(
                     CohortLessonNote.cohort_id == cohort_id,
                     CohortLessonNote.lesson_id.in_(unlocked_ids),
+                    CohortLessonNote.module_professor_id.in_(class_ids),
                 )
                 .order_by(CohortLessonNote.created_at.desc())
             )
