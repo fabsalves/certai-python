@@ -2962,6 +2962,10 @@ html.modal-scroll-lock body {
   flex-shrink: 0;
 }
 
+.lesson-report__pulse--brand {
+  background: var(--brand);
+}
+
 .lesson-report__waveform {
   display: flex;
   align-items: center;
@@ -2982,6 +2986,11 @@ html.modal-scroll-lock body {
   will-change: transform;
 }
 
+.lesson-report__waveform--processing .lesson-report__wave-bar {
+  transition: none;
+  animation: lesson-wave-process 1s ease-in-out infinite;
+}
+
 .lesson-report__attached {
   display: flex;
   flex-direction: column;
@@ -2994,6 +3003,11 @@ html.modal-scroll-lock body {
   50% { opacity: 0.5; transform: scale(0.85); }
 }
 
+@keyframes lesson-wave-process {
+  0%, 100% { transform: scaleY(0.25); opacity: 0.55; }
+  50% { transform: scaleY(1); opacity: 1; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .lesson-report__pulse {
     animation: none;
@@ -3001,6 +3015,38 @@ html.modal-scroll-lock body {
   .lesson-report__wave-bar {
     transition: none;
   }
+  .lesson-report__waveform--processing .lesson-report__wave-bar {
+    animation: none;
+    transform: scaleY(0.45);
+    opacity: 0.7;
+  }
+}
+
+.lesson-content-import {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.lesson-content-import .lesson-report__audio {
+  margin: 0;
+}
+
+.lesson-content-import__processing {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.lesson-content-import__source {
+  margin: 0 0 10px;
+  max-width: 100%;
+}
+
+.lesson-content-import__source .file-chip {
+  width: 100%;
+  max-width: 28rem;
 }
 
 .lesson-report__form {

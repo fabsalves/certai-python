@@ -3,6 +3,10 @@ import type { SortableRenderProps } from "../ui/SortableList";
 import { DragHandle } from "../ui/DragHandle";
 import type { Lesson } from "../../lib/tracks";
 import { isDuplicateName, isNonEmpty } from "../../lib/validation";
+import {
+  LessonContentImport,
+  type ContentSource,
+} from "./LessonContentImport";
 
 interface Props {
   lesson: Lesson;
@@ -11,6 +15,17 @@ interface Props {
   onSave: (draft: { title: string; content: string }) => void;
   onToggleActive: () => void;
   onRemove: () => void;
+  /** Refresh track after source file is persisted (import). */
+  onSourceChanged?: (source: ContentSource) => void;
+}
+
+function sourceFromLesson(lesson: Lesson): ContentSource | null {
+  if (!lesson.content_source_filename) return null;
+  return {
+    filename: lesson.content_source_filename,
+    contentType: lesson.content_source_content_type,
+    kind: lesson.content_source_kind,
+  };
 }
 
 export function LessonEditorPanel({
@@ -20,9 +35,13 @@ export function LessonEditorPanel({
   onSave,
   onToggleActive,
   onRemove,
+  onSourceChanged,
 }: Props) {
   const [title, setTitle] = useState(lesson.title);
   const [content, setContent] = useState(lesson.content);
+  const [source, setSource] = useState<ContentSource | null>(() =>
+    sourceFromLesson(lesson),
+  );
   const dirty = title !== lesson.title || content !== lesson.content;
   const titleValid =
     isNonEmpty(title) && !isDuplicateName(title, siblingLessonTitles, lesson.title);
@@ -30,7 +49,15 @@ export function LessonEditorPanel({
   useEffect(() => {
     setTitle(lesson.title);
     setContent(lesson.content);
-  }, [lesson.id, lesson.title, lesson.content]);
+    setSource(sourceFromLesson(lesson));
+  }, [
+    lesson.id,
+    lesson.title,
+    lesson.content,
+    lesson.content_source_filename,
+    lesson.content_source_content_type,
+    lesson.content_source_kind,
+  ]);
 
   return (
     <div className="lesson-panel" id={`lesson-${lesson.id}`}>
@@ -71,6 +98,17 @@ export function LessonEditorPanel({
             value={content}
             onChange={(e) => setContent(e.target.value)}
             placeholder="Material, orientações e referências que a turma verá nesta etapa…"
+          />
+          <LessonContentImport
+            lessonId={lesson.id}
+            disabled={busy}
+            currentContent={content}
+            source={source}
+            onImported={(text, nextSource) => {
+              setContent(text);
+              setSource(nextSource);
+              onSourceChanged?.(nextSource);
+            }}
           />
         </div>
       </div>

@@ -2,6 +2,10 @@ import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
 import { EditorTabPanel, EditorTabs } from "../components/tracks/EditorTabs";
+import {
+  ContentSourceImport,
+  type ContentSource,
+} from "../components/tracks/LessonContentImport";
 import { ModuleEditor } from "../components/tracks/ModuleEditor";
 import { TrackEditorSkeleton } from "../components/tracks/TrackEditorSkeleton";
 import { TrackPathPreview } from "../components/tracks/TrackPathPreview";
@@ -26,6 +30,15 @@ import {
   type Module,
   type Track,
 } from "../lib/tracks";
+
+function descriptionSourceFromTrack(track: Track | null): ContentSource | null {
+  if (!track?.description_source_filename) return null;
+  return {
+    filename: track.description_source_filename,
+    contentType: track.description_source_content_type,
+    kind: track.description_source_kind,
+  };
+}
 
 type EditorTab = "meta" | "structure";
 
@@ -380,6 +393,22 @@ export function TrackEditor() {
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
                       />
+                      {track && !isNew && (
+                        <ContentSourceImport
+                          idPrefix={`track-description-${track.id}`}
+                          importUrl={`/tracks/${track.id}/import-description`}
+                          downloadUrl={`/tracks/${track.id}/description-source`}
+                          disabled={saving}
+                          currentContent={description}
+                          source={descriptionSourceFromTrack(track)}
+                          onImported={(text) => {
+                            setDescription(text);
+                            void reloadTrack();
+                          }}
+                          fieldLabel="Preencher descrição a partir de áudio ou arquivo"
+                          hint="Grave ou anexe. O texto novo é acrescentado à descrição (separado do material PDF/PPT); o arquivo fonte fica o último anexado."
+                        />
+                      )}
                     </div>
                   </div>
 

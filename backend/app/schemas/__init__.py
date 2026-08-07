@@ -126,6 +126,9 @@ class LessonOut(LessonCreate):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
     is_active: bool
+    content_source_filename: str | None = None
+    content_source_content_type: str | None = None
+    content_source_kind: str | None = None  # audio | document
 
 
 class ModuleCreate(BaseModel):
@@ -170,6 +173,9 @@ class TrackOut(TrackCreate):
     material_filename: str | None = None
     material_content_type: str | None = None
     material_ingestion_status: str | None = None
+    description_source_filename: str | None = None
+    description_source_content_type: str | None = None
+    description_source_kind: str | None = None
     modules: list[ModuleOut] = []
 
 
@@ -373,6 +379,15 @@ class LessonCompletionIn(BaseModel):
 
 class TranscriptionOut(BaseModel):
     transcript: str
+
+
+class ImportTextOut(BaseModel):
+    """Text extracted/transcribed for the lesson content field (+ source file meta)."""
+
+    text: str = ""
+    content_source_filename: str | None = None
+    content_source_content_type: str | None = None
+    content_source_kind: str | None = None
 
 
 # --- Conversation ---

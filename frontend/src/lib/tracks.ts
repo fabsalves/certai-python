@@ -6,6 +6,9 @@ export interface Lesson {
   content: string;
   position: number;
   is_active: boolean;
+  content_source_filename?: string | null;
+  content_source_content_type?: string | null;
+  content_source_kind?: "audio" | "document" | string | null;
 }
 
 export interface Module {
@@ -27,6 +30,9 @@ export interface Track {
   material_filename?: string | null;
   material_content_type?: string | null;
   material_ingestion_status?: string | null;
+  description_source_filename?: string | null;
+  description_source_content_type?: string | null;
+  description_source_kind?: "audio" | "document" | string | null;
   modules: Module[];
 }
 

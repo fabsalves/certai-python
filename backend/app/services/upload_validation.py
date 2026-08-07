@@ -18,6 +18,14 @@ REPORT_ATTACHMENT_BY_EXT = {
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
 
+# Ephemeral lesson-content import (extract only; not stored).
+LESSON_IMPORT_DOC_BY_EXT = {
+    ".txt": "text/plain",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".pdf": "application/pdf",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+}
+
 AUDIO_MAX_BYTES = 25 * 1024 * 1024
 MATERIAL_MAX_BYTES = 20 * 1024 * 1024
 ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024

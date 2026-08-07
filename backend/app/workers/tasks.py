@@ -145,18 +145,15 @@ def sweep_abandoned_voice_sessions() -> dict:
 # --- async implementations ---
 
 async def _transcribe_audio(audio_path: str, conversation_id: UUID) -> dict:
-    from groq import AsyncGroq
+    from pathlib import Path
 
-    from app.core.config import settings
     from app.core.database import SessionLocal
     from app.models.conversation import Author, Message
+    from app.services.transcription_service import transcribe_audio
 
-    client = AsyncGroq(api_key=settings.GROQ_API_KEY)
+    filename = Path(audio_path).name or "audio.webm"
     with open(audio_path, "rb") as f:
-        resp = await client.audio.transcriptions.create(
-            file=(audio_path, f.read()), model=settings.GROQ_TRANSCRIBE_MODEL
-        )
-    text = resp.text
+        text = await transcribe_audio(f.read(), filename=filename)
 
     async with SessionLocal() as db:
         db.add(Message(conversation_id=conversation_id, author=Author.PROFESSOR, content=text))

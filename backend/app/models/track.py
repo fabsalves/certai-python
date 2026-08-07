@@ -31,6 +31,11 @@ class Track(Base):
     material_guide: Mapped[str] = mapped_column(Text, default="")  # AI macro guide for the whole track
     # None (no ingestion yet) | pending | processing | done | failed | unsupported
     material_ingestion_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Source file used to fill description (audio/doc import) — distinct from track material.
+    description_source_storage_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    description_source_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    description_source_content_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    description_source_kind: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     modules: Mapped[list["Module"]] = relationship(
         back_populates="track", order_by="Module.position", cascade="all, delete-orphan"
@@ -70,5 +75,10 @@ class Lesson(Base):
     content: Mapped[str] = mapped_column(Text, default="")  # pre-registered material
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    # Source file used to fill content (audio/doc import) — one per lesson.
+    content_source_storage_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    content_source_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    content_source_content_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    content_source_kind: Mapped[str | None] = mapped_column(String(20), nullable=True)  # audio | document
 
     module: Mapped[Module] = relationship(back_populates="lessons")

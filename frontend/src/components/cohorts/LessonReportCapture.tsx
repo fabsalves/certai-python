@@ -8,6 +8,7 @@ import {
   FilePicker,
   fileKindFromName,
 } from "../ui/FileAttachment";
+import { AudioProcessStatus, AudioWaveform } from "../ui/AudioProcessStatus";
 
 const AUDIO_ACCEPT =
   ".mp3,.m4a,.wav,.ogg,.webm,.mpeg,audio/*,audio/webm,audio/mpeg,audio/mp4,audio/ogg,audio/wav";
@@ -22,20 +23,6 @@ interface Props {
   onCompleted: () => void;
   transcribePath?: string;
   completePath?: string;
-}
-
-function RecordingWaveform({ levels }: { levels: number[] }) {
-  return (
-    <div className="lesson-report__waveform" aria-hidden>
-      {levels.map((level, index) => (
-        <span
-          key={index}
-          className="lesson-report__wave-bar"
-          style={{ transform: `scaleY(${Math.max(0.15, level)})` }}
-        />
-      ))}
-    </div>
-  );
 }
 
 export function LessonReportCapture({
@@ -214,7 +201,7 @@ export function LessonReportCapture({
 
         {showRecording && (
           <div className="lesson-report__recording" aria-live="polite">
-            <RecordingWaveform levels={levels} />
+            <AudioWaveform levels={levels} />
             <span className="lesson-report__rec-label">
               <span className="lesson-report__pulse" aria-hidden />
               Gravando {formatDuration(seconds)}
@@ -225,38 +212,37 @@ export function LessonReportCapture({
           </div>
         )}
 
-        {showRecorded && (
-          <div className="lesson-report__recording">
-            {transcribing ? (
-              <span className="muted">Transcrevendo gravação…</span>
-            ) : (
-              <>
-                <span className="muted">Gravação ativa. Revise o texto abaixo.</span>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={clearAudio} disabled={busy}>
-                  Remover
-                </button>
-                <FilePicker
-                  id="lesson-audio-switch"
-                  accept={AUDIO_ACCEPT}
-                  buttonLabel="Trocar por arquivo"
-                  disabled={busy}
-                  onChange={(file) => void handleAttachAudio(file)}
-                />
-              </>
-            )}
-          </div>
-        )}
+        {showRecorded &&
+          (transcribing ? (
+            <AudioProcessStatus label="Transcrevendo gravação…" />
+          ) : (
+            <div className="lesson-report__recording">
+              <span className="muted">Gravação ativa. Revise o texto abaixo.</span>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={clearAudio} disabled={busy}>
+                Remover
+              </button>
+              <FilePicker
+                id="lesson-audio-switch"
+                accept={AUDIO_ACCEPT}
+                buttonLabel="Trocar por arquivo"
+                disabled={busy}
+                onChange={(file) => void handleAttachAudio(file)}
+              />
+            </div>
+          ))}
 
-        {showAttached && (
-          <div className="lesson-report__attached">
-            <FileChip
-              filename={audioFile.name}
-              kind="audio"
-              meta={transcribing ? "Transcrevendo…" : "Áudio anexado (ativo)"}
-              onClear={busy ? undefined : clearAudio}
-              clearLabel="Remover"
-            />
-            {!transcribing && (
+        {showAttached &&
+          (transcribing ? (
+            <AudioProcessStatus label="Transcrevendo…" />
+          ) : (
+            <div className="lesson-report__attached">
+              <FileChip
+                filename={audioFile.name}
+                kind="audio"
+                meta="Áudio anexado (ativo)"
+                onClear={busy ? undefined : clearAudio}
+                clearLabel="Remover"
+              />
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"
@@ -265,9 +251,8 @@ export function LessonReportCapture({
               >
                 Trocar por gravação
               </button>
-            )}
-          </div>
-        )}
+            </div>
+          ))}
 
         {recorderError && (
           <div className="form-error" style={{ marginTop: 10 }}>{recorderError}</div>

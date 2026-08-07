@@ -274,6 +274,7 @@ export function ModuleEditor({
                         .filter((lesson) => lesson.id !== selectedLesson.id)
                         .map((lesson) => lesson.title)}
                       busy={busyLessonId === selectedLesson.id}
+                      onSourceChanged={() => onChanged()}
                       onSave={async (draft) => {
                         const nextTitle = trimmed(draft.title);
                         if (!nextTitle) {
