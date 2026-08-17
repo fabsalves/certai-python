@@ -22,7 +22,7 @@ import { downloadApiFile } from "../lib/download";
 import { useFeedback } from "../lib/feedback";
 import { useApiAction } from "../lib/useApiAction";
 import { isNonEmpty, trimmed } from "../lib/validation";
-import { persistSequentialPositions } from "../lib/reorder";
+import { persistSequentialPositions, withSequentialPositions } from "../lib/reorder";
 import {
   nextModulePosition,
   sortedModules,
@@ -283,7 +283,10 @@ export function TrackEditor() {
   }
 
   async function reorderModules(ordered: Module[]) {
-    await runAction({
+    if (!track) return;
+    const previous = track;
+    setTrack({ ...track, modules: withSequentialPositions(ordered) });
+    const result = await runAction({
       run: async () => {
         await persistSequentialPositions(ordered, (id, position) =>
           api.patch(`/tracks/modules/${id}`, { position }),
@@ -291,8 +294,11 @@ export function TrackEditor() {
       },
       successMessage: "Ordem dos módulos atualizada.",
       errorMessage: "Não foi possível reordenar os módulos.",
-      onSuccess: () => reloadTrack(),
     });
+    if (result === null) {
+      setTrack(previous);
+      await reloadTrack();
+    }
   }
 
   function selectLesson(lessonId: string, moduleId: string) {
@@ -536,7 +542,7 @@ export function TrackEditor() {
                         renderItem={(mod, sortable) => (
                           <ModuleEditor
                             module={mod}
-                            siblingModuleTitles={modules.filter((m) => m.id !== mod.id).map((m) => m.title)}
+                            siblingModules={modules.filter((m) => m.id !== mod.id)}
                             open={expandedModuleId === mod.id}
                             onToggle={() =>
                               setExpandedModuleId((current) => (current === mod.id ? null : mod.id))
@@ -544,6 +550,18 @@ export function TrackEditor() {
                             selectedLessonId={selectedLessonId}
                             onSelectLesson={setSelectedLessonId}
                             onChanged={reloadTrack}
+                            onLessonsReordered={(lessons) => {
+                              setTrack((current) =>
+                                current
+                                  ? {
+                                      ...current,
+                                      modules: current.modules.map((item) =>
+                                        item.id === mod.id ? { ...item, lessons } : item,
+                                      ),
+                                    }
+                                  : current,
+                              );
+                            }}
                             onRemoved={() => {
                               setExpandedModuleId((current) => (current === mod.id ? null : current));
                               setSelectedLessonId(null);

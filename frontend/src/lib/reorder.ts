@@ -6,6 +6,10 @@ export function reorderByIndex<T>(items: T[], fromIndex: number, toIndex: number
   return next;
 }
 
+export function withSequentialPositions<T extends { position: number }>(items: T[]): T[] {
+  return items.map((item, index) => ({ ...item, position: index + 1 }));
+}
+
 /** Evita violação de unique (track_id, position) / (module_id, position) ao reordenar. */
 export async function persistSequentialPositions(
   items: { id: string; position: number }[],
@@ -14,6 +18,11 @@ export async function persistSequentialPositions(
   const needsReorder = items.some((item, index) => item.position !== index + 1);
   if (!needsReorder) return;
 
-  await Promise.all(items.map((item, index) => patchPosition(item.id, -(index + 1))));
-  await Promise.all(items.map((item, index) => patchPosition(item.id, index + 1)));
+  // Sequencial: se um PATCH falhar no meio, não deixa metade em posição negativa.
+  for (const [index, item] of items.entries()) {
+    await patchPosition(item.id, -(index + 1));
+  }
+  for (const [index, item] of items.entries()) {
+    await patchPosition(item.id, index + 1);
+  }
 }

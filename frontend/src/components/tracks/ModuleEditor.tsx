@@ -4,7 +4,7 @@ import { useConfirm } from "../../lib/confirm";
 import { useFeedback } from "../../lib/feedback";
 import { useApiAction } from "../../lib/useApiAction";
 import { isDuplicateName, isNonEmpty, trimmed } from "../../lib/validation";
-import { persistSequentialPositions } from "../../lib/reorder";
+import { persistSequentialPositions, withSequentialPositions } from "../../lib/reorder";
 import { DragHandle } from "../ui/DragHandle";
 import { SortableList, type SortableRenderProps } from "../ui/SortableList";
 import { LessonEditorPanel, LessonListItem } from "./LessonEditor";
@@ -25,8 +25,9 @@ interface Props {
   selectedLessonId: string | null;
   onSelectLesson: (lessonId: string | null) => void;
   onChanged: () => void | Promise<void>;
+  onLessonsReordered?: (lessons: Lesson[]) => void;
   onRemoved?: () => void;
-  siblingModuleTitles?: string[];
+  siblingModules?: Module[];
   sortable?: SortableRenderProps;
 }
 
@@ -37,14 +38,16 @@ export function ModuleEditor({
   selectedLessonId,
   onSelectLesson,
   onChanged,
+  onLessonsReordered,
   onRemoved,
-  siblingModuleTitles = [],
+  siblingModules = [],
   sortable,
 }: Props) {
   const confirm = useConfirm();
   const feedback = useFeedback();
   const runAction = useApiAction();
   const lessons = sortedLessons(module);
+  const siblingModuleTitles = siblingModules.map((item) => item.title);
   const selectedLesson = lessons.find((l) => l.id === selectedLessonId) ?? null;
   const [title, setTitle] = useState(module.title);
   const [level, setLevel] = useState<ModuleLevel>(module.level);
@@ -103,16 +106,23 @@ export function ModuleEditor({
     });
     if (!ok) return;
     setSavingModule(true);
-    await runAction({
+    const deleted = await runAction({
       run: () => api.delete(`/tracks/modules/${module.id}`),
       successMessage: `Módulo "${module.title}" excluído.`,
       errorMessage: "Não foi possível excluir o módulo.",
-      onSuccess: async () => {
-        onRemoved?.();
-        onSelectLesson(null);
-        await onChanged();
-      },
     });
+    if (deleted !== null) {
+      await runAction({
+        run: () =>
+          persistSequentialPositions(siblingModules, (id, position) =>
+            api.patch(`/tracks/modules/${id}`, { position }),
+          ),
+        errorMessage: "Não foi possível atualizar a ordem dos módulos.",
+      });
+      onRemoved?.();
+      onSelectLesson(null);
+      await onChanged();
+    }
     setSavingModule(false);
   }
 
@@ -137,7 +147,8 @@ export function ModuleEditor({
 
   async function reorderLessons(ordered: Lesson[]) {
     setReorderingLessons(true);
-    await runAction({
+    onLessonsReordered?.(withSequentialPositions(ordered));
+    const result = await runAction({
       run: async () => {
         await persistSequentialPositions(ordered, (id, position) =>
           api.patch(`/tracks/lessons/${id}`, { position }),
@@ -145,8 +156,8 @@ export function ModuleEditor({
       },
       successMessage: "Ordem das aulas atualizada.",
       errorMessage: "Não foi possível reordenar as aulas.",
-      onSuccess: () => onChanged(),
     });
+    if (result === null) await onChanged();
     setReorderingLessons(false);
   }
 
@@ -322,15 +333,23 @@ export function ModuleEditor({
                         });
                         if (!ok) return;
                         setBusyLessonId(selectedLesson.id);
-                        await runAction({
+                        const deleted = await runAction({
                           run: () => api.delete(`/tracks/lessons/${selectedLesson.id}`),
                           successMessage: `Aula "${selectedLesson.title}" excluída.`,
                           errorMessage: "Não foi possível excluir a aula.",
-                          onSuccess: async () => {
-                            onSelectLesson(null);
-                            await onChanged();
-                          },
                         });
+                        if (deleted !== null) {
+                          await runAction({
+                            run: () =>
+                              persistSequentialPositions(
+                                lessons.filter((item) => item.id !== selectedLesson.id),
+                                (id, position) => api.patch(`/tracks/lessons/${id}`, { position }),
+                              ),
+                            errorMessage: "Não foi possível atualizar a ordem das aulas.",
+                          });
+                          onSelectLesson(null);
+                          await onChanged();
+                        }
                         setBusyLessonId(null);
                       }}
                     />
