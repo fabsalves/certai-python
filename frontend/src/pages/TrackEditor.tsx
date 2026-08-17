@@ -135,6 +135,14 @@ export function TrackEditor() {
     ? title !== track.title || competency !== track.competency || description !== track.description
     : title.trim().length > 0;
 
+  function postMaterial(trackId: string, file: File) {
+    const form = new FormData();
+    form.append("file", file);
+    return api.post<Track>(`/tracks/${trackId}/material`, form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  }
+
   async function saveMeta(e?: FormEvent) {
     e?.preventDefault();
     const nextTitle = trimmed(title);
@@ -144,14 +152,29 @@ export function TrackEditor() {
     }
     setSaving(true);
     if (isNew) {
-      await runAction({
+      const created = await runAction({
         run: () => api.post<Track>("/tracks", { title: nextTitle, competency, description }),
         successMessage: "Trilha criada.",
         errorMessage: "Não foi possível criar a trilha.",
-        onSuccess: ({ data }) => {
-          navigate(`/tracks/${data.id}`, { replace: true, state: { tab: "structure" } });
-        },
       });
+      if (!created) {
+        setSaving(false);
+        return;
+      }
+      if (materialFile) {
+        const uploaded = await runAction({
+          run: () => postMaterial(created.data.id, materialFile),
+          successMessage: "Material da trilha enviado.",
+          errorMessage: "Não foi possível enviar o material.",
+        });
+        if (!uploaded) {
+          navigate(`/tracks/${created.data.id}`, { replace: true, state: { tab: "meta" } });
+          setSaving(false);
+          return;
+        }
+        setMaterialFile(null);
+      }
+      navigate(`/tracks/${created.data.id}`, { replace: true, state: { tab: "structure" } });
       setSaving(false);
       return;
     }
@@ -169,17 +192,11 @@ export function TrackEditor() {
     setSaving(false);
   }
 
-  async function uploadMaterial(e?: FormEvent) {
-    e?.preventDefault();
+  async function uploadMaterial() {
     if (!track || !materialFile) return;
     setUploadingMaterial(true);
-    const form = new FormData();
-    form.append("file", materialFile);
     await runAction({
-      run: () =>
-        api.post<Track>(`/tracks/${track.id}/material`, form, {
-          headers: { "Content-Type": "multipart/form-data" },
-        }),
+      run: () => postMaterial(track.id, materialFile),
       successMessage: "Material da trilha enviado.",
       errorMessage: "Não foi possível enviar o material.",
       onSuccess: ({ data }) => {
@@ -365,7 +382,7 @@ export function TrackEditor() {
                 <form className="track-meta" onSubmit={saveMeta}>
                   <p className="muted track-meta__hint">
                     {isNew
-                      ? "Nome, objetivo e descrição. Depois monte módulos e aulas na outra aba."
+                      ? "Nome, objetivo, descrição e material. Depois monte módulos e aulas na outra aba."
                       : `${modules.length} módulo(s) · ${track ? totalLessons(track) : 0} aula(s)`}
                   </p>
 
@@ -418,24 +435,16 @@ export function TrackEditor() {
                     </div>
                   </div>
 
-                  {(isNew || metaDirty) && (
-                    <button
-                      type="submit"
-                      className="btn btn-primary"
-                      disabled={saving || !isNonEmpty(title)}
-                    >
-                      {saving ? "Salvando…" : isNew ? "Criar trilha" : "Salvar dados"}
-                    </button>
-                  )}
-                </form>
-
-                {track && (
-                  <form className="track-meta track-meta__material" onSubmit={uploadMaterial}>
+                  <div className="track-meta__material">
                     <FileAttachmentBlock
                       label="Material da trilha"
-                      hint="PDF ou PPT. Um arquivo por trilha; enviar outro substitui o atual."
+                      hint={
+                        isNew
+                          ? "PDF ou PPT. Opcional; você também pode enviar depois."
+                          : "PDF ou PPT. Um arquivo por trilha; enviar outro substitui o atual."
+                      }
                     >
-                      {track.material_filename && !materialFile && (
+                      {track?.material_filename && !materialFile && (
                         <FileChip
                           filename={track.material_filename}
                           kind={fileKindFromName(track.material_filename)}
@@ -448,7 +457,7 @@ export function TrackEditor() {
                           downloading={downloadingMaterial}
                         />
                       )}
-                      {track.material_filename &&
+                      {track?.material_filename &&
                         !materialFile &&
                         (materialIngestionStatus === "failed" || materialIngestionStatus === null) && (
                           <button
@@ -468,7 +477,7 @@ export function TrackEditor() {
                         <FileChip
                           filename={materialFile.name}
                           kind={fileKindFromName(materialFile.name)}
-                          meta="Pronto para enviar"
+                          meta={isNew ? "Vai junto ao criar a trilha" : "Pronto para enviar"}
                           onClear={() => setMaterialFile(null)}
                           clearLabel="Cancelar"
                         />
@@ -478,18 +487,19 @@ export function TrackEditor() {
                           id="track-material"
                           accept=".pdf,.ppt,.pptx,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
                           buttonLabel={
-                            track.material_filename || materialFile
+                            track?.material_filename || materialFile
                               ? "Escolher outro arquivo"
                               : "Escolher arquivo"
                           }
-                          disabled={uploadingMaterial}
+                          disabled={saving || uploadingMaterial}
                           onChange={setMaterialFile}
                         />
-                        {materialFile && (
+                        {track && materialFile && (
                           <button
-                            type="submit"
+                            type="button"
                             className="btn btn-primary btn-sm"
                             disabled={uploadingMaterial}
+                            onClick={() => void uploadMaterial()}
                           >
                             {uploadingMaterial
                               ? "Enviando…"
@@ -500,8 +510,18 @@ export function TrackEditor() {
                         )}
                       </div>
                     </FileAttachmentBlock>
-                  </form>
-                )}
+                  </div>
+
+                  {(isNew || metaDirty) && (
+                    <button
+                      type="submit"
+                      className="btn btn-primary"
+                      disabled={saving || !isNonEmpty(title)}
+                    >
+                      {saving ? "Salvando…" : isNew ? "Criar trilha" : "Salvar dados"}
+                    </button>
+                  )}
+                </form>
               </EditorTabPanel>
 
               <EditorTabPanel id="structure" labelledBy="track-tab-structure" hidden={tab !== "structure" || !track}>
