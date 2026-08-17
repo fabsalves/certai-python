@@ -9,6 +9,10 @@ import { DragHandle } from "../ui/DragHandle";
 import { SortableList, type SortableRenderProps } from "../ui/SortableList";
 import { LessonEditorPanel, LessonListItem } from "./LessonEditor";
 import {
+  ContentSourceImport,
+  type ContentSource,
+} from "./LessonContentImport";
+import {
   MODULE_LEVELS,
   levelLabel,
   nextLessonPosition,
@@ -17,6 +21,17 @@ import {
   type Module,
   type ModuleLevel,
 } from "../../lib/tracks";
+
+type ModulePane = "meta" | "lessons";
+
+function descriptionSourceFromModule(module: Module): ContentSource | null {
+  if (!module.description_source_filename) return null;
+  return {
+    filename: module.description_source_filename,
+    contentType: module.description_source_content_type,
+    kind: module.description_source_kind,
+  };
+}
 
 interface Props {
   module: Module;
@@ -50,20 +65,44 @@ export function ModuleEditor({
   const siblingModuleTitles = siblingModules.map((item) => item.title);
   const selectedLesson = lessons.find((l) => l.id === selectedLessonId) ?? null;
   const [title, setTitle] = useState(module.title);
+  const [description, setDescription] = useState(module.description ?? "");
   const [level, setLevel] = useState<ModuleLevel>(module.level);
+  const [source, setSource] = useState<ContentSource | null>(() =>
+    descriptionSourceFromModule(module),
+  );
   const [savingModule, setSavingModule] = useState(false);
   const [busyLessonId, setBusyLessonId] = useState<string | null>(null);
   const [reorderingLessons, setReorderingLessons] = useState(false);
+  const [pane, setPane] = useState<ModulePane>(() =>
+    module.lessons.length === 0 ? "meta" : "lessons",
+  );
 
-  const moduleDirty = title !== module.title || level !== module.level;
+  const moduleDirty =
+    title !== module.title ||
+    description !== (module.description ?? "") ||
+    level !== module.level;
   const moduleTitleValid =
     isNonEmpty(title) && !isDuplicateName(title, siblingModuleTitles, module.title);
   const lessonTitles = lessons.map((lesson) => lesson.title);
 
   useEffect(() => {
     setTitle(module.title);
+    setDescription(module.description ?? "");
     setLevel(module.level);
-  }, [module.id, module.title, module.level]);
+    setSource(descriptionSourceFromModule(module));
+  }, [
+    module.id,
+    module.title,
+    module.description,
+    module.level,
+    module.description_source_filename,
+    module.description_source_content_type,
+    module.description_source_kind,
+  ]);
+
+  useEffect(() => {
+    if (open && selectedLesson) setPane("lessons");
+  }, [open, selectedLesson]);
 
   async function saveModule() {
     const nextTitle = trimmed(title);
@@ -77,7 +116,12 @@ export function ModuleEditor({
     }
     setSavingModule(true);
     await runAction({
-      run: () => api.patch(`/tracks/modules/${module.id}`, { title: nextTitle, level }),
+      run: () =>
+        api.patch(`/tracks/modules/${module.id}`, {
+          title: nextTitle,
+          description,
+          level,
+        }),
       successMessage: "Módulo salvo.",
       errorMessage: "Não foi possível salvar o módulo.",
       onSuccess: () => onChanged(),
@@ -186,6 +230,7 @@ export function ModuleEditor({
               <span className="structure-module__name">{module.title || "Sem nome"}</span>
               <span className="structure-module__meta">
                 {levelLabel(module.level)} · {lessons.length} aula{lessons.length !== 1 ? "s" : ""}
+                {module.description?.trim() ? " · com descrição" : ""}
                 {!module.is_active && " · desativado"}
               </span>
             </span>
@@ -204,8 +249,34 @@ export function ModuleEditor({
 
       {open && (
         <div className="structure-module__body">
+          <div className="structure-module__panes" role="tablist" aria-label="Seções do módulo">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={pane === "meta"}
+              className={`structure-module__pane${pane === "meta" ? " structure-module__pane--active" : ""}`}
+              onClick={() => setPane("meta")}
+            >
+              Dados
+              {moduleDirty && <span className="structure-module__pane-dot" aria-label="Alterações não salvas" />}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={pane === "lessons"}
+              className={`structure-module__pane${pane === "lessons" ? " structure-module__pane--active" : ""}`}
+              onClick={() => setPane("lessons")}
+            >
+              Aulas
+              {lessons.length > 0 && (
+                <span className="structure-module__pane-count">{lessons.length}</span>
+              )}
+            </button>
+          </div>
+
+          {pane === "meta" && (
           <div className="structure-module__fields">
-            <div className="field">
+            <div className="field field--wide">
               <label htmlFor={`mod-title-${module.id}`}>Nome do módulo</label>
               <input
                 id={`mod-title-${module.id}`}
@@ -230,6 +301,32 @@ export function ModuleEditor({
                 ))}
               </div>
             </div>
+            <div className="field field--wide">
+              <label htmlFor={`mod-description-${module.id}`}>Descrição</label>
+              <textarea
+                id={`mod-description-${module.id}`}
+                className="input lesson-panel__content"
+                rows={6}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Material, orientações e referências deste módulo…"
+              />
+              <ContentSourceImport
+                idPrefix={`module-description-${module.id}`}
+                importUrl={`/tracks/modules/${module.id}/import-description`}
+                downloadUrl={`/tracks/modules/${module.id}/description-source`}
+                disabled={savingModule}
+                currentContent={description}
+                source={source}
+                onImported={(text, nextSource) => {
+                  setDescription(text);
+                  setSource(nextSource);
+                  void onChanged();
+                }}
+                fieldLabel="Preencher descrição a partir de áudio ou arquivo"
+                hint="Grave ou anexe. O texto novo é acrescentado à descrição; o arquivo fonte fica o último anexado. Edite e salve o módulo se quiser ajustar."
+              />
+            </div>
             {moduleDirty && (
               <button
                 type="button"
@@ -241,7 +338,9 @@ export function ModuleEditor({
               </button>
             )}
           </div>
+          )}
 
+          {pane === "lessons" && (
           <div className="structure-lessons">
             <div className="structure-lessons__head">
               <span className="structure-lessons__title">Aulas</span>
@@ -363,6 +462,7 @@ export function ModuleEditor({
               </div>
             )}
           </div>
+          )}
         </div>
       )}
     </article>

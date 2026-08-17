@@ -529,7 +529,7 @@ export function TrackEditor() {
                   <section className="track-structure">
                     <div className="track-structure__toolbar">
                       <p className="muted track-structure__hint">
-                        Arraste pelo ícone ⋮⋮ para reordenar módulos e aulas. Expanda um módulo para editar o conteúdo.
+                        Arraste pelo ícone ⋮⋮ para reordenar. Expanda um módulo para editar os dados ou as aulas.
                       </p>
                       <button type="button" className="btn btn-primary" disabled={addingModule} onClick={addModule}>
                         {addingModule ? "Adicionando…" : "Novo módulo"}

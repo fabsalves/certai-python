@@ -73,7 +73,12 @@ export interface PlaygroundContext {
   scope: string;
   current_position: { module: string; lesson: string } | null;
   track_map: Array<Record<string, unknown>>;
-  unlocked_content: Array<{ lesson: string; content: string }>;
+  unlocked_content: Array<{
+    lesson?: string;
+    content?: string;
+    module?: string;
+    description?: string;
+  }>;
   cohort_notes_in_bundle: Array<{
     summary: string;
     unclear_points: string;

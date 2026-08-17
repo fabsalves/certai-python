@@ -253,8 +253,26 @@ async def seed(*, force: bool = False) -> None:
         db.add(track)
         await db.flush()
 
-        m1 = Module(track_id=track.id, title="Fundamentos", level=ModuleLevel.BEGINNER, position=1)
-        m2 = Module(track_id=track.id, title="Prática", level=ModuleLevel.INTERMEDIATE, position=2)
+        m1 = Module(
+            track_id=track.id,
+            title="Fundamentos",
+            description=(
+                "Base da comunicação escrita no trabalho: separar fato de "
+                "interpretação, estruturar o parecer e produzir o primeiro rascunho."
+            ),
+            level=ModuleLevel.BEGINNER,
+            position=1,
+        )
+        m2 = Module(
+            track_id=track.id,
+            title="Prática",
+            description=(
+                "Aplicação: revisar o texto de um par e argumentar com "
+                "objetividade até a entrega."
+            ),
+            level=ModuleLevel.INTERMEDIATE,
+            position=2,
+        )
         db.add_all([m1, m2])
         await db.flush()
 

@@ -91,6 +91,31 @@ def test_trigger_wiring() -> None:
     assert "conversation_service" not in track_src
     print("OK módulo e trilha NÃO leem conversas (sem conversation_service)")
 
+    assert "## Material do módulo" in module_src
+    assert "module.description" in module_src
+    assert "## Material do módulo" not in lesson_svc_src
+    assert "## Material do módulo" not in track_src
+    print("OK avaliação de módulo usa o catálogo do módulo; aula e trilha não")
+
+    from app.services.assessment.module_assessment_service import _build_user_prompt
+
+    filled = _build_user_prompt(
+        module_title="Fundamentos",
+        module_description="Separar fato de interpretação.",
+        lesson_assessments_block="(nenhuma)",
+        micro_scores_block="(nenhum)",
+    )
+    assert "## Material do módulo" in filled
+    assert "Separar fato de interpretação." in filled
+    empty = _build_user_prompt(
+        module_title="Fundamentos",
+        module_description="",
+        lesson_assessments_block="(nenhuma)",
+        micro_scores_block="(nenhum)",
+    )
+    assert "(sem conteúdo cadastrado)" in empty
+    print("OK prompt de módulo inclui material cadastrado (ou marca vazio)")
+
 
 async def test_settled_gating_mixed_statuses() -> None:
     """Module gate treats CONCLUIDA + ENCERRADA_POR_AVANCO as a full set."""

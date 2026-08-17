@@ -5,7 +5,7 @@ to the AI. The ContextBuilder hands the AI:
 
   - the track MAP (sequence, titles, where each thing lives) -> always, so the AI
     can orient ("you'll see this in Lesson 6");
-  - the current lesson CONTENT -> full catalog + full class note;
+  - the current lesson CONTENT -> full catalog + that module's description + full class note;
   - prior unlocked lessons -> note summary/unclear_points only (no catalog, no KB).
 
 A future lesson has no content in the bundle. The AI cannot teach it because it
@@ -36,7 +36,7 @@ class ContextBundle:
 
     scope: str
     track_map: list[dict] = field(default_factory=list)        # always present
-    unlocked_content: list[dict] = field(default_factory=list)  # current lesson catalog only
+    unlocked_content: list[dict] = field(default_factory=list)  # current module + lesson catalog
     cohort_notes: list[dict] = field(default_factory=list)
     current_position: dict | None = None
     track_guide: str = ""  # macro guide from the track material, available at any lesson
@@ -124,8 +124,12 @@ class ContextBuilder:
                         "unlocked": lesson.id in unlocked,
                     }
                 )
-                # Full catalog only for the current lesson (when unlocked).
+                # Full catalog only for the current lesson (when unlocked),
+                # plus that module's description (raw, same role as lesson.content).
                 if lesson.id == lesson_id and lesson.id in unlocked:
+                    content.append(
+                        {"module": module.title, "description": module.description}
+                    )
                     content.append({"lesson": lesson.title, "content": lesson.content})
                 if lesson.id == lesson_id:
                     position = {
@@ -178,13 +182,24 @@ class ContextBuilder:
             for l in m.lessons
             if l.is_active
         ]
-        content = [
-            {"lesson": l.title, "content": l.content}
-            for m in track.modules
-            if m.is_active
-            for l in m.lessons
-            if l.is_active and l.id in unlocked
-        ]
+        content: list[dict] = []
+        for module in track.modules:
+            if not module.is_active:
+                continue
+            unlocked_lessons = [
+                lesson
+                for lesson in module.lessons
+                if lesson.is_active and lesson.id in unlocked
+            ]
+            if not unlocked_lessons:
+                continue
+            content.append(
+                {"module": module.title, "description": module.description}
+            )
+            content.extend(
+                {"lesson": lesson.title, "content": lesson.content}
+                for lesson in unlocked_lessons
+            )
         return ContextBundle(
             scope="track",
             track_map=track_map,

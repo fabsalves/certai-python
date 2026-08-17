@@ -14,9 +14,13 @@ export interface Lesson {
 export interface Module {
   id: string;
   title: string;
+  description?: string;
   level: ModuleLevel;
   position: number;
   is_active: boolean;
+  description_source_filename?: string | null;
+  description_source_content_type?: string | null;
+  description_source_kind?: "audio" | "document" | string | null;
   lessons: Lesson[];
 }
 

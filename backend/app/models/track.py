@@ -50,11 +50,17 @@ class Module(Base):
         UUID(as_uuid=True), ForeignKey("tracks.id", ondelete="CASCADE"), index=True
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="")  # catalog material for the AI
     level: Mapped[ModuleLevel] = mapped_column(
         Enum(ModuleLevel, native_enum=False, length=20), default=ModuleLevel.BEGINNER
     )
     position: Mapped[int] = mapped_column(Integer, nullable=False)  # place in the sequence
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    # Source file used to fill description (audio/doc import) — same pattern as lesson content.
+    description_source_storage_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    description_source_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    description_source_content_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    description_source_kind: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     track: Mapped[Track] = relationship(back_populates="modules")
     lessons: Mapped[list["Lesson"]] = relationship(

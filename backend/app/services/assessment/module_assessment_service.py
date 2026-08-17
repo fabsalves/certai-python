@@ -25,15 +25,17 @@ from app.services.assessment.evaluator import (
 def _build_user_prompt(
     *,
     module_title: str,
+    module_description: str,
     lesson_assessments_block: str,
     micro_scores_block: str,
 ) -> str:
     return (
         f"# Escopo: módulo\n"
         f"# Módulo: {module_title}\n\n"
-        "Julgue a compreensão do aluno neste módulo a partir das avaliações de "
-        "aula (mais recentes) e dos micro-scores do módulo. Não há conversas "
-        "neste escopo.\n\n"
+        f"## Material do módulo\n{module_description or '(sem conteúdo cadastrado)'}\n\n"
+        "Julgue a compreensão do aluno neste módulo a partir do material do "
+        "módulo, das avaliações de aula (mais recentes) e dos micro-scores do "
+        "módulo. Não há conversas neste escopo.\n\n"
         f"## Avaliações de aula do módulo\n{lesson_assessments_block}\n\n"
         f"## Micro-scores do aluno no módulo\n{micro_scores_block}"
     )
@@ -74,6 +76,7 @@ class ModuleAssessmentService:
 
         user_prompt = _build_user_prompt(
             module_title=module.title,
+            module_description=module.description,
             lesson_assessments_block=format_child_assessments(
                 lesson_assessments,
                 title_for=lambda row: (

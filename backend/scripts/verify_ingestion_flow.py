@@ -51,6 +51,39 @@ def test_context_bundle_empty_guide_omitted() -> None:
     assert "## Track guide" not in bundle.to_system_blocks()
 
 
+def test_context_bundle_includes_module_description_catalog() -> None:
+    """Module description is raw catalog in the same bundle as lesson.content."""
+    bundle = ContextBundle(
+        scope="lesson",
+        unlocked_content=[
+            {"module": "Fundamentos", "description": "Catálogo do módulo"},
+            {"lesson": "Leitura crítica", "content": "Catálogo da aula"},
+        ],
+    )
+    blocks = bundle.to_system_blocks()
+    assert "Catálogo do módulo" in blocks
+    assert "Catálogo da aula" in blocks
+    assert "Fundamentos" in blocks
+
+
+def test_context_builder_module_description_is_raw_unlocked_catalog() -> None:
+    """Description enters unlocked_content raw, only for the unlocked module."""
+    from app.ai.context_builder import ContextBuilder
+
+    lesson_src = inspect.getsource(ContextBuilder.build_lesson)
+    track_src = inspect.getsource(ContextBuilder.build_track)
+
+    assert "module.description" in lesson_src
+    assert "lesson.content" in lesson_src
+    assert "lesson.id in unlocked" in lesson_src
+    assert "ingest_" not in lesson_src
+
+    assert "module.description" in track_src
+    assert "unlocked_lessons" in track_src
+    assert "if not unlocked_lessons" in track_src
+    assert "ingest_" not in track_src
+
+
 def test_complete_lesson_enqueues_ingestion_not_dispatch() -> None:
     """Fast path must enqueue ingest_lesson_completion, never plan_dispatch."""
     source = inspect.getsource(complete_lesson)
@@ -163,6 +196,8 @@ def main() -> None:
     test_unsupported_ppt_raises()
     test_context_bundle_track_guide_block()
     test_context_bundle_empty_guide_omitted()
+    test_context_bundle_includes_module_description_catalog()
+    test_context_builder_module_description_is_raw_unlocked_catalog()
     test_complete_lesson_enqueues_ingestion_not_dispatch()
     test_ingest_task_chains_dispatch_after_commit()
     test_coerce_llm_text_field_serializes_nested_values()

@@ -166,9 +166,21 @@ export function PlaygroundContextPanel({
                 Nenhuma aula liberada ainda. A Lira só enxerga conteúdo das aulas que a turma já concluiu.
               </p>
             ) : (
-              context.unlocked_content.map((item) => (
-                <TextBlock key={item.lesson} label={item.lesson} value={item.content} />
-              ))
+              context.unlocked_content.map((item, index) =>
+                item.module != null && item.description != null ? (
+                  <TextBlock
+                    key={`module-${item.module}-${index}`}
+                    label={`Módulo: ${item.module}`}
+                    value={item.description}
+                  />
+                ) : (
+                  <TextBlock
+                    key={`lesson-${item.lesson}-${index}`}
+                    label={item.lesson || "Aula"}
+                    value={item.content || ""}
+                  />
+                ),
+              )
             )}
           </ContextSection>
 

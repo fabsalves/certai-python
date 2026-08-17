@@ -244,6 +244,10 @@ def _find_title_locations(
         locations.append(f"track_map[].lesson (indices {map_lesson_idxs})")
 
     for i, row in enumerate(bundle.unlocked_content):
+        if row.get("module") == title:
+            locations.append(f"unlocked_content[{i}].module")
+        if title in (row.get("description") or ""):
+            locations.append(f"unlocked_content[{i}].description")
         if row.get("lesson") == title:
             locations.append(f"unlocked_content[{i}].lesson")
         if title in (row.get("content") or ""):
@@ -370,14 +374,22 @@ async def run(
         print(f"  {'TOTAL blocos':20s}  {total_blocks:>8,} chars  (~{_tokens(total_blocks):,} tokens)")
         print("  (TOTAL = len(to_system_blocks()), fonte da verdade)")
 
-        print("\n  unlocked_content — detalhe por aula:")
+        print("\n  unlocked_content — detalhe por item:")
         if not bundle.unlocked_content:
             print("    (nenhuma aula liberada)")
         for item in bundle.unlocked_content:
+            if "description" in item:
+                title = item.get("module") or "?"
+                content_len = len(item.get("description") or "")
+                print(
+                    f"    - módulo {title!r}: description={content_len:,} chars "
+                    f"(~{_tokens(content_len):,} tokens)"
+                )
+                continue
             title = item.get("lesson") or "?"
             content_len = len(item.get("content") or "")
             print(
-                f"    - {title!r}: content={content_len:,} chars "
+                f"    - aula {title!r}: content={content_len:,} chars "
                 f"(~{_tokens(content_len):,} tokens)"
             )
 

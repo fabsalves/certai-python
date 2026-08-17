@@ -1,5 +1,4 @@
 import uuid
-from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
@@ -13,22 +12,13 @@ from app.core.deps import require_roles
 from app.models.cohort import CohortModuleProfessor
 from app.models.track import Lesson, Module, Track
 from app.models.user import Role, User
-from app.services.ingestion.lesson_content_import_service import (
-    AUDIO_EXTENSIONS,
-    append_imported_text,
-    classify_source,
-    import_lesson_text,
-)
+from app.services.ingestion.content_source_import_service import import_catalog_source
 from app.services.storage import get_storage
 from app.services.storage.download import file_response
 from app.services.track_structure import ensure_unique_lesson_title, ensure_unique_module_title
 from app.services.upload_validation import (
-    ATTACHMENT_MAX_BYTES,
-    AUDIO_MAX_BYTES,
-    LESSON_IMPORT_DOC_BY_EXT,
     MATERIAL_MAX_BYTES,
     TRACK_MATERIAL_BY_EXT,
-    is_allowed_report_audio,
     read_upload,
     resolve_allowed_type,
 )
@@ -95,76 +85,20 @@ async def import_text_for_lesson_content(
     if lesson is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Aula não encontrada")
 
-    filename = source.filename or ""
-    try:
-        kind = classify_source(filename)
-    except ValueError as exc:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
-
-    if kind == "audio":
-        if not is_allowed_report_audio(source.content_type, filename):
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Arquivo deve ser de áudio")
-        content_type = source.content_type or "audio/webm"
-        ext = Path(filename).suffix.lower() or ".webm"
-        content = await read_upload(
-            source,
-            max_bytes=AUDIO_MAX_BYTES,
-            too_large_message="Áudio muito grande (máx. 25 MB)",
-            empty_message="Áudio vazio",
-        )
-    else:
-        content_type, ext = resolve_allowed_type(source, LESSON_IMPORT_DOC_BY_EXT)
-        content = await read_upload(
-            source,
-            max_bytes=ATTACHMENT_MAX_BYTES,
-            too_large_message="Arquivo muito grande (máx. 10 MB)",
-            empty_message="Arquivo vazio",
-        )
-
-    try:
-        extracted = await import_lesson_text(
-            content=content, filename=filename or f"source{ext}"
-        )
-    except ValueError as exc:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
-    except Exception as exc:
-        detail = (
-            "Não foi possível transcrever o áudio. Tente novamente."
-            if kind == "audio"
-            else "Não foi possível extrair o texto do arquivo. Tente novamente."
-        )
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail) from exc
-
-    if not extracted.strip():
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "Nenhum texto foi obtido. Verifique o áudio ou se o PDF tem texto selecionável.",
-        )
-
-    storage = get_storage()
-    if lesson.content_source_storage_key:
-        await storage.delete(lesson.content_source_storage_key)
-
-    key = f"lessons/{lesson_id}/content-source/{uuid.uuid4()}{ext}"
-    await storage.save(content, key, content_type=content_type)
-
-    base = lesson.content if base_text is None else base_text
-    text = append_imported_text(base, extracted)
-    lesson.content = text
-    lesson.content_source_storage_key = key
-    lesson.content_source_filename = filename or f"source{ext}"
-    lesson.content_source_content_type = content_type
-    lesson.content_source_kind = kind
-    await db.flush()
-
-    return ImportTextOut(
-        text=text,
-        content_source_filename=lesson.content_source_filename,
-        content_source_content_type=lesson.content_source_content_type,
-        content_source_kind=lesson.content_source_kind,
+    imported = await import_catalog_source(
+        source,
+        base_text=base_text,
+        current_text=lesson.content,
+        previous_storage_key=lesson.content_source_storage_key,
+        storage_prefix=f"lessons/{lesson_id}/content-source",
     )
+    lesson.content = imported.text
+    lesson.content_source_storage_key = imported.storage_key
+    lesson.content_source_filename = imported.filename
+    lesson.content_source_content_type = imported.content_type
+    lesson.content_source_kind = imported.kind
+    await db.flush()
+    return imported.to_out()
 
 
 @router.get(
@@ -331,76 +265,20 @@ async def import_text_for_track_description(
     Distinct from track material (PDF/PPT for AI ingestion).
     """
     track = await _get_track(db, track_id)
-    filename = source.filename or ""
-    try:
-        kind = classify_source(filename)
-    except ValueError as exc:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
-
-    if kind == "audio":
-        if not is_allowed_report_audio(source.content_type, filename):
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Arquivo deve ser de áudio")
-        content_type = source.content_type or "audio/webm"
-        ext = Path(filename).suffix.lower() or ".webm"
-        content = await read_upload(
-            source,
-            max_bytes=AUDIO_MAX_BYTES,
-            too_large_message="Áudio muito grande (máx. 25 MB)",
-            empty_message="Áudio vazio",
-        )
-    else:
-        content_type, ext = resolve_allowed_type(source, LESSON_IMPORT_DOC_BY_EXT)
-        content = await read_upload(
-            source,
-            max_bytes=ATTACHMENT_MAX_BYTES,
-            too_large_message="Arquivo muito grande (máx. 10 MB)",
-            empty_message="Arquivo vazio",
-        )
-
-    try:
-        extracted = await import_lesson_text(
-            content=content, filename=filename or f"source{ext}"
-        )
-    except ValueError as exc:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
-    except Exception as exc:
-        detail = (
-            "Não foi possível transcrever o áudio. Tente novamente."
-            if kind == "audio"
-            else "Não foi possível extrair o texto do arquivo. Tente novamente."
-        )
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail) from exc
-
-    if not extracted.strip():
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "Nenhum texto foi obtido. Verifique o áudio ou se o PDF tem texto selecionável.",
-        )
-
-    storage = get_storage()
-    if track.description_source_storage_key:
-        await storage.delete(track.description_source_storage_key)
-
-    key = f"tracks/{track_id}/description-source/{uuid.uuid4()}{ext}"
-    await storage.save(content, key, content_type=content_type)
-
-    base = track.description if base_text is None else base_text
-    text = append_imported_text(base, extracted)
-    track.description = text
-    track.description_source_storage_key = key
-    track.description_source_filename = filename or f"source{ext}"
-    track.description_source_content_type = content_type
-    track.description_source_kind = kind
-    await db.flush()
-
-    return ImportTextOut(
-        text=text,
-        content_source_filename=track.description_source_filename,
-        content_source_content_type=track.description_source_content_type,
-        content_source_kind=track.description_source_kind,
+    imported = await import_catalog_source(
+        source,
+        base_text=base_text,
+        current_text=track.description,
+        previous_storage_key=track.description_source_storage_key,
+        storage_prefix=f"tracks/{track_id}/description-source",
     )
+    track.description = imported.text
+    track.description_source_storage_key = imported.storage_key
+    track.description_source_filename = imported.filename
+    track.description_source_content_type = imported.content_type
+    track.description_source_kind = imported.kind
+    await db.flush()
+    return imported.to_out()
 
 
 @router.get(
@@ -420,6 +298,69 @@ async def download_track_description_source(
         storage_key=track.description_source_storage_key,
         filename=track.description_source_filename or "source",
         content_type=track.description_source_content_type,
+    )
+
+
+@router.post(
+    "/modules/{module_id}/import-description",
+    response_model=ImportTextOut,
+    dependencies=[Depends(can_edit)],
+)
+async def import_text_for_module_description(
+    module_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(can_edit)],
+    source: Annotated[
+        UploadFile,
+        File(description="Áudio ou documento para preencher a descrição do módulo"),
+    ],
+    base_text: Annotated[
+        str | None,
+        Form(
+            description="Texto atual do campo (editor). Novo trecho é concatenado a este base.",
+        ),
+    ] = None,
+):
+    """Transcribe/extract and append into module.description; persist latest source file."""
+    module = await db.get(Module, module_id)
+    if module is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Módulo não encontrado")
+
+    imported = await import_catalog_source(
+        source,
+        base_text=base_text,
+        current_text=module.description,
+        previous_storage_key=module.description_source_storage_key,
+        storage_prefix=f"modules/{module_id}/description-source",
+    )
+    module.description = imported.text
+    module.description_source_storage_key = imported.storage_key
+    module.description_source_filename = imported.filename
+    module.description_source_content_type = imported.content_type
+    module.description_source_kind = imported.kind
+    await db.flush()
+    return imported.to_out()
+
+
+@router.get(
+    "/modules/{module_id}/description-source",
+    dependencies=[Depends(can_edit)],
+)
+async def download_module_description_source(
+    module_id: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    module = await db.get(Module, module_id)
+    if module is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Módulo não encontrado")
+    if not module.description_source_storage_key:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "Nenhum arquivo fonte na descrição deste módulo"
+        )
+    return await file_response(
+        storage_key=module.description_source_storage_key,
+        filename=module.description_source_filename or "source",
+        content_type=module.description_source_content_type,
     )
 
 
@@ -465,9 +406,20 @@ async def update_module(
 async def delete_module(
     module_id: uuid.UUID, db: Annotated[AsyncSession, Depends(get_db)]
 ):
-    module = await db.get(Module, module_id)
+    stmt = (
+        select(Module)
+        .where(Module.id == module_id)
+        .options(selectinload(Module.lessons))
+    )
+    module = (await db.execute(stmt)).scalar_one_or_none()
     if module is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Módulo não encontrado")
+    storage = get_storage()
+    if module.description_source_storage_key:
+        await storage.delete(module.description_source_storage_key)
+    for lesson in module.lessons:
+        if lesson.content_source_storage_key:
+            await storage.delete(lesson.content_source_storage_key)
     await db.execute(
         delete(CohortModuleProfessor).where(CohortModuleProfessor.module_id == module_id)
     )

@@ -133,12 +133,14 @@ class LessonOut(LessonCreate):
 
 class ModuleCreate(BaseModel):
     title: NameStr
+    description: str = ""
     level: ModuleLevel = ModuleLevel.BEGINNER
     position: int
 
 
 class ModuleUpdate(BaseModel):
     title: OptionalNameStr = None
+    description: str | None = None
     level: ModuleLevel | None = None
     position: int | None = None
     is_active: bool | None = None
@@ -148,6 +150,9 @@ class ModuleOut(ModuleCreate):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
     is_active: bool
+    description_source_filename: str | None = None
+    description_source_content_type: str | None = None
+    description_source_kind: str | None = None
     lessons: list[LessonOut] = []
 
 

@@ -192,10 +192,61 @@
 }
 
 .structure-module__body {
-  padding: 20px 20px 22px;
+  padding: 16px 20px 22px;
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 18px;
+}
+
+.structure-module__panes {
+  display: flex;
+  gap: 4px;
+  width: fit-content;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+}
+
+.structure-module__pane {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, box-shadow 0.12s;
+}
+
+.structure-module__pane:hover:not(.structure-module__pane--active) {
+  color: var(--ink);
+}
+
+.structure-module__pane--active {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(20, 32, 43, 0.08);
+}
+
+.structure-module__pane-count {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--brand-50);
+  color: var(--brand);
+}
+
+.structure-module__pane-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--brand);
 }
 
 .structure-module__fields {
@@ -475,7 +526,8 @@
     align-items: end;
   }
 
-  .structure-module__fields .field:first-child {
+  .structure-module__fields .field:first-child,
+  .structure-module__fields .field--wide {
     grid-column: 1 / -1;
   }
 
