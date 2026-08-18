@@ -2955,20 +2955,21 @@ html.modal-scroll-lock body {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface-sunken);
-  overflow: visible;
+  overflow-x: auto;
+  overflow-y: visible;
 }
 
 @media (max-width: 640px) {
   .student-rows__table-wrap {
-    overflow-x: auto;
     overflow-y: hidden;
   }
 }
 
 .student-rows__table {
   width: 100%;
+  min-width: 560px;
   border-collapse: collapse;
-  table-layout: fixed;
+  table-layout: auto;
 }
 
 .student-rows__table thead th {
@@ -3025,18 +3026,16 @@ html.modal-scroll-lock body {
 
 .student-rows__table th:nth-child(4),
 .student-rows__table td:nth-child(4) {
-  width: 34%;
-  min-width: 220px;
+  width: 240px;
+  min-width: 240px;
 }
 
 .student-rows__table th:nth-child(2),
-.student-rows__table td:nth-child(2) {
-  width: 30%;
-}
-
+.student-rows__table td:nth-child(2),
 .student-rows__table th:nth-child(3),
 .student-rows__table td:nth-child(3) {
-  width: 32%;
+  width: auto;
+  min-width: 120px;
 }
 
 .student-rows__cell-field {
@@ -3044,6 +3043,20 @@ html.modal-scroll-lock body {
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+}
+
+.student-rows__cell-field .phone-field {
+  width: 100%;
+  max-width: 100%;
+}
+
+.student-rows__cell-field .phone-field--compact .phone-field__ddi {
+  gap: 3px;
+  padding: 0 5px 0 7px;
+}
+
+.student-rows__cell-field .phone-field--compact .phone-field__code {
+  display: none;
 }
 
 .student-rows__input {
@@ -3811,13 +3824,14 @@ html.modal-scroll-lock body {
   flex-shrink: 0;
   height: var(--chrome-footer-height);
   box-sizing: border-box;
-  padding: 12px 24px;
+  padding: 0 24px;
   background: var(--surface);
   border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 8px;
+  gap: 4px;
+  overflow: hidden;
 }
 
 .playground-composer__form {

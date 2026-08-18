@@ -43,11 +43,11 @@
   --sidebar-width-expanded: 260px;
   --sidebar-width-collapsed: 76px;
   --sidebar-width: var(--sidebar-width-expanded);
-  --shell-foot-height: 72px;
-  --ease: cubic-bezier(0.4, 0, 0.2, 1);
-  --topbar-height: 56px;
   --chrome-header-height: 72px;
-  --chrome-footer-height: 112px;
+  --chrome-footer-height: 72px;
+  --topbar-height: var(--chrome-header-height);
+  --shell-foot-height: var(--chrome-footer-height);
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
   /* respiro lateral/bloco — escala com a viewport, teto fixo */
   --page-gutter: clamp(16px, 2.5vw, 40px);
   --page-gutter-block: clamp(24px, 3vh, 48px);
