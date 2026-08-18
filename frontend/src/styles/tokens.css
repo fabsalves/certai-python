@@ -51,6 +51,56 @@
   /* respiro lateral/bloco — escala com a viewport, teto fixo */
   --page-gutter: clamp(16px, 2.5vw, 40px);
   --page-gutter-block: clamp(24px, 3vh, 48px);
+
+  /* shell / chrome (sidebar escura em ambos os temas) */
+  --shell-sidebar-bg: #14202b;
+  --shell-sidebar-fg: #ffffff;
+  --shell-sidebar-muted: rgba(243, 247, 246, 0.72);
+  --shell-sidebar-subtle: rgba(243, 247, 246, 0.5);
+  --shell-sidebar-border: rgba(255, 255, 255, 0.08);
+  --shell-sidebar-border-soft: rgba(255, 255, 255, 0.06);
+  --shell-sidebar-hover: rgba(255, 255, 255, 0.06);
+  --shell-sidebar-active-bg: rgba(15, 76, 74, 0.85);
+  --shell-sidebar-active-ring: rgba(255, 255, 255, 0.08);
+  --shell-sidebar-control-border: rgba(255, 255, 255, 0.18);
+  --shell-sidebar-avatar-bg: rgba(255, 255, 255, 0.1);
+  --shell-topbar-bg: rgba(245, 246, 247, 0.92);
+  --overlay-backdrop: rgba(20, 32, 43, 0.45);
+  --heading: var(--ink);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #111920;
+  --surface: #1a232c;
+  --surface-sunken: #141c24;
+
+  --ink: #eef2f4;
+  --heading: #eef2f4;
+  --brand: #1f8a85;
+  --brand-700: #18706c;
+  --brand-50: #152826;
+  --accent: #c4923f;
+  --accent-50: #2a2318;
+
+  --text: #dce3e8;
+  --text-muted: #9aa8b5;
+  --text-subtle: #738493;
+  --on-brand: #f3f7f6;
+
+  --border: #2a3540;
+  --border-strong: #3a4654;
+  --success: #5fa67a;
+  --danger: #d46a62;
+  --danger-50: #2b1a19;
+
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.22), 0 4px 16px rgba(0, 0, 0, 0.28);
+  --ring: 0 0 0 3px rgba(31, 138, 133, 0.28);
+
+  --shell-sidebar-bg: #0a1016;
+  --shell-topbar-bg: rgba(17, 25, 32, 0.92);
+  --overlay-backdrop: rgba(0, 0, 0, 0.58);
 }
 
 * { box-sizing: border-box; }
@@ -67,7 +117,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-h1, h2, h3 { font-family: var(--font-display); font-weight: 500; color: var(--ink); margin: 0; letter-spacing: -0.01em; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 500; color: var(--heading); margin: 0; letter-spacing: -0.01em; }
 h1 { font-size: 30px; }
 h2 { font-size: 22px; }
 h3 { font-size: 17px; font-family: var(--font-sans); font-weight: 600; }

@@ -14,7 +14,7 @@
   justify-content: space-between;
   gap: 32px;
   padding: 64px 56px;
-  background: var(--ink);
+  background: var(--shell-sidebar-bg);
   color: var(--on-brand);
 }
 
@@ -22,12 +22,12 @@
   font-family: var(--font-display);
   font-size: 26px;
   font-weight: 600;
-  color: #fff;
+  color: var(--shell-sidebar-fg);
   text-decoration: none;
 }
 
 .login-hero__copy h1 {
-  color: #fff;
+  color: var(--shell-sidebar-fg);
   font-size: 38px;
   line-height: 1.2;
   max-width: 420px;
@@ -36,7 +36,7 @@
 .login-hero__copy p {
   max-width: 420px;
   margin-top: 16px;
-  color: rgba(243, 247, 246, 0.72);
+  color: var(--shell-sidebar-muted);
 }
 
 .login-hero__tagline {
@@ -45,7 +45,7 @@
 
 .login-hero__foot {
   font-size: 13px;
-  color: rgba(243, 247, 246, 0.45);
+  color: var(--shell-sidebar-subtle);
 }
 
 .login-panel {
@@ -102,7 +102,7 @@
     display: block;
     font-size: 15px;
     line-height: 1.45;
-    color: rgba(243, 247, 246, 0.72);
+    color: var(--shell-sidebar-muted);
   }
 
   .login-hero__foot {

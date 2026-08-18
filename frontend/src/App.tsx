@@ -5,6 +5,7 @@ import { RoleRoute } from "./components/RoleRoute";
 import { AuthProvider } from "./lib/auth";
 import { ConfirmProvider } from "./lib/confirm";
 import { FeedbackProvider } from "./lib/feedback";
+import { ThemeProvider } from "./lib/theme";
 import { CohortEditor } from "./pages/CohortEditor";
 import { Cohorts } from "./pages/Cohorts";
 import { Dashboard } from "./pages/Dashboard";
@@ -18,10 +19,11 @@ import { VoiceSession } from "./pages/VoiceSession";
 
 export default function App() {
   return (
-    <AuthProvider>
-      <ConfirmProvider>
-        <FeedbackProvider>
-        <BrowserRouter>
+    <ThemeProvider>
+      <AuthProvider>
+        <ConfirmProvider>
+          <FeedbackProvider>
+          <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/voz/:handoffToken" element={<VoiceSession />} />
@@ -51,5 +53,6 @@ export default function App() {
         </FeedbackProvider>
       </ConfirmProvider>
     </AuthProvider>
+    </ThemeProvider>
   );
 }

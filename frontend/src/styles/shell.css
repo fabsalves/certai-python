@@ -24,9 +24,9 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--ink);
+  background: var(--shell-sidebar-bg);
   color: var(--on-brand);
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  border-right: 1px solid var(--shell-sidebar-border-soft);
 }
 
 .shell-brand-row {
@@ -38,19 +38,19 @@
   height: var(--chrome-header-height);
   box-sizing: border-box;
   padding: 0 12px 0 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--shell-sidebar-border);
 }
 
 .shell-brand {
   display: flex;
   align-items: center;
   min-width: 0;
-  color: #fff;
+  color: var(--shell-sidebar-fg);
   text-decoration: none;
 }
 
 .shell-brand:hover {
-  color: #fff;
+  color: var(--shell-sidebar-fg);
   text-decoration: none;
 }
 
@@ -72,8 +72,8 @@
   flex-shrink: 0;
   min-width: 32px;
   padding-inline: 8px;
-  color: rgba(243, 247, 246, 0.85);
-  border-color: rgba(255, 255, 255, 0.18);
+  color: color-mix(in srgb, var(--shell-sidebar-fg) 85%, transparent);
+  border-color: var(--shell-sidebar-control-border);
 }
 
 .shell-collapse--nav {
@@ -82,8 +82,8 @@
 }
 
 .shell-collapse:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: #fff;
+  background: var(--shell-sidebar-hover);
+  color: var(--shell-sidebar-fg);
 }
 
 .shell-nav {
@@ -110,7 +110,7 @@
   gap: 10px;
   padding: 9px 12px;
   border-radius: var(--radius-sm);
-  color: rgba(243, 247, 246, 0.72);
+  color: var(--shell-sidebar-muted);
   text-decoration: none;
   font-size: 14px;
   font-weight: 500;
@@ -118,15 +118,15 @@
 }
 
 .shell-nav-link:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: #fff;
+  background: var(--shell-sidebar-hover);
+  color: var(--shell-sidebar-fg);
   text-decoration: none;
 }
 
 .shell-nav-link--active {
-  background: rgba(15, 76, 74, 0.85);
-  color: #fff;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  background: var(--shell-sidebar-active-bg);
+  color: var(--shell-sidebar-fg);
+  box-shadow: inset 0 0 0 1px var(--shell-sidebar-active-ring);
 }
 
 .shell-nav-link__label {
@@ -152,7 +152,7 @@
   height: var(--shell-foot-height);
   box-sizing: border-box;
   padding: 10px 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--shell-sidebar-border);
   display: flex;
   align-items: center;
 }
@@ -217,20 +217,20 @@
 
 .shell-account__trigger:hover,
 .shell-account__trigger[aria-expanded="true"] {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.08);
+  background: var(--shell-sidebar-hover);
+  border-color: var(--shell-sidebar-border-soft);
 }
 
 .shell-account__avatar {
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--shell-sidebar-avatar-bg);
   display: grid;
   place-items: center;
   font-size: 13px;
   font-weight: 600;
-  color: #fff;
+  color: var(--shell-sidebar-fg);
   flex-shrink: 0;
 }
 
@@ -243,7 +243,7 @@
 .shell-account__text strong {
   font-size: 13px;
   font-weight: 500;
-  color: #fff;
+  color: var(--shell-sidebar-fg);
   line-height: 1.3;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -252,7 +252,7 @@
 
 .shell-account__text span {
   font-size: 11px;
-  color: rgba(243, 247, 246, 0.5);
+  color: var(--shell-sidebar-subtle);
 }
 
 .shell.is-collapsed .shell-account__text {
@@ -349,7 +349,7 @@
   gap: 16px;
   padding: 0 var(--page-gutter);
   height: var(--topbar-height);
-  background: rgba(245, 246, 247, 0.92);
+  background: var(--shell-topbar-bg);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--border);
@@ -626,7 +626,7 @@
   position: fixed;
   inset: 0;
   z-index: 400;
-  background: rgba(20, 32, 43, 0.45);
+  background: var(--overlay-backdrop);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4517,15 +4517,15 @@ html.modal-scroll-lock body {
     gap: 12px;
     padding: 10px 14px;
     padding-top: max(10px, env(safe-area-inset-top));
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    background: var(--ink);
+    border-bottom: 1px solid var(--shell-sidebar-border);
+    background: var(--shell-sidebar-bg);
     color: var(--on-brand);
     flex-shrink: 0;
     z-index: 45;
   }
 
   .shell-mobile-bar .shell-brand-text {
-    color: #fff;
+    color: var(--shell-sidebar-fg);
     font-size: 20px;
   }
 
@@ -4551,8 +4551,8 @@ html.modal-scroll-lock body {
     flex-shrink: 0;
     padding: 6px 4px;
     padding-bottom: max(6px, env(safe-area-inset-bottom));
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
-    background: var(--ink);
+    border-top: 1px solid var(--shell-sidebar-border);
+    background: var(--shell-sidebar-bg);
     overflow: visible;
     z-index: 45;
   }
@@ -4565,7 +4565,7 @@ html.modal-scroll-lock body {
     padding: 8px 4px;
     font-size: 10px;
     text-align: center;
-    color: rgba(243, 247, 246, 0.72);
+    color: var(--shell-sidebar-muted);
   }
 
   .shell-nav-link--mobile.shell-nav-link--active {

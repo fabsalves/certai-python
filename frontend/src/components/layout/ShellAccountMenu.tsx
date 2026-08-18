@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from "react";
 import { roleLabel, type User } from "../../lib/auth";
+import { useTheme } from "../../lib/theme";
 import { Tooltip } from "../ui/Tooltip";
 
 function initials(name: string): string {
@@ -27,8 +28,10 @@ export function ShellAccountMenu({
   onLogout,
 }: Props) {
   const menuId = useId();
+  const { theme, toggleTheme } = useTheme();
   const [open, setOpen] = useState(false);
   const showName = variant === "rail" && !collapsed;
+  const themeLabel = theme === "dark" ? "Tema claro" : "Tema escuro";
 
   useEffect(() => {
     setOpen(false);
@@ -108,6 +111,17 @@ export function ShellAccountMenu({
             }}
           >
             Editar conta
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="shell-account__menu-item"
+            onClick={() => {
+              closeMenu();
+              toggleTheme();
+            }}
+          >
+            {themeLabel}
           </button>
           <button
             type="button"
