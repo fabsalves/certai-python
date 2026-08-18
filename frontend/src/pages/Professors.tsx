@@ -1,16 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
+import { matchesAnySearch } from "../lib/listSearch";
 import { useListView } from "../lib/useListView";
+import { usePagination } from "../lib/usePagination";
 import { ProfessorCreateModal } from "../components/cohorts/ProfessorCreateModal";
 import { ProfessorEditModal } from "../components/cohorts/ProfessorEditModal";
 import { ProfessorsListSkeleton } from "../components/professors/ProfessorsListSkeleton";
 import { PageHeader } from "../components/layout/PageHeader";
 import { DataTable, type DataColumn } from "../components/ui/DataTable";
+import { ListEmptyFilter, ListToolbar } from "../components/ui/ListToolbar";
+import { Pagination } from "../components/ui/Pagination";
 import { ViewToggle } from "../components/ui/ViewToggle";
 import type { UserOption } from "../lib/users";
 
 export function Professors() {
   const [view, setView] = useListView("professors");
+  const [search, setSearch] = useState("");
   const [professors, setProfessors] = useState<UserOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -27,6 +32,16 @@ export function Professors() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const filtered = useMemo(
+    () =>
+      professors.filter((professor) =>
+        matchesAnySearch(search, [professor.name, professor.email]),
+      ),
+    [professors, search],
+  );
+
+  const paging = usePagination(filtered, { resetKey: search });
 
   const columns = useMemo<DataColumn<UserOption>[]>(
     () => [
@@ -68,6 +83,9 @@ export function Professors() {
     return <ProfessorsListSkeleton />;
   }
 
+  const hasCatalog = professors.length > 0;
+  const hasResults = filtered.length > 0;
+
   return (
     <>
       <PageHeader
@@ -75,7 +93,7 @@ export function Professors() {
         description="Contas de quem leciona e encerra aulas das turmas."
         actions={
           <>
-            {professors.length > 0 && <ViewToggle value={view} onChange={setView} />}
+            {hasCatalog && <ViewToggle value={view} onChange={setView} />}
             <button type="button" className="btn btn-primary" onClick={() => setModalOpen(true)}>
               Novo professor
             </button>
@@ -83,7 +101,7 @@ export function Professors() {
         }
       />
 
-      {professors.length === 0 && (
+      {!hasCatalog && (
         <div className="card empty-state">
           <p>Nenhum professor cadastrado.</p>
           <p className="muted" style={{ marginTop: 6 }}>
@@ -100,14 +118,37 @@ export function Professors() {
         </div>
       )}
 
-      {professors.length > 0 && (
-        <DataTable
-          columns={columns}
-          rows={professors}
-          rowKey={(professor) => professor.id}
-          layout={view}
-          aria-label="Professores"
-        />
+      {hasCatalog && (
+        <>
+          <ListToolbar
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Buscar por nome ou e-mail"
+            searchLabel="Buscar professores"
+          />
+
+          {!hasResults && <ListEmptyFilter />}
+
+          {hasResults && (
+            <>
+              <DataTable
+                columns={columns}
+                rows={paging.items}
+                rowKey={(professor) => professor.id}
+                layout={view}
+                aria-label="Professores"
+              />
+              <Pagination
+                page={paging.page}
+                totalPages={paging.totalPages}
+                total={paging.total}
+                from={paging.from}
+                to={paging.to}
+                onPageChange={paging.setPage}
+              />
+            </>
+          )}
+        </>
       )}
 
       <ProfessorCreateModal
