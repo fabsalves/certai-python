@@ -4503,6 +4503,10 @@ html.modal-scroll-lock body {
   .shell {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr) auto;
+    height: 100dvh;
+    min-height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
   }
 
   .shell.is-collapsed {
@@ -4521,8 +4525,7 @@ html.modal-scroll-lock body {
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     background: var(--ink);
     color: var(--on-brand);
-    position: sticky;
-    top: 0;
+    flex-shrink: 0;
     z-index: 45;
   }
 
@@ -4538,6 +4541,8 @@ html.modal-scroll-lock body {
   .shell-main {
     grid-column: 1;
     grid-row: 2;
+    min-height: 0;
+    overflow: hidden;
   }
 
   .shell-nav.shell-nav--bottom {
@@ -4548,11 +4553,13 @@ html.modal-scroll-lock body {
     align-items: stretch;
     justify-content: space-around;
     gap: 0;
+    flex-shrink: 0;
     padding: 6px 4px;
     padding-bottom: max(6px, env(safe-area-inset-bottom));
     border-top: 1px solid rgba(255, 255, 255, 0.08);
     background: var(--ink);
     overflow: visible;
+    z-index: 45;
   }
 
   .shell-nav-link--mobile {
@@ -4587,6 +4594,9 @@ html.modal-scroll-lock body {
 
   .shell-content:not(.shell-content--immersive) {
     padding: 20px 16px 32px;
+    overflow-y: auto;
+    min-height: 0;
+    -webkit-overflow-scrolling: touch;
   }
 
   .shell-topbar {
