@@ -67,7 +67,6 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    password: str = Field(min_length=8, max_length=128)
     role: Role = Role.STUDENT
     whatsapp: OptionalWhatsappStr = None
 
@@ -86,6 +85,12 @@ class UserOut(UserBase):
     whatsapp: str | None = None
 
 
+class UserCreatedOut(UserOut):
+    """Create response. initial_password only for staff (platform login)."""
+
+    initial_password: str | None = None
+
+
 class StudentBulkItem(BaseModel):
     name: NameStr
     email: NormalizedEmailStr
@@ -93,7 +98,6 @@ class StudentBulkItem(BaseModel):
 
 
 class StudentBulkCreate(BaseModel):
-    password: str = Field(min_length=8, max_length=128)
     students: list[StudentBulkItem] = Field(min_length=1)
 
 

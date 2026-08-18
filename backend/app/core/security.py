@@ -1,3 +1,4 @@
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 from uuid import uuid4
@@ -6,6 +7,15 @@ import bcrypt
 import jwt
 
 from app.core.config import settings
+
+# Ambiguous characters omitted so the password is readable when copied once.
+_PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+_PASSWORD_LENGTH = 10
+
+
+def generate_password() -> str:
+    """Random initial password. Shown once for staff; never for students."""
+    return "".join(secrets.choice(_PASSWORD_ALPHABET) for _ in range(_PASSWORD_LENGTH))
 
 TokenType = Literal["access", "refresh"]
 

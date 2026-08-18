@@ -75,9 +75,7 @@ export function StudentEnrollModal({
 
   const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
-  const [newPassword, setNewPassword] = useState("");
   const [newWhatsapp, setNewWhatsapp] = useState("");
-  const [batchPassword, setBatchPassword] = useState("");
   const [batchRows, setBatchRows] = useState<StudentDraft[]>([]);
   const [creating, setCreating] = useState(false);
 
@@ -88,10 +86,8 @@ export function StudentEnrollModal({
     setQuery("");
     setSelectedIds(new Set());
     setBatchRows([]);
-    setBatchPassword("");
     setNewName("");
     setNewEmail("");
-    setNewPassword("");
     setNewWhatsapp("");
     setLoadingStudents(true);
     api
@@ -103,9 +99,7 @@ export function StudentEnrollModal({
   function resetAndClose() {
     setNewName("");
     setNewEmail("");
-    setNewPassword("");
     setNewWhatsapp("");
-    setBatchPassword("");
     setBatchRows([]);
     setQuery("");
     setSelectedIds(new Set());
@@ -144,7 +138,7 @@ export function StudentEnrollModal({
 
   const singleWhatsappValid = isNonEmpty(newWhatsapp) && isValidPhoneBR(newWhatsapp);
   const batchFilledCount = nonEmptyRows(batchRows).length;
-  const batchReady = batchPassword.length >= 8 && allDraftsValid(batchRows);
+  const batchReady = allDraftsValid(batchRows);
 
   function toggleStudent(id: string) {
     setSelectedIds((prev) => {
@@ -204,7 +198,6 @@ export function StudentEnrollModal({
         const body: UserCreateInput = {
           email: normalizedEmail(newEmail),
           name: nextName,
-          password: newPassword,
           role: "student",
           whatsapp,
         };
@@ -224,10 +217,6 @@ export function StudentEnrollModal({
 
   async function bulkCreateAndEnroll(e: FormEvent) {
     e.preventDefault();
-    if (batchPassword.length < 8) {
-      feedback.error("Senha inicial deve ter ao menos 8 caracteres.");
-      return;
-    }
     if (!allDraftsValid(batchRows)) {
       feedback.error("Corrija os alunos com pendência antes de continuar.");
       return;
@@ -242,7 +231,6 @@ export function StudentEnrollModal({
           whatsapp: normalizePhoneForApi(row.whatsapp)!,
         }));
         const { data: bulk } = await api.post<StudentBulkResult>("/users/bulk", {
-          password: batchPassword,
           students: studentsPayload,
         });
         const studentIds = [...bulk.created.map((user) => user.id), ...bulk.reused_ids];
@@ -423,7 +411,8 @@ export function StudentEnrollModal({
           <div className="modal-form__body">
             <div className="modal-form__content">
             <p className="muted" style={{ margin: 0, fontSize: 14 }}>
-              Cria a(s) conta(s) e matricula automaticamente nesta turma.
+              Cria a(s) conta(s) e matricula automaticamente nesta turma. A senha
+              é gerada pelo sistema.
             </p>
 
             <div className="modal-segment" role="radiogroup" aria-label="Forma de cadastro">
@@ -463,18 +452,6 @@ export function StudentEnrollModal({
                   className="input"
                   value={newEmail}
                   onChange={(ev) => setNewEmail(ev.target.value)}
-                  required
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="student-password">Senha inicial</label>
-                <input
-                  id="student-password"
-                  type="password"
-                  className="input"
-                  minLength={8}
-                  value={newPassword}
-                  onChange={(ev) => setNewPassword(ev.target.value)}
                   required
                 />
               </div>
@@ -529,20 +506,6 @@ export function StudentEnrollModal({
 
               <div className="student-batch__divider" role="separator">
                 ou preencha manualmente
-              </div>
-
-              <div className="field student-batch__password">
-                <label htmlFor="batch-password">Senha inicial (todos os alunos)</label>
-                <input
-                  id="batch-password"
-                  type="password"
-                  className="input"
-                  minLength={8}
-                  value={batchPassword}
-                  onChange={(ev) => setBatchPassword(ev.target.value)}
-                  placeholder="Mínimo 8 caracteres"
-                  required
-                />
               </div>
 
               <StudentRowsEditor

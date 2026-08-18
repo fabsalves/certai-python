@@ -6,13 +6,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import CurrentUser, require_roles
-from app.core.security import hash_password
+from app.core.security import generate_password, hash_password
 from app.models.user import Role, User
 from app.schemas import (
     StudentBulkCreate,
     StudentBulkOut,
     StudentBulkSkipped,
     UserCreate,
+    UserCreatedOut,
     UserOut,
 )
 
@@ -57,7 +58,7 @@ async def list_users(
 
 @router.post(
     "",
-    response_model=UserOut,
+    response_model=UserCreatedOut,
     status_code=status.HTTP_201_CREATED,
 )
 async def create_user(
@@ -75,16 +76,20 @@ async def create_user(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="WhatsApp já cadastrado"
         )
+    plain = generate_password()
     new_user = User(
         email=body.email,
         name=body.name,
         role=body.role,
-        hashed_password=hash_password(body.password),
+        hashed_password=hash_password(plain),
         whatsapp=body.whatsapp,
     )
     db.add(new_user)
     await db.flush()
-    return new_user
+    created = UserCreatedOut.model_validate(new_user)
+    if body.role != Role.STUDENT:
+        return created.model_copy(update={"initial_password": plain})
+    return created
 
 
 @router.post(
@@ -159,7 +164,7 @@ async def create_students_bulk(
             email=item.email,
             name=item.name,
             role=Role.STUDENT,
-            hashed_password=hash_password(body.password),
+            hashed_password=hash_password(generate_password()),
             whatsapp=item.whatsapp,
         )
         db.add(new_user)

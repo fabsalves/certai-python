@@ -12,9 +12,12 @@ export interface UserOption {
 export interface UserCreateInput {
   email: string;
   name: string;
-  password: string;
   role?: Role;
   whatsapp?: string;
+}
+
+export interface UserCreated extends UserOption {
+  initial_password?: string | null;
 }
 
 export interface StudentDraft {
@@ -31,7 +34,6 @@ export interface StudentBulkItemInput {
 }
 
 export interface StudentBulkCreate {
-  password: string;
   students: StudentBulkItemInput[];
 }
 

@@ -95,6 +95,35 @@ a:hover { text-decoration: underline; }
 }
 .input:focus { border-color: var(--brand); }
 
+.password-field {
+  position: relative;
+}
+.password-field .input {
+  width: 100%;
+  padding-right: 42px;
+}
+.password-field__toggle {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.password-field__toggle:hover {
+  color: var(--text);
+  background: var(--surface-sunken);
+}
+
 textarea.input {
   resize: vertical;
   min-height: 88px;
