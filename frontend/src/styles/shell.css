@@ -935,16 +935,57 @@ html.modal-scroll-lock body {
 }
 
 .cohorts-list__item {
-  display: block;
-  padding: 22px 24px;
-  text-decoration: none;
-  color: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .cohorts-list__item:hover {
   border-color: var(--brand);
   box-shadow: var(--shadow);
+}
+
+.cohorts-list__link {
+  display: block;
+  padding: 22px 24px 16px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.cohorts-list__link:hover {
+  text-decoration: none;
+}
+
+.cohorts-list__shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 16px 24px 20px;
+  border-top: 1px solid var(--border);
+  margin-top: 0;
+}
+
+.cohorts-list__shortcut {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+
+.cohorts-list__shortcut:hover {
+  color: var(--brand);
+  border-color: color-mix(in srgb, var(--brand) 30%, var(--border-strong));
+  background: var(--brand-50);
   text-decoration: none;
 }
 

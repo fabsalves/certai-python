@@ -6,6 +6,10 @@ import { type Cohort, uniqueProfessorNames } from "../lib/cohorts";
 import { CohortsListSkeleton } from "../components/cohorts/CohortsListSkeleton";
 import { PageHeader } from "../components/layout/PageHeader";
 
+function cohortTo(id: string) {
+  return `/cohorts/${id}`;
+}
+
 export function Cohorts() {
   const { user } = useAuth();
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
@@ -65,29 +69,76 @@ export function Cohorts() {
       {cohorts.length > 0 && (
         <div className="cohorts-list">
           {cohorts.map((c) => (
-            <Link key={c.id} to={`/cohorts/${c.id}`} className="card cohorts-list__item">
-              <div className="cohorts-list__head">
-                <div>
-                  <h3 style={{ margin: 0 }}>{c.name}</h3>
-                  <p className="muted" style={{ marginTop: 4, fontSize: 14 }}>
-                    {c.track_title}
-                  </p>
+            <article key={c.id} className="card cohorts-list__item">
+              <Link to={cohortTo(c.id)} state={{ tab: "meta" }} className="cohorts-list__link">
+                <div className="cohorts-list__head">
+                  <div>
+                    <h3 style={{ margin: 0 }}>{c.name}</h3>
+                    <p className="muted" style={{ marginTop: 4, fontSize: 14 }}>
+                      {c.track_title}
+                    </p>
+                  </div>
+                  {canManage && (
+                    <span
+                      className="tag"
+                      title={c.module_professors
+                        .map((mp) => `${mp.module_title}: ${mp.professor_name}`)
+                        .join("\n")}
+                    >
+                      {uniqueProfessorNames(c)}
+                    </span>
+                  )}
                 </div>
-                {canManage && (
-                  <span
-                    className="tag"
-                    title={c.module_professors
-                      .map((mp) => `${mp.module_title}: ${mp.professor_name}`)
-                      .join("\n")}
-                  >
-                    {uniqueProfessorNames(c)}
-                  </span>
+                <p className="muted cohorts-list__meta">
+                  {c.enrollment_count} aluno(s) matriculado(s)
+                </p>
+              </Link>
+
+              <div className="cohorts-list__shortcuts" role="group" aria-label="Abrir seção">
+                {canManage ? (
+                  <>
+                    <Link
+                      to={cohortTo(c.id)}
+                      state={{ tab: "professors" }}
+                      className="cohorts-list__shortcut"
+                    >
+                      Professores
+                    </Link>
+                    <Link
+                      to={cohortTo(c.id)}
+                      state={{ tab: "students" }}
+                      className="cohorts-list__shortcut"
+                    >
+                      Alunos
+                    </Link>
+                    <Link
+                      to={cohortTo(c.id)}
+                      state={{ tab: "progress" }}
+                      className="cohorts-list__shortcut"
+                    >
+                      Andamento
+                    </Link>
+                  </>
+                ) : (
+                  <>
+                    <Link
+                      to={cohortTo(c.id)}
+                      state={{ tab: "students" }}
+                      className="cohorts-list__shortcut"
+                    >
+                      Alunos
+                    </Link>
+                    <Link
+                      to={cohortTo(c.id)}
+                      state={{ tab: "progress" }}
+                      className="cohorts-list__shortcut"
+                    >
+                      Andamento
+                    </Link>
+                  </>
                 )}
               </div>
-              <p className="muted cohorts-list__meta">
-                {c.enrollment_count} aluno(s) matriculado(s)
-              </p>
-            </Link>
+            </article>
           ))}
         </div>
       )}

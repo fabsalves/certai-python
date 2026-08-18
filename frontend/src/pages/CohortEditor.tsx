@@ -252,8 +252,8 @@ export function CohortEditor() {
       setTab("progress");
       return;
     }
-    setTab(isNew ? "meta" : "students");
-  }, [cohortId, isNew, isProfessor, location.state]);
+    setTab("meta");
+  }, [cohortId, isNew, isProfessor, location.state, location.key]);
 
   const metaDirty = cohort ? name !== cohort.name : name.trim().length > 0 || trackId.length > 0;
   const professorsDirty = cohort
