@@ -86,8 +86,13 @@
   align-items: stretch;
   gap: 8px;
   padding: 6px 8px 6px 0;
-  background: var(--surface-sunken);
+  background: var(--surface);
   border-bottom: 1px solid transparent;
+  transition: background 0.12s ease;
+}
+
+.structure-module__header:hover {
+  background: var(--surface-sunken);
 }
 
 .structure-module__toggle-row {
@@ -97,11 +102,6 @@
   gap: 0;
   min-width: 0;
   border-radius: var(--radius-sm);
-  transition: background 0.12s;
-}
-
-.structure-module__toggle-row:hover {
-  background: rgba(255, 255, 255, 0.45);
 }
 
 .structure-module__toggle-row:hover .drag-handle {
@@ -348,8 +348,8 @@
   transition: background 0.12s, border-color 0.12s;
 }
 
-.lesson-pick:hover {
-  background: rgba(255, 255, 255, 0.55);
+.lesson-pick:hover:not(.lesson-pick--selected) {
+  background: var(--surface);
   border-color: var(--border);
 }
 
