@@ -26,63 +26,65 @@ export function Login() {
   }
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", minHeight: "100%" }}>
-      <div
-        style={{
-          background: "var(--ink)",
-          color: "var(--on-brand)",
-          padding: "64px 56px",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "space-between",
-        }}
-      >
-        <span style={{ fontFamily: "var(--font-display)", fontSize: 26, fontWeight: 600, color: "#fff" }}>
-          CertAI
-        </span>
-        <div>
-          <h1 style={{ color: "#fff", fontSize: 38, lineHeight: 1.2, maxWidth: 420 }}>
-            Acompanhe o que a turma de fato aprendeu.
-          </h1>
-          <p style={{ color: "rgba(243,247,246,0.72)", maxWidth: 420, marginTop: 16 }}>
+    <div className="login-page">
+      <aside className="login-hero" aria-label="CertAI">
+        <span className="login-hero__brand">CertAI</span>
+        <div className="login-hero__copy">
+          <h1>Acompanhe o que a turma de fato aprendeu.</h1>
+          <p>
             Trilhas, turmas e registro aula a aula, com evidência clara de absorção.
           </p>
         </div>
-        <span style={{ fontSize: 13, color: "rgba(243,247,246,0.45)" }}>
-          certai.app
-        </span>
-      </div>
+        <p className="login-hero__tagline">
+          Trilhas, turmas e registro aula a aula.
+        </p>
+        <span className="login-hero__foot">certai.app</span>
+      </aside>
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 48 }}>
-        <form onSubmit={onSubmit} style={{ width: "100%", maxWidth: 360, display: "flex", flexDirection: "column", gap: 18 }}>
-          <div>
+      <main className="login-panel">
+        <form className="login-form" onSubmit={onSubmit}>
+          <div className="login-form__intro">
             <h2>Entrar</h2>
-            <p className="muted" style={{ marginTop: 4 }}>Use o e-mail e a senha fornecidos pela instituição.</p>
+            <p className="muted">Use o e-mail e a senha fornecidos pela instituição.</p>
           </div>
 
           <div className="field">
             <label htmlFor="email">E-mail</label>
-            <input id="email" className="input" type="email" value={email}
-                   onChange={(e) => setEmail(e.target.value)} autoComplete="username" required />
+            <input
+              id="email"
+              className="input"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="username"
+              required
+            />
           </div>
 
           <div className="field">
             <label htmlFor="senha">Senha</label>
-            <input id="senha" className="input" type="password" value={password}
-                   onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
+            <input
+              id="senha"
+              className="input"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+            />
           </div>
 
-          {error && (
-            <div style={{ color: "var(--danger)", background: "var(--danger-50)", padding: "8px 12px", borderRadius: 6, fontSize: 14 }}>
-              {error}
-            </div>
-          )}
+          {error && <div className="login-form__error">{error}</div>}
 
-          <button className="btn btn-primary" type="submit" disabled={busy} style={{ justifyContent: "center" }}>
+          <button
+            className="btn btn-primary login-form__submit"
+            type="submit"
+            disabled={busy}
+          >
             {busy ? "Entrando…" : "Entrar"}
           </button>
         </form>
-      </div>
+      </main>
     </div>
   );
 }
