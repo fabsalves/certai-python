@@ -7,10 +7,11 @@ import type { StudentBulkResult, UserCreateInput, UserOption } from "../../lib/u
 import { emptyStudentDraft } from "../../lib/users";
 import { useFeedback } from "../../lib/feedback";
 import { useApiAction } from "../../lib/useApiAction";
+import { WhatsAppField } from "../ui/WhatsAppField";
+import { DEFAULT_DIAL_CODE } from "../../lib/phoneCountries";
 import {
   isNonEmpty,
-  isValidPhoneBR,
-  maskPhoneBR,
+  isValidWhatsapp,
   normalizedEmail,
   normalizePhoneForApi,
   trimmed,
@@ -76,6 +77,7 @@ export function StudentEnrollModal({
   const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [newWhatsapp, setNewWhatsapp] = useState("");
+  const [newWhatsappDialCode, setNewWhatsappDialCode] = useState(DEFAULT_DIAL_CODE);
   const [batchRows, setBatchRows] = useState<StudentDraft[]>([]);
   const [creating, setCreating] = useState(false);
 
@@ -89,6 +91,7 @@ export function StudentEnrollModal({
     setNewName("");
     setNewEmail("");
     setNewWhatsapp("");
+    setNewWhatsappDialCode(DEFAULT_DIAL_CODE);
     setLoadingStudents(true);
     api
       .get<UserOption[]>("/users", { params: { role: "student" } })
@@ -100,6 +103,7 @@ export function StudentEnrollModal({
     setNewName("");
     setNewEmail("");
     setNewWhatsapp("");
+    setNewWhatsappDialCode(DEFAULT_DIAL_CODE);
     setBatchRows([]);
     setQuery("");
     setSelectedIds(new Set());
@@ -136,7 +140,8 @@ export function StudentEnrollModal({
     filteredStudents.length > 0 &&
     filteredStudents.every((s) => selectedIds.has(s.id));
 
-  const singleWhatsappValid = isNonEmpty(newWhatsapp) && isValidPhoneBR(newWhatsapp);
+  const singleWhatsappValid =
+    isNonEmpty(newWhatsapp) && isValidWhatsapp(newWhatsappDialCode, newWhatsapp);
   const batchFilledCount = nonEmptyRows(batchRows).length;
   const batchReady = allDraftsValid(batchRows);
 
@@ -187,9 +192,9 @@ export function StudentEnrollModal({
       feedback.error("Informe o nome do aluno.");
       return;
     }
-    const whatsapp = normalizePhoneForApi(newWhatsapp);
-    if (!whatsapp || !isValidPhoneBR(whatsapp)) {
-      feedback.error("Informe um WhatsApp válido (DDD + número).");
+    const whatsapp = normalizePhoneForApi(newWhatsappDialCode, newWhatsapp);
+    if (!whatsapp || !isValidWhatsapp(newWhatsappDialCode, newWhatsapp)) {
+      feedback.error("Informe um WhatsApp válido.");
       return;
     }
     setCreating(true);
@@ -228,7 +233,7 @@ export function StudentEnrollModal({
         const studentsPayload = nonEmptyRows(batchRows).map((row) => ({
           name: trimmed(row.name),
           email: normalizedEmail(row.email),
-          whatsapp: normalizePhoneForApi(row.whatsapp)!,
+          whatsapp: normalizePhoneForApi(row.whatsappDialCode, row.whatsapp)!,
         }));
         const { data: bulk } = await api.post<StudentBulkResult>("/users/bulk", {
           students: studentsPayload,
@@ -457,15 +462,12 @@ export function StudentEnrollModal({
               </div>
               <div className="field">
                 <label htmlFor="student-whatsapp">WhatsApp</label>
-                <input
+                <WhatsAppField
                   id="student-whatsapp"
-                  type="tel"
-                  className="input"
-                  inputMode="numeric"
-                  autoComplete="tel"
-                  value={newWhatsapp}
-                  onChange={(ev) => setNewWhatsapp(maskPhoneBR(ev.target.value))}
-                  placeholder="(11) 98765-4321"
+                  dialCode={newWhatsappDialCode}
+                  national={newWhatsapp}
+                  onDialCodeChange={setNewWhatsappDialCode}
+                  onNationalChange={setNewWhatsapp}
                   required
                 />
               </div>

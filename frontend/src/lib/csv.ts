@@ -1,11 +1,5 @@
 import type { StudentBulkItemInput } from "./users";
-import { maskPhoneBR, trimmed } from "./validation";
-
-function formatImportedWhatsapp(value: string): string {
-  const raw = trimmed(value);
-  if (!raw) return "";
-  return maskPhoneBR(raw);
-}
+import { trimmed } from "./validation";
 
 const HEADER_ALIASES: Record<string, keyof StudentBulkItemInput> = {
   nome: "name",
@@ -75,7 +69,7 @@ export function parseStudentsCsv(text: string): StudentBulkItemInput[] {
     rows.push({
       name: cells[colMap.name ?? 0] ?? "",
       email: cells[colMap.email ?? 1] ?? "",
-      whatsapp: formatImportedWhatsapp(cells[colMap.whatsapp ?? 2] ?? ""),
+      whatsapp: trimmed(cells[colMap.whatsapp ?? 2] ?? ""),
     });
   }
 

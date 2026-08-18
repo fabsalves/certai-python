@@ -1,8 +1,11 @@
+import { DEFAULT_DIAL_CODE } from "../../lib/phoneCountries";
+import { WhatsAppField } from "../ui/WhatsAppField";
 import {
   isNonEmpty,
-  isValidPhoneBR,
-  maskPhoneBR,
+  isValidWhatsapp,
+  maskNationalNumber,
   normalizedEmail,
+  parsePhoneParts,
   trimmed,
 } from "../../lib/validation";
 import type { StudentDraft } from "../../lib/users";
@@ -32,7 +35,7 @@ export function validateStudentDraftFields(
   }
   if (!isNonEmpty(row.whatsapp)) {
     errors.whatsapp = "Obrigatório";
-  } else if (!isValidPhoneBR(row.whatsapp)) {
+  } else if (!isValidWhatsapp(row.whatsappDialCode, row.whatsapp)) {
     errors.whatsapp = "Inválido";
   }
   return errors;
@@ -178,17 +181,28 @@ export function StudentRowsEditor({
                       />
                     </td>
                     <td>
-                      <FieldCell
-                        id={`student-whatsapp-${row.id}`}
-                        type="tel"
-                        inputMode="numeric"
-                        value={row.whatsapp}
-                        placeholder="(11) 98765-4321"
-                        error={errors.whatsapp}
-                        onChange={(whatsapp) =>
-                          updateRow(row.id, { whatsapp: maskPhoneBR(whatsapp) })
-                        }
-                      />
+                      <div className="student-rows__cell-field">
+                        <WhatsAppField
+                          id={`student-whatsapp-${row.id}`}
+                          dialCode={row.whatsappDialCode}
+                          national={row.whatsapp}
+                          compact
+                          error={errors.whatsapp}
+                          onDialCodeChange={(whatsappDialCode) =>
+                            updateRow(row.id, { whatsappDialCode })
+                          }
+                          onNationalChange={(whatsapp) => updateRow(row.id, { whatsapp })}
+                        />
+                        {errors.whatsapp && (
+                          <span
+                            id={`student-whatsapp-${row.id}-error`}
+                            className="student-rows__field-error"
+                            role="alert"
+                          >
+                            {errors.whatsapp}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="student-rows__col-action">
                       <button
@@ -215,10 +229,16 @@ export function StudentRowsEditor({
 export function draftsFromBulkItems(
   items: Array<{ name: string; email: string; whatsapp: string }>,
 ): StudentDraft[] {
-  return items.map((item, index) => ({
-    id: `import-${index}-${crypto.randomUUID()}`,
-    name: trimmed(item.name),
-    email: trimmed(item.email),
-    whatsapp: item.whatsapp ? maskPhoneBR(item.whatsapp) : "",
-  }));
+  return items.map((item, index) => {
+    const parsed = parsePhoneParts(item.whatsapp);
+    return {
+      id: `import-${index}-${crypto.randomUUID()}`,
+      name: trimmed(item.name),
+      email: trimmed(item.email),
+      whatsapp: item.whatsapp
+        ? maskNationalNumber(parsed.dialCode, parsed.national)
+        : "",
+      whatsappDialCode: parsed.dialCode || DEFAULT_DIAL_CODE,
+    };
+  });
 }

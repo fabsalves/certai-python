@@ -91,6 +91,12 @@ class UserCreatedOut(UserOut):
     initial_password: str | None = None
 
 
+class UserUpdate(BaseModel):
+    name: NameStr
+    email: NormalizedEmailStr
+    whatsapp: RequiredWhatsappStr
+
+
 class StudentBulkItem(BaseModel):
     name: NameStr
     email: NormalizedEmailStr

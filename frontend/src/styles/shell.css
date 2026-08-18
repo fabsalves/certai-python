@@ -2243,9 +2243,26 @@ html.modal-scroll-lock body {
 }
 
 .student-assessments-panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 14px;
   padding-bottom: 14px;
   border-bottom: 1px solid var(--border);
+}
+
+.student-assessments-panel__head-main {
+  min-width: 0;
+}
+
+.student-assessments-panel__edit {
+  flex-shrink: 0;
+}
+
+.student-assessments-panel__contact {
+  margin: 4px 0 0;
+  font-size: 14px;
 }
 
 .student-assessments-panel__name {
@@ -2787,7 +2804,8 @@ html.modal-scroll-lock body {
 
 .student-rows__table th:nth-child(4),
 .student-rows__table td:nth-child(4) {
-  width: 30%;
+  width: 34%;
+  min-width: 220px;
 }
 
 .student-rows__table th:nth-child(2),

@@ -300,8 +300,6 @@ export function CohortEnrollments({
   const visibleSections = useMemo(() => {
     return sections
       .map((section) => {
-        // Mix always reflects the full section; list rows follow the active filter.
-        const mixStudentIds = section.studentIds;
         let studentIds = section.studentIds.filter((id) => filteredByStudent.has(id));
         studentIds = [...studentIds].sort((a, b) => {
           const ea = enrollmentById.get(a);
@@ -314,7 +312,7 @@ export function CohortEnrollments({
           }
           return ea.student_name.localeCompare(eb.student_name, "pt-BR");
         });
-        return { ...section, studentIds, mixStudentIds };
+        return { ...section, studentIds };
       })
       .filter((section) => section.studentIds.length > 0);
   }, [sections, filteredByStudent, enrollmentById, sortMode, trackLevels]);
@@ -571,7 +569,7 @@ export function CohortEnrollments({
                             </span>
                             <span className="cohort-students__section-meta">
                               <span className="cohort-students__section-count">
-                                {section.mixStudentIds.length}
+                                {section.studentIds.length}
                               </span>
                               <span
                                 className={`cohort-students__section-chevron${open ? " is-open" : ""}`}
@@ -582,7 +580,7 @@ export function CohortEnrollments({
                             </span>
                           </span>
                           <SectionLevelMix
-                            studentIds={section.mixStudentIds}
+                            studentIds={section.studentIds}
                             trackLevels={trackLevels}
                             loading={levelsLoading}
                           />
@@ -679,6 +677,10 @@ export function CohortEnrollments({
                   studentWhatsapp={selectedEnrollment.student_whatsapp}
                   track={track}
                   onNotEnrolled={handleAssessmentsNotEnrolled}
+                  onStudentUpdated={() => {
+                    load();
+                    onChanged();
+                  }}
                 />
               ) : (
                 <div className="cohort-students__detail-empty">

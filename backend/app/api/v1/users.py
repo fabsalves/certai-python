@@ -1,4 +1,5 @@
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
@@ -15,11 +16,13 @@ from app.schemas import (
     UserCreate,
     UserCreatedOut,
     UserOut,
+    UserUpdate,
 )
 
 router = APIRouter(prefix="/users", tags=["users"])
 
 can_manage_users = require_roles(Role.ADMIN, Role.DESIGNER)
+admin_only = require_roles(Role.ADMIN)
 
 _DESIGNER_CREATABLE = {Role.STUDENT, Role.PROFESSOR}
 
@@ -174,3 +177,43 @@ async def create_students_bulk(
         existing_by_whatsapp[item.whatsapp] = new_user
 
     return StudentBulkOut(created=created, reused_ids=reused_ids, skipped=skipped)
+
+
+@router.patch(
+    "/{user_id}",
+    response_model=UserOut,
+)
+async def update_student(
+    user_id: UUID,
+    body: UserUpdate,
+    _admin: Annotated[User, Depends(admin_only)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    target = await db.get(User, user_id)
+    if target is None or not target.is_active:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Usuário não encontrado")
+    if target.role != Role.STUDENT:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Só alunos podem ser editados",
+        )
+
+    if body.email != target.email:
+        if await db.scalar(select(User).where(User.email == body.email)):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="E-mail já cadastrado",
+            )
+
+    if body.whatsapp != target.whatsapp:
+        if await db.scalar(select(User).where(User.whatsapp == body.whatsapp)):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="WhatsApp já cadastrado",
+            )
+
+    target.name = body.name
+    target.email = body.email
+    target.whatsapp = body.whatsapp
+    await db.flush()
+    return target

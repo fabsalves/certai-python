@@ -8,10 +8,13 @@ import {
   type StudentAssessments,
 } from "../../lib/assessments";
 import { sortedLessons, sortedModules, type Track } from "../../lib/tracks";
-import { maskPhoneBR } from "../../lib/validation";
+import { formatWhatsappDisplay } from "../../lib/validation";
+import { useAuth } from "../../lib/auth";
+import type { UserOption } from "../../lib/users";
 import { AssessmentLevelBadge } from "./AssessmentLevelBadge";
 import { MicroScoresModal } from "./MicroScoresModal";
 import { StudentAssessmentsSkeleton } from "./StudentAssessmentsSkeleton";
+import { StudentEditModal } from "./StudentEditModal";
 
 interface Props {
   cohortId: string;
@@ -22,6 +25,7 @@ interface Props {
   track: Track;
   /** 404: student no longer enrolled (stale page / removed). Parent clears selection. */
   onNotEnrolled?: () => void;
+  onStudentUpdated?: (student: UserOption) => void;
 }
 
 type ScopeEyebrow = "Módulo" | "Aula";
@@ -145,7 +149,11 @@ export function StudentAssessmentsPanel({
   studentWhatsapp,
   track,
   onNotEnrolled,
+  onStudentUpdated,
 }: Props) {
+  const { user } = useAuth();
+  const canEditStudent = user?.role === "admin";
+  const [editOpen, setEditOpen] = useState(false);
   const [data, setData] = useState<StudentAssessments | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -234,14 +242,35 @@ export function StudentAssessmentsPanel({
   return (
     <div className="student-assessments-panel">
       <header className="student-assessments-panel__head">
-        <h3 className="student-assessments-panel__name">{studentName}</h3>
-        <p className="muted student-assessments-panel__contact">
-          {studentEmail}
-          {studentWhatsapp
-            ? ` · WhatsApp ${maskPhoneBR(studentWhatsapp.replace(/^55/, ""))}`
-            : ""}
-        </p>
+        <div className="student-assessments-panel__head-main">
+          <h3 className="student-assessments-panel__name">{studentName}</h3>
+          <p className="muted student-assessments-panel__contact">
+            {studentEmail}
+            {studentWhatsapp ? ` · WhatsApp ${formatWhatsappDisplay(studentWhatsapp)}` : ""}
+          </p>
+        </div>
+        {canEditStudent && (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm student-assessments-panel__edit"
+            onClick={() => setEditOpen(true)}
+          >
+            Editar
+          </button>
+        )}
       </header>
+
+      {canEditStudent && (
+        <StudentEditModal
+          open={editOpen}
+          onClose={() => setEditOpen(false)}
+          studentId={studentId}
+          studentName={studentName}
+          studentEmail={studentEmail}
+          studentWhatsapp={studentWhatsapp}
+          onUpdated={(student) => onStudentUpdated?.(student)}
+        />
+      )}
 
       <section className="student-assessments-panel__hero" aria-label="Avaliação da trilha">
         <div className="student-assessments-panel__hero-top">
