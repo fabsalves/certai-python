@@ -192,7 +192,13 @@ async def update_user(
     if target is None or not target.is_active:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Usuário não encontrado")
 
-    if target.role == Role.STUDENT:
+    if actor.id == target.id:
+        if target.role == Role.STUDENT and not body.whatsapp:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "WhatsApp é obrigatório para alunos",
+            )
+    elif target.role == Role.STUDENT:
         _assert_can_create(actor, Role.STUDENT)
         if not body.whatsapp:
             raise HTTPException(
@@ -200,8 +206,7 @@ async def update_user(
                 "WhatsApp é obrigatório para alunos",
             )
     elif target.role == Role.PROFESSOR:
-        if actor.id != target.id:
-            _assert_can_create(actor, Role.PROFESSOR)
+        _assert_can_create(actor, Role.PROFESSOR)
     else:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,

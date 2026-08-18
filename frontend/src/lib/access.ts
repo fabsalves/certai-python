@@ -8,8 +8,6 @@ export const ACCESS = {
   cohorts: ["admin", "designer", "professor"] as Role[],
   /** Cadastro de professores (admin, designer). */
   professors: ["admin", "designer"] as Role[],
-  /** Perfil próprio do professor. */
-  profile: ["professor"] as Role[],
   /** Aulas do aluno matriculado. */
   learn: ["student"] as Role[],
   /** Playground de testes da IA — somente admin. */

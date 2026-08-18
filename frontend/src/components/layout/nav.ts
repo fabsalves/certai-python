@@ -6,7 +6,7 @@ export interface NavItem {
   label: string;
   description?: string;
   roles?: Role[];
-  icon: "overview" | "tracks" | "cohorts" | "professors" | "profile" | "learn" | "playground";
+  icon: "overview" | "tracks" | "cohorts" | "professors" | "learn" | "playground";
 }
 
 export const NAV: NavItem[] = [
@@ -19,13 +19,6 @@ export const NAV: NavItem[] = [
     description: "Contas de leitores",
     roles: ACCESS.professors,
     icon: "professors",
-  },
-  {
-    to: "/profile",
-    label: "Meu perfil",
-    description: "Seu nome e e-mail na plataforma",
-    roles: ACCESS.profile,
-    icon: "profile",
   },
   { to: "/learn", label: "Minhas aulas", description: "Material da turma", roles: ACCESS.learn, icon: "learn" },
   {

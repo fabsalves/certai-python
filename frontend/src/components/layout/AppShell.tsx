@@ -1,66 +1,168 @@
-import { Outlet, Link, useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, Outlet, useLocation } from "react-router-dom";
+import { AccountEditModal } from "../account/AccountEditModal";
 import { roleLabel, useAuth } from "../../lib/auth";
 import { navForRole, navItemForPath } from "./nav";
 import { NavIcon } from "./NavIcon";
+import { ShellAccountMenu } from "./ShellAccountMenu";
+import { Tooltip } from "../ui/Tooltip";
 
-function initials(name: string): string {
-  return name
-    .split(" ")
-    .slice(0, 2)
-    .map((p) => p[0])
-    .join("")
-    .toUpperCase();
+const NAV_COLLAPSED_KEY = "certai.nav.collapsed";
+const MOBILE_BREAKPOINT = 860;
+
+function NavLinks({
+  items,
+  pathname,
+  collapsed,
+  mobile,
+}: {
+  items: ReturnType<typeof navForRole>;
+  pathname: string;
+  collapsed: boolean;
+  mobile: boolean;
+}) {
+  return (
+    <>
+      {items.map((n) => {
+        const active = n.to === "/" ? pathname === "/" : pathname.startsWith(n.to);
+        const link = (
+          <Link
+            key={n.to}
+            to={n.to}
+            className={`shell-nav-link${active ? " shell-nav-link--active" : ""}${
+              mobile ? " shell-nav-link--mobile" : ""
+            }`}
+            aria-current={active ? "page" : undefined}
+          >
+            <NavIcon icon={n.icon} />
+            <span className="shell-nav-link__label">{n.label}</span>
+          </Link>
+        );
+
+        if (collapsed && !mobile) {
+          return (
+            <Tooltip key={n.to} content={n.label}>
+              {link}
+            </Tooltip>
+          );
+        }
+
+        return link;
+      })}
+    </>
+  );
 }
 
 export function AppShell() {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const { pathname } = useLocation();
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(NAV_COLLAPSED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [narrow, setNarrow] = useState(() =>
+    typeof window !== "undefined"
+      ? window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`).matches
+      : false,
+  );
+  const [editOpen, setEditOpen] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`);
+    const onChange = () => setNarrow(mq.matches);
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(NAV_COLLAPSED_KEY, collapsed ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, [collapsed]);
 
   if (!user) return <Outlet />;
 
   const items = navForRole(user.role);
   const current = navItemForPath(pathname, user.role);
   const isPlayground = pathname.startsWith("/admin/playground");
+  const shellClass = [
+    "shell",
+    !narrow && collapsed ? "is-collapsed" : "",
+    narrow ? "is-narrow" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
-    <div className="shell">
-      <aside className="shell-sidebar">
-        <div className="shell-brand">
-          <span className="shell-brand-text">CertAI</span>
-        </div>
+    <div className={shellClass}>
+      {narrow && (
+        <header className="shell-mobile-bar">
+          <Link to="/" className="shell-brand">
+            <span className="shell-brand-text">CertAI</span>
+          </Link>
+          <ShellAccountMenu
+            variant="bar"
+            user={user}
+            onEditAccount={() => setEditOpen(true)}
+            onLogout={logout}
+          />
+        </header>
+      )}
 
-        <nav className="shell-nav" aria-label="Principal">
-          {items.map((n) => {
-            const active = n.to === "/" ? pathname === "/" : pathname.startsWith(n.to);
-            return (
-              <Link
-                key={n.to}
-                to={n.to}
-                className={`shell-nav-link${active ? " shell-nav-link--active" : ""}`}
-                aria-current={active ? "page" : undefined}
+      {!narrow && (
+        <aside className="shell-sidebar">
+          <div className="shell-brand-row">
+            <Link to="/" className="shell-brand">
+              <span className="shell-brand-text">CertAI</span>
+              <span className="shell-brand-compact" aria-hidden>
+                C
+              </span>
+            </Link>
+            {!collapsed && (
+              <button
+                type="button"
+                className="shell-collapse shell-collapse--header btn btn-ghost btn-sm"
+                onClick={() => setCollapsed(true)}
+                aria-expanded
+                aria-label="Recolher menu"
               >
-                <NavIcon icon={n.icon} />
-                {n.label}
-              </Link>
-            );
-          })}
-        </nav>
-
-        <div className="shell-user">
-          <div className="shell-user-info">
-            <span className="shell-user-avatar" aria-hidden>
-              {initials(user.name)}
-            </span>
-            <div style={{ minWidth: 0 }}>
-              <div className="shell-user-name">{user.name}</div>
-              <div className="shell-user-role">{roleLabel[user.role]}</div>
-            </div>
+                «
+              </button>
+            )}
           </div>
-          <button type="button" className="btn btn-ghost shell-logout" onClick={logout}>
-            Sair
-          </button>
-        </div>
-      </aside>
+
+          <nav className="shell-nav" aria-label="Principal">
+            {collapsed && (
+              <button
+                type="button"
+                className="shell-collapse shell-collapse--nav btn btn-ghost btn-sm"
+                onClick={() => setCollapsed(false)}
+                aria-expanded={false}
+                aria-label="Expandir menu"
+              >
+                »
+              </button>
+            )}
+            <NavLinks items={items} pathname={pathname} collapsed={collapsed} mobile={false} />
+          </nav>
+
+          <div className="shell-nav-foot">
+            <ShellAccountMenu
+              variant="rail"
+              user={user}
+              collapsed={collapsed}
+              onEditAccount={() => setEditOpen(true)}
+              onLogout={logout}
+            />
+          </div>
+        </aside>
+      )}
 
       <div className={`shell-main${isPlayground ? " shell-main--immersive" : ""}`}>
         {!isPlayground && (
@@ -82,6 +184,23 @@ export function AppShell() {
           <Outlet />
         </div>
       </div>
+
+      {narrow && (
+        <nav className="shell-nav shell-nav--bottom" aria-label="Principal">
+          <NavLinks items={items} pathname={pathname} collapsed={false} mobile />
+        </nav>
+      )}
+
+      <AccountEditModal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        userId={user.id}
+        userName={user.name}
+        userEmail={user.email}
+        userRole={user.role}
+        userWhatsapp={user.whatsapp}
+        onUpdated={() => void refreshUser()}
+      />
     </div>
   );
 }

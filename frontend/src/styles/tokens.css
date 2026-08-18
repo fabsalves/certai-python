@@ -40,7 +40,11 @@
   --ring: 0 0 0 3px rgba(15, 76, 74, 0.18);
 
   /* layout */
-  --sidebar-width: 260px;
+  --sidebar-width-expanded: 260px;
+  --sidebar-width-collapsed: 76px;
+  --sidebar-width: var(--sidebar-width-expanded);
+  --shell-foot-height: 72px;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
   --topbar-height: 56px;
   --chrome-header-height: 72px;
   --chrome-footer-height: 112px;

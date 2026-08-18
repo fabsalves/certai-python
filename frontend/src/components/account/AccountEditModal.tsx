@@ -1,10 +1,21 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { Modal } from "../ui/Modal";
+import { WhatsAppField } from "../ui/WhatsAppField";
 import { api } from "../../lib/api";
+import type { Role } from "../../lib/auth";
 import type { UserUpdateInput } from "../../lib/users";
+import { DEFAULT_DIAL_CODE } from "../../lib/phoneCountries";
 import { useFeedback } from "../../lib/feedback";
 import { useApiAction } from "../../lib/useApiAction";
-import { isNonEmpty, normalizedEmail, trimmed } from "../../lib/validation";
+import {
+  isNonEmpty,
+  isValidWhatsapp,
+  maskNationalNumber,
+  normalizedEmail,
+  normalizePhoneForApi,
+  parsePhoneParts,
+  trimmed,
+} from "../../lib/validation";
 
 interface Props {
   open: boolean;
@@ -12,28 +23,40 @@ interface Props {
   userId: string;
   userName: string;
   userEmail: string;
+  userRole: Role;
+  userWhatsapp?: string | null;
   onUpdated: () => void;
 }
 
-export function ProfileEditModal({
+export function AccountEditModal({
   open,
   onClose,
   userId,
   userName,
   userEmail,
+  userRole,
+  userWhatsapp,
   onUpdated,
 }: Props) {
   const runAction = useApiAction();
   const feedback = useFeedback();
+  const isStudent = userRole === "student";
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
+  const [whatsappDialCode, setWhatsappDialCode] = useState(DEFAULT_DIAL_CODE);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
+    const parsed = parsePhoneParts(userWhatsapp ?? "");
     setName(userName);
     setEmail(userEmail);
-  }, [open, userName, userEmail]);
+    setWhatsappDialCode(parsed.dialCode);
+    setWhatsapp(
+      userWhatsapp ? maskNationalNumber(parsed.dialCode, parsed.national) : "",
+    );
+  }, [open, userName, userEmail, userWhatsapp]);
 
   function resetAndClose() {
     onClose();
@@ -47,17 +70,27 @@ export function ProfileEditModal({
       return;
     }
 
+    let nextWhatsapp: string | undefined;
+    if (isStudent) {
+      nextWhatsapp = normalizePhoneForApi(whatsappDialCode, whatsapp);
+      if (!nextWhatsapp || !isValidWhatsapp(whatsappDialCode, whatsapp)) {
+        feedback.error("Informe um WhatsApp válido.");
+        return;
+      }
+    }
+
     setSaving(true);
     await runAction({
       run: () => {
         const body: UserUpdateInput = {
           name: nextName,
           email: normalizedEmail(email),
+          whatsapp: nextWhatsapp,
         };
         return api.patch(`/users/${userId}`, body);
       },
-      successMessage: "Perfil atualizado.",
-      errorMessage: "Não foi possível salvar. Verifique se o e-mail já existe.",
+      successMessage: "Conta atualizada.",
+      errorMessage: "Não foi possível salvar. Verifique e-mail ou WhatsApp duplicados.",
       onSuccess: () => {
         onUpdated();
         resetAndClose();
@@ -66,17 +99,20 @@ export function ProfileEditModal({
     setSaving(false);
   }
 
-  const ready = isNonEmpty(name) && isNonEmpty(email);
+  const ready =
+    isNonEmpty(name) &&
+    isNonEmpty(email) &&
+    (!isStudent || isValidWhatsapp(whatsappDialCode, whatsapp));
 
   return (
-    <Modal open={open} onClose={resetAndClose} title="Editar perfil">
+    <Modal open={open} onClose={resetAndClose} title="Editar conta">
       <form className="modal-form" onSubmit={onSubmit}>
         <div className="modal-form__body">
           <div className="modal-form__content">
             <div className="field">
-              <label htmlFor="profile-name">Nome</label>
+              <label htmlFor="account-name">Nome</label>
               <input
-                id="profile-name"
+                id="account-name"
                 className="input"
                 value={name}
                 onChange={(ev) => setName(ev.target.value)}
@@ -84,9 +120,9 @@ export function ProfileEditModal({
               />
             </div>
             <div className="field">
-              <label htmlFor="profile-email">E-mail</label>
+              <label htmlFor="account-email">E-mail</label>
               <input
-                id="profile-email"
+                id="account-email"
                 type="email"
                 className="input"
                 value={email}
@@ -94,6 +130,19 @@ export function ProfileEditModal({
                 required
               />
             </div>
+            {isStudent && (
+              <div className="field">
+                <label htmlFor="account-whatsapp">WhatsApp</label>
+                <WhatsAppField
+                  id="account-whatsapp"
+                  dialCode={whatsappDialCode}
+                  national={whatsapp}
+                  onDialCodeChange={setWhatsappDialCode}
+                  onNationalChange={setWhatsapp}
+                  required
+                />
+              </div>
+            )}
           </div>
           <div className="modal-form__footer">
             <div className="modal-form__actions">

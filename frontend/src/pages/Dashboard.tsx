@@ -76,14 +76,9 @@ export function Dashboard() {
               </>
             )}
             {isProfessor && (
-              <>
-                <Link to="/cohorts" className="btn btn-ghost" style={{ justifyContent: "flex-start" }}>
-                  Minhas turmas
-                </Link>
-                <Link to="/profile" className="btn btn-ghost" style={{ justifyContent: "flex-start" }}>
-                  Meu perfil
-                </Link>
-              </>
+              <Link to="/cohorts" className="btn btn-ghost" style={{ justifyContent: "flex-start" }}>
+                Minhas turmas
+              </Link>
             )}
             {isStudent && (
               <Link to="/learn" className="btn btn-primary" style={{ justifyContent: "flex-start" }}>

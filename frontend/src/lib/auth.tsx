@@ -15,6 +15,7 @@ export interface User {
   name: string;
   role: Role;
   is_active: boolean;
+  whatsapp?: string | null;
 }
 
 interface AuthState {
