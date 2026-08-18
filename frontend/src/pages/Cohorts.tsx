@@ -1,17 +1,70 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { useListView } from "../lib/useListView";
 import { type Cohort, uniqueProfessorNames } from "../lib/cohorts";
 import { CohortsListSkeleton } from "../components/cohorts/CohortsListSkeleton";
 import { PageHeader } from "../components/layout/PageHeader";
+import { DataTable, type DataColumn } from "../components/ui/DataTable";
+import { ViewToggle } from "../components/ui/ViewToggle";
 
 function cohortTo(id: string) {
   return `/cohorts/${id}`;
 }
 
+function CohortShortcuts({ cohort, canManage }: { cohort: Cohort; canManage: boolean }) {
+  if (canManage) {
+    return (
+      <>
+        <Link
+          to={cohortTo(cohort.id)}
+          state={{ tab: "professors" }}
+          className="btn btn-ghost btn-sm"
+        >
+          Professores
+        </Link>
+        <Link
+          to={cohortTo(cohort.id)}
+          state={{ tab: "students" }}
+          className="btn btn-ghost btn-sm"
+        >
+          Alunos
+        </Link>
+        <Link
+          to={cohortTo(cohort.id)}
+          state={{ tab: "progress" }}
+          className="btn btn-ghost btn-sm"
+        >
+          Andamento
+        </Link>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Link
+        to={cohortTo(cohort.id)}
+        state={{ tab: "students" }}
+        className="btn btn-ghost btn-sm"
+      >
+        Alunos
+      </Link>
+      <Link
+        to={cohortTo(cohort.id)}
+        state={{ tab: "progress" }}
+        className="btn btn-ghost btn-sm"
+      >
+        Andamento
+      </Link>
+    </>
+  );
+}
+
 export function Cohorts() {
   const { user } = useAuth();
+  const [view, setView] = useListView("cohorts");
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [loading, setLoading] = useState(true);
   const canManage = user?.role === "admin" || user?.role === "designer";
@@ -28,6 +81,64 @@ export function Cohorts() {
     loadCohorts();
   }, [loadCohorts]);
 
+  const columns = useMemo<DataColumn<Cohort>[]>(() => {
+    const base: DataColumn<Cohort>[] = [
+      {
+        id: "name",
+        header: "Turma",
+        primary: true,
+        render: (cohort) => (
+          <Link to={cohortTo(cohort.id)} state={{ tab: "meta" }} className="table__link table__primary">
+            {cohort.name}
+          </Link>
+        ),
+      },
+      {
+        id: "track",
+        header: "Trilha",
+        render: (cohort) => cohort.track_title,
+      },
+    ];
+
+    if (canManage) {
+      base.push({
+        id: "professors",
+        header: "Professores",
+        render: (cohort) => (
+          <span
+            className="tag"
+            title={cohort.module_professors
+              .map((mp) => `${mp.module_title}: ${mp.professor_name}`)
+              .join("\n")}
+          >
+            {uniqueProfessorNames(cohort)}
+          </span>
+        ),
+      });
+    }
+
+    base.push(
+      {
+        id: "enrollment",
+        header: "Matrículas",
+        render: (cohort) => `${cohort.enrollment_count} aluno(s)`,
+      },
+      {
+        id: "actions",
+        header: "Ações",
+        card: "actions",
+        align: "end",
+        render: (cohort) => (
+          <div className="table__actions">
+            <CohortShortcuts cohort={cohort} canManage={canManage} />
+          </div>
+        ),
+      },
+    );
+
+    return base;
+  }, [canManage]);
+
   if (loading) {
     return <CohortsListSkeleton canManage={canManage} />;
   }
@@ -43,10 +154,15 @@ export function Cohorts() {
         }
         actions={
           canManage ? (
-            <Link to="/cohorts/new" className="btn btn-primary">
-              Nova turma
-            </Link>
-          ) : undefined
+            <>
+              {cohorts.length > 0 && <ViewToggle value={view} onChange={setView} />}
+              <Link to="/cohorts/new" className="btn btn-primary">
+                Nova turma
+              </Link>
+            </>
+          ) : (
+            cohorts.length > 0 ? <ViewToggle value={view} onChange={setView} /> : undefined
+          )
         }
       />
 
@@ -67,80 +183,13 @@ export function Cohorts() {
       )}
 
       {cohorts.length > 0 && (
-        <div className="cohorts-list">
-          {cohorts.map((c) => (
-            <article key={c.id} className="card cohorts-list__item">
-              <Link to={cohortTo(c.id)} state={{ tab: "meta" }} className="cohorts-list__link">
-                <div className="cohorts-list__head">
-                  <div>
-                    <h3 style={{ margin: 0 }}>{c.name}</h3>
-                    <p className="muted" style={{ marginTop: 4, fontSize: 14 }}>
-                      {c.track_title}
-                    </p>
-                  </div>
-                  {canManage && (
-                    <span
-                      className="tag"
-                      title={c.module_professors
-                        .map((mp) => `${mp.module_title}: ${mp.professor_name}`)
-                        .join("\n")}
-                    >
-                      {uniqueProfessorNames(c)}
-                    </span>
-                  )}
-                </div>
-                <p className="muted cohorts-list__meta">
-                  {c.enrollment_count} aluno(s) matriculado(s)
-                </p>
-              </Link>
-
-              <div className="cohorts-list__shortcuts" role="group" aria-label="Abrir seção">
-                {canManage ? (
-                  <>
-                    <Link
-                      to={cohortTo(c.id)}
-                      state={{ tab: "professors" }}
-                      className="cohorts-list__shortcut"
-                    >
-                      Professores
-                    </Link>
-                    <Link
-                      to={cohortTo(c.id)}
-                      state={{ tab: "students" }}
-                      className="cohorts-list__shortcut"
-                    >
-                      Alunos
-                    </Link>
-                    <Link
-                      to={cohortTo(c.id)}
-                      state={{ tab: "progress" }}
-                      className="cohorts-list__shortcut"
-                    >
-                      Andamento
-                    </Link>
-                  </>
-                ) : (
-                  <>
-                    <Link
-                      to={cohortTo(c.id)}
-                      state={{ tab: "students" }}
-                      className="cohorts-list__shortcut"
-                    >
-                      Alunos
-                    </Link>
-                    <Link
-                      to={cohortTo(c.id)}
-                      state={{ tab: "progress" }}
-                      className="cohorts-list__shortcut"
-                    >
-                      Andamento
-                    </Link>
-                  </>
-                )}
-              </div>
-            </article>
-          ))}
-        </div>
+        <DataTable
+          columns={columns}
+          rows={cohorts}
+          rowKey={(cohort) => cohort.id}
+          layout={view}
+          aria-label="Turmas"
+        />
       )}
     </>
   );

@@ -347,7 +347,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 0 32px;
+  padding: 0 var(--page-gutter);
   height: var(--topbar-height);
   background: rgba(245, 246, 247, 0.92);
   backdrop-filter: blur(10px);
@@ -377,9 +377,8 @@
 .shell-content {
   flex: 1;
   width: 100%;
-  max-width: var(--content-max-width);
-  margin: 0 auto;
-  padding: 28px 32px 48px;
+  min-width: 0;
+  padding: var(--page-gutter-block) var(--page-gutter);
 }
 
 .shell-main--immersive {
@@ -4486,10 +4485,6 @@ html.modal-scroll-lock body {
 }
 
 @media (min-width: 1200px) {
-  .shell-content:not(.shell-content--immersive) {
-    padding: 32px 40px 56px;
-  }
-
   .page-grid--stats {
     grid-template-columns: repeat(3, 1fr);
   }
@@ -4593,14 +4588,9 @@ html.modal-scroll-lock body {
   }
 
   .shell-content:not(.shell-content--immersive) {
-    padding: 20px 16px 32px;
     overflow-y: auto;
     min-height: 0;
     -webkit-overflow-scrolling: touch;
-  }
-
-  .shell-topbar {
-    padding: 0 16px;
   }
 
   .page-header {

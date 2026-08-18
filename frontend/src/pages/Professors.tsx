@@ -1,12 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
+import { useListView } from "../lib/useListView";
 import { ProfessorCreateModal } from "../components/cohorts/ProfessorCreateModal";
 import { ProfessorEditModal } from "../components/cohorts/ProfessorEditModal";
 import { ProfessorsListSkeleton } from "../components/professors/ProfessorsListSkeleton";
 import { PageHeader } from "../components/layout/PageHeader";
+import { DataTable, type DataColumn } from "../components/ui/DataTable";
+import { ViewToggle } from "../components/ui/ViewToggle";
 import type { UserOption } from "../lib/users";
 
 export function Professors() {
+  const [view, setView] = useListView("professors");
   const [professors, setProfessors] = useState<UserOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -24,6 +28,42 @@ export function Professors() {
     load();
   }, [load]);
 
+  const columns = useMemo<DataColumn<UserOption>[]>(
+    () => [
+      {
+        id: "name",
+        header: "Nome",
+        primary: true,
+        render: (professor) => (
+          <span className="table__primary">{professor.name}</span>
+        ),
+      },
+      {
+        id: "email",
+        header: "E-mail",
+        render: (professor) => professor.email,
+      },
+      {
+        id: "actions",
+        header: "",
+        card: "actions",
+        align: "end",
+        render: (professor) => (
+          <div className="table__actions">
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => setEditingProfessor(professor)}
+            >
+              Editar
+            </button>
+          </div>
+        ),
+      },
+    ],
+    [],
+  );
+
   if (loading) {
     return <ProfessorsListSkeleton />;
   }
@@ -34,9 +74,12 @@ export function Professors() {
         title="Professores"
         description="Contas de quem leciona e encerra aulas das turmas."
         actions={
-          <button type="button" className="btn btn-primary" onClick={() => setModalOpen(true)}>
-            Novo professor
-          </button>
+          <>
+            {professors.length > 0 && <ViewToggle value={view} onChange={setView} />}
+            <button type="button" className="btn btn-primary" onClick={() => setModalOpen(true)}>
+              Novo professor
+            </button>
+          </>
         }
       />
 
@@ -58,23 +101,13 @@ export function Professors() {
       )}
 
       {professors.length > 0 && (
-        <ul className="professors-list">
-          {professors.map((p) => (
-            <li key={p.id} className="card professors-list__item">
-              <div>
-                <div className="professors-list__name">{p.name}</div>
-                <div className="muted professors-list__email">{p.email}</div>
-              </div>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm professors-list__edit"
-                onClick={() => setEditingProfessor(p)}
-              >
-                Editar
-              </button>
-            </li>
-          ))}
-        </ul>
+        <DataTable
+          columns={columns}
+          rows={professors}
+          rowKey={(professor) => professor.id}
+          layout={view}
+          aria-label="Professores"
+        />
       )}
 
       <ProfessorCreateModal

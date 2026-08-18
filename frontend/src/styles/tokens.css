@@ -48,7 +48,9 @@
   --topbar-height: 56px;
   --chrome-header-height: 72px;
   --chrome-footer-height: 112px;
-  --content-max-width: 1440px;
+  /* respiro lateral/bloco — escala com a viewport, teto fixo */
+  --page-gutter: clamp(16px, 2.5vw, 40px);
+  --page-gutter-block: clamp(24px, 3vh, 48px);
 }
 
 * { box-sizing: border-box; }

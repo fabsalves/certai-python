@@ -1,11 +1,37 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
+import { useListView } from "../lib/useListView";
 import { sortedModules, totalLessons, activeLessonsCount, type Track } from "../lib/tracks";
 import { TracksListSkeleton } from "../components/tracks/TracksListSkeleton";
 import { PageHeader } from "../components/layout/PageHeader";
+import { DataTable, type DataColumn } from "../components/ui/DataTable";
+import { ViewToggle } from "../components/ui/ViewToggle";
+
+function trackStatus(track: Track) {
+  if (!track.is_active) {
+    return <span className="tag tag--inactive">Desativada</span>;
+  }
+  if (track.published) {
+    return <span className="tag tag--brand">Publicada</span>;
+  }
+  return <span className="tag">Rascunho</span>;
+}
+
+function trackMeta(track: Track) {
+  const modules = sortedModules(track);
+  const active = activeLessonsCount(track);
+  const total = totalLessons(track);
+  return (
+    <>
+      {modules.length} módulo(s) · {active} aula(s) ativa(s)
+      {active !== total && ` (${total} no total)`}
+    </>
+  );
+}
 
 export function Tracks() {
+  const [view, setView] = useListView("tracks");
   const [tracks, setTracks] = useState<Track[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -21,6 +47,53 @@ export function Tracks() {
     loadTracks();
   }, [loadTracks]);
 
+  const columns = useMemo<DataColumn<Track>[]>(
+    () => [
+      {
+        id: "title",
+        header: "Trilha",
+        primary: true,
+        render: (track) => (
+          <Link
+            to={`/tracks/${track.id}`}
+            className={`table__link table__primary${!track.is_active ? " table__primary--muted" : ""}`}
+          >
+            {track.title}
+          </Link>
+        ),
+      },
+      {
+        id: "competency",
+        header: "Objetivo",
+        render: (track) => track.competency || "Sem objetivo definido",
+      },
+      {
+        id: "status",
+        header: "Status",
+        render: (track) => trackStatus(track),
+      },
+      {
+        id: "meta",
+        header: "Estrutura",
+        render: (track) => <span className="muted">{trackMeta(track)}</span>,
+      },
+      {
+        id: "actions",
+        header: "",
+        card: "actions",
+        align: "end",
+        render: (track) => (
+          <div className="table__actions">
+            <Link to={`/tracks/${track.id}`} className="btn btn-ghost btn-sm">
+              Abrir
+            </Link>
+          </div>
+        ),
+      },
+    ],
+    [],
+  );
+
   if (loading) {
     return <TracksListSkeleton />;
   }
@@ -31,9 +104,12 @@ export function Tracks() {
         title="Trilhas"
         description="Monte o percurso completo: trilha, módulos com nível e aulas em sequência."
         actions={
-          <Link to="/tracks/new" className="btn btn-primary">
-            Nova trilha
-          </Link>
+          <>
+            {tracks.length > 0 && <ViewToggle value={view} onChange={setView} />}
+            <Link to="/tracks/new" className="btn btn-primary">
+              Nova trilha
+            </Link>
+          </>
         }
       />
 
@@ -50,37 +126,13 @@ export function Tracks() {
       )}
 
       {tracks.length > 0 && (
-        <div className="tracks-list">
-          {tracks.map((t) => {
-            const modules = sortedModules(t);
-            return (
-              <Link
-                key={t.id}
-                to={`/tracks/${t.id}`}
-                className={`card tracks-list__item${!t.is_active ? " tracks-list__item--inactive" : ""}`}
-              >
-                <div className="tracks-list__head">
-                  <div>
-                    <h3 style={{ margin: 0 }}>{t.title}</h3>
-                    <p className="muted" style={{ marginTop: 4, fontSize: 14 }}>
-                      {t.competency || "Sem objetivo definido"}
-                    </p>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
-                    {!t.is_active && <span className="tag tag--inactive">Desativada</span>}
-                    {t.is_active && (t.published
-                      ? <span className="tag tag--brand">Publicada</span>
-                      : <span className="tag">Rascunho</span>)}
-                  </div>
-                </div>
-                <p className="muted tracks-list__meta">
-                  {modules.length} módulo(s) · {activeLessonsCount(t)} aula(s) ativa(s)
-                  {activeLessonsCount(t) !== totalLessons(t) && ` (${totalLessons(t)} no total)`}
-                </p>
-              </Link>
-            );
-          })}
-        </div>
+        <DataTable
+          columns={columns}
+          rows={tracks}
+          rowKey={(track) => track.id}
+          layout={view}
+          aria-label="Trilhas"
+        />
       )}
     </>
   );

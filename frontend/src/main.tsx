@@ -4,6 +4,7 @@ import App from "./App.tsx";
 import "./styles/tokens.css";
 import "./styles/shell.css";
 import "./styles/login.css";
+import "./styles/data-table.css";
 import "./styles/track-path.css";
 import "./styles/track-structure.css";
 import "./styles/voice-call.css";
