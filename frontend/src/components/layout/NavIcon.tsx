@@ -30,6 +30,12 @@ const icons: Record<NavItem["icon"], ReactNode> = {
       <path d="M21 20v-1a3 3 0 0 0-2-2.8" />
     </>
   ),
+  profile: (
+    <>
+      <circle cx="12" cy="8" r="3.5" />
+      <path d="M6 20v-1a6 6 0 0 1 12 0v1" />
+    </>
+  ),
   learn: (
     <>
       <path d="M4 6.5 12 3l8 3.5v11L12 21 4 17.5V6.5Z" />

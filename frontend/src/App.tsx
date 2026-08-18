@@ -12,6 +12,7 @@ import { Learn } from "./pages/Learn";
 import { Login } from "./pages/Login";
 import { Playground } from "./pages/Playground";
 import { Professors } from "./pages/Professors";
+import { Profile } from "./pages/Profile";
 import { TrackEditor } from "./pages/TrackEditor";
 import { Tracks } from "./pages/Tracks";
 import { VoiceSession } from "./pages/VoiceSession";
@@ -41,6 +42,7 @@ export default function App() {
             <Route path="cohorts" element={<RoleRoute area="cohorts"><Cohorts /></RoleRoute>} />
             <Route path="cohorts/:cohortId" element={<RoleRoute area="cohorts"><CohortEditor /></RoleRoute>} />
             <Route path="professors" element={<RoleRoute area="professors"><Professors /></RoleRoute>} />
+            <Route path="profile" element={<RoleRoute area="profile"><Profile /></RoleRoute>} />
             <Route path="learn" element={<RoleRoute area="learn"><Learn /></RoleRoute>} />
             <Route path="admin/playground" element={<RoleRoute area="playground"><Playground /></RoleRoute>} />
           </Route>

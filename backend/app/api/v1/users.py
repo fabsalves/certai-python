@@ -22,7 +22,6 @@ from app.schemas import (
 router = APIRouter(prefix="/users", tags=["users"])
 
 can_manage_users = require_roles(Role.ADMIN, Role.DESIGNER)
-admin_only = require_roles(Role.ADMIN)
 
 _DESIGNER_CREATABLE = {Role.STUDENT, Role.PROFESSOR}
 
@@ -183,19 +182,30 @@ async def create_students_bulk(
     "/{user_id}",
     response_model=UserOut,
 )
-async def update_student(
+async def update_user(
     user_id: UUID,
     body: UserUpdate,
-    _admin: Annotated[User, Depends(admin_only)],
+    actor: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     target = await db.get(User, user_id)
     if target is None or not target.is_active:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Usuário não encontrado")
-    if target.role != Role.STUDENT:
+
+    if target.role == Role.STUDENT:
+        _assert_can_create(actor, Role.STUDENT)
+        if not body.whatsapp:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "WhatsApp é obrigatório para alunos",
+            )
+    elif target.role == Role.PROFESSOR:
+        if actor.id != target.id:
+            _assert_can_create(actor, Role.PROFESSOR)
+    else:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            "Só alunos podem ser editados",
+            "Este usuário não pode ser editado",
         )
 
     if body.email != target.email:
@@ -205,7 +215,7 @@ async def update_student(
                 detail="E-mail já cadastrado",
             )
 
-    if body.whatsapp != target.whatsapp:
+    if target.role == Role.STUDENT and body.whatsapp != target.whatsapp:
         if await db.scalar(select(User).where(User.whatsapp == body.whatsapp)):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -214,6 +224,7 @@ async def update_student(
 
     target.name = body.name
     target.email = body.email
-    target.whatsapp = body.whatsapp
+    if target.role == Role.STUDENT:
+        target.whatsapp = body.whatsapp
     await db.flush()
     return target

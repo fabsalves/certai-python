@@ -20,7 +20,7 @@ export interface UserCreateInput {
 export interface UserUpdateInput {
   email: string;
   name: string;
-  whatsapp: string;
+  whatsapp?: string;
 }
 
 export interface UserCreated extends UserOption {

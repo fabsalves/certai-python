@@ -94,7 +94,7 @@ class UserCreatedOut(UserOut):
 class UserUpdate(BaseModel):
     name: NameStr
     email: NormalizedEmailStr
-    whatsapp: RequiredWhatsappStr
+    whatsapp: OptionalWhatsappStr = None
 
 
 class StudentBulkItem(BaseModel):

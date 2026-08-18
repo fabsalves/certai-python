@@ -3954,6 +3954,14 @@ html.modal-scroll-lock body {
 
 .professors-list__item {
   padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.professors-list__edit {
+  flex-shrink: 0;
 }
 
 .professors-list__name {
