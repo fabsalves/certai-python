@@ -429,6 +429,7 @@ textarea.input {
   overflow-y: auto;
   overscroll-behavior: contain;
   animation: ui-select-menu-in 0.14s ease-out;
+  box-sizing: border-box;
 }
 
 .ui-select__option {
@@ -460,11 +461,9 @@ textarea.input {
 @keyframes ui-select-menu-in {
   from {
     opacity: 0;
-    transform: translateY(-4px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 

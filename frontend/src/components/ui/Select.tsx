@@ -71,7 +71,8 @@ export function Select({
       position: "fixed",
       top: rect.bottom + 6,
       left: rect.left,
-      width: rect.width,
+      width: Math.max(rect.width, 260),
+      minWidth: rect.width,
       zIndex: 80,
     });
   };
@@ -79,9 +80,12 @@ export function Select({
   useLayoutEffect(() => {
     if (!open) return;
     updateMenuPosition();
+    // Second measure after paint: scrollbar / font can shift the trigger on first open.
+    const raf = requestAnimationFrame(() => updateMenuPosition());
     window.addEventListener("resize", updateMenuPosition);
     window.addEventListener("scroll", updateMenuPosition, true);
     return () => {
+      cancelAnimationFrame(raf);
       window.removeEventListener("resize", updateMenuPosition);
       window.removeEventListener("scroll", updateMenuPosition, true);
     };
@@ -112,6 +116,8 @@ export function Select({
 
   function openMenu() {
     if (disabled) return;
+    // Position before the portal mounts so the first paint is already aligned.
+    updateMenuPosition();
     setOpen(true);
     const selectedIndex = enabledOptions.findIndex((opt) => opt.value === value);
     setHighlight(selectedIndex >= 0 ? selectedIndex : 0);
@@ -163,13 +169,14 @@ export function Select({
 
   const fieldClass = variant === "drawer" ? "drawer-field" : "field";
   const labelClass = variant === "drawer" ? "drawer-field__label" : undefined;
-  const rootClass = [
+  const selectClass = [
     "ui-select",
     variant === "drawer" ? "ui-select--drawer" : "",
-    className,
   ]
     .filter(Boolean)
     .join(" ");
+  // className must land on the outermost node — otherwise flex grow in toolbars is ignored.
+  const wrapperClass = [label ? fieldClass : null, className].filter(Boolean).join(" ") || undefined;
 
   const menu =
     open &&
@@ -217,13 +224,13 @@ export function Select({
     );
 
   return (
-    <div ref={rootRef} className={label ? fieldClass : undefined}>
+    <div ref={rootRef} className={wrapperClass}>
       {label && (
         <label className={labelClass} htmlFor={id}>
           {label}
         </label>
       )}
-      <div className={rootClass}>
+      <div className={selectClass}>
         <button
           ref={triggerRef}
           id={id}

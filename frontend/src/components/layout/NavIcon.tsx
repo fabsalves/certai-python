@@ -36,6 +36,14 @@ const icons: Record<NavItem["icon"], ReactNode> = {
       <path d="M12 10.5V21" />
     </>
   ),
+  costs: (
+    <>
+      <path d="M4 20V10" />
+      <path d="M10 20V5" />
+      <path d="M16 20v-7" />
+      <path d="M3 20h18" />
+    </>
+  ),
   playground: (
     <>
       <path d="M12 3v4" />

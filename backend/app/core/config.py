@@ -103,6 +103,10 @@ class Settings(BaseSettings):
     ASSISTANT_NAME: str = "Lira"
     INBOUND_DEBOUNCE_SECONDS: int = 5
 
+    # --- Custos de IA ---
+    # Só exibição: todo cálculo e persistência são em USD.
+    USD_BRL_RATE: float = 5.50
+
     @model_validator(mode="after")
     def derive_celery_redis_urls(self) -> "Settings":
         redis_url = str(self.REDIS_URL)

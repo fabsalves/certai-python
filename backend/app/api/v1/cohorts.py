@@ -59,6 +59,7 @@ from app.services.lesson_completion_service import complete_lesson
 from app.services.storage.download import file_response
 from app.services.track_structure import ordered_active_lessons
 from app.services.transcription_service import transcribe_audio
+from app.services.usage import UsageScope
 from app.services.upload_validation import (
     AUDIO_MAX_BYTES,
     is_allowed_report_audio,
@@ -1182,7 +1183,13 @@ async def transcribe_lesson_report(
 
     filename = audio.filename or "report.webm"
     try:
-        text = await transcribe_audio(content, filename=filename)
+        text = await transcribe_audio(
+            content,
+            filename=filename,
+            db=db,
+            scope=UsageScope(cohort_id=cohort_id, lesson_id=lesson_id),
+            usage_event_id=f"groq:report:{uuid.uuid4().hex}",
+        )
     except RuntimeError as e:
         raise HTTPException(status.HTTP_503_UNAVAILABLE, str(e)) from e
     except Exception as e:

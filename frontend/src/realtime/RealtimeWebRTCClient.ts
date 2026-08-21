@@ -8,7 +8,7 @@ import {
   responseId,
 } from "./responseParsing";
 import { REALTIME_MIC_CONSTRAINTS } from "../lib/realtimeMic";
-import type { VoiceBackend, VoiceTurnPayload } from "../voice/types";
+import type { VoiceBackend, VoiceTurnPayload, VoiceUsagePayload } from "../voice/types";
 
 const REALTIME_CALLS_URL = "https://api.openai.com/v1/realtime/calls";
 /**
@@ -17,6 +17,10 @@ const REALTIME_CALLS_URL = "https://api.openai.com/v1/realtime/calls";
  * (Realtime withholds stopped while a tool call is unanswered).
  */
 const GRACEFUL_END_FALLBACK_MS = 20_000;
+/** Usage lines are batched: a busy turn emits response.done + transcription together. */
+const USAGE_FLUSH_DEBOUNCE_MS = 400;
+/** Cap requeue on relay failure so an offline /usage cannot grow unbounded in memory. */
+const USAGE_REQUEUE_MAX = 40;
 
 export interface ResponseDoneInfo {
   hasAudioOutput: boolean;
@@ -44,6 +48,11 @@ export class RealtimeWebRTCClient {
   private relayedStudentKeys = new Set<string>();
   private pendingGracefulEnd = false;
   private gracefulEndTimer: ReturnType<typeof setTimeout> | null = null;
+  private usageQueue: VoiceUsagePayload[] = [];
+  private usageFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  private relayedUsageKeys = new Set<string>();
+  private sessionModel = "";
+  private transcriptionModel = "";
 
   private backend: VoiceBackend | null = null;
   private callbacks: RealtimeWebRTCCallbacks | null = null;
@@ -61,7 +70,12 @@ export class RealtimeWebRTCClient {
     this.backend = backend;
     this.callbacks = callbacks;
     this.voiceSessionId = tokenData.voice_session_id;
+    this.sessionModel = tokenData.realtime_model ?? "";
+    this.transcriptionModel = tokenData.realtime_transcription_model ?? "";
     this.relayedStudentKeys.clear();
+    this.relayedUsageKeys.clear();
+    this.usageQueue = [];
+    this.clearUsageFlushTimer();
     this.clearGracefulEndTimer();
     this.pendingGracefulEnd = false;
 
@@ -126,6 +140,12 @@ export class RealtimeWebRTCClient {
   disconnect(): void {
     this.clearGracefulEndTimer();
     this.pendingGracefulEnd = false;
+    // Fire-and-forget with keepalive: the last response.done closes the most
+    // expensive turn of the call and must survive the page unloading.
+    // Capture backend before nulling — flushUsage is async and would race.
+    this.clearUsageFlushTimer();
+    const backend = this.backend;
+    void this.flushUsage(true, backend);
     if (this.pc) {
       this.pc.getSenders().forEach((sender) => sender.track?.stop());
       this.pc.close();
@@ -137,6 +157,7 @@ export class RealtimeWebRTCClient {
     }
     this.dc = null;
     this.relayedStudentKeys.clear();
+    this.relayedUsageKeys.clear();
     this.callbacks?.onStreamCleared();
     this.backend = null;
     this.callbacks = null;
@@ -174,6 +195,49 @@ export class RealtimeWebRTCClient {
       }
     } catch (err) {
       console.error("[realtime] turn relay failed", err);
+    }
+  }
+
+  private clearUsageFlushTimer(): void {
+    if (this.usageFlushTimer) {
+      clearTimeout(this.usageFlushTimer);
+      this.usageFlushTimer = null;
+    }
+  }
+
+  /** Dedup by provider event: the same response.done may arrive twice. */
+  private enqueueUsage(item: VoiceUsagePayload): void {
+    const key = `${item.operation}:${item.provider_event_id}`;
+    if (this.relayedUsageKeys.has(key)) return;
+    this.relayedUsageKeys.add(key);
+
+    this.usageQueue.push(item);
+    if (this.usageFlushTimer) return;
+    this.usageFlushTimer = setTimeout(() => {
+      this.usageFlushTimer = null;
+      void this.flushUsage();
+    }, USAGE_FLUSH_DEBOUNCE_MS);
+  }
+
+  private async flushUsage(
+    keepalive = false,
+    backend: VoiceBackend | null = this.backend,
+  ): Promise<void> {
+    if (!backend || this.usageQueue.length === 0) return;
+    const items = this.usageQueue.splice(0, this.usageQueue.length);
+    try {
+      await backend.persistUsage(items, keepalive);
+    } catch (err) {
+      // Metering must never break the call. Requeue for the next attempt, but
+      // drop the dedup keys so the retry is not swallowed as a duplicate.
+      console.warn("[realtime] usage relay failed", err);
+      for (const item of items) {
+        this.relayedUsageKeys.delete(`${item.operation}:${item.provider_event_id}`);
+      }
+      const room = Math.max(0, USAGE_REQUEUE_MAX - this.usageQueue.length);
+      if (room > 0) {
+        this.usageQueue.unshift(...items.slice(-room));
+      }
     }
   }
 
@@ -247,6 +311,8 @@ export class RealtimeWebRTCClient {
         transcript?: string;
         response?: unknown;
         item_id?: string;
+        event_id?: string;
+        usage?: Record<string, unknown>;
       };
       const type = payload.type;
 
@@ -276,6 +342,20 @@ export class RealtimeWebRTCClient {
       }
 
       if (type === "conversation.item.input_audio_transcription.completed") {
+        // Input transcription is billed on its own rate card, so its usage is
+        // metered even when the transcript itself is empty and gets discarded.
+        if (payload.usage) {
+          this.enqueueUsage({
+            provider: "openai",
+            model: this.transcriptionModel,
+            operation: "input_transcription",
+            provider_event_id:
+              payload.event_id ?? `transcription:${payload.item_id ?? crypto.randomUUID()}`,
+            usage: payload.usage,
+            occurred_at: new Date().toISOString(),
+          });
+        }
+
         const transcript = (payload.transcript ?? "").trim();
         if (!transcript) return;
 
@@ -300,6 +380,18 @@ export class RealtimeWebRTCClient {
 
       if (type === "response.done") {
         const doneResponseId = responseId(payload.response);
+        const responseUsage = (payload.response as { usage?: Record<string, unknown> })
+          ?.usage;
+        if (responseUsage) {
+          this.enqueueUsage({
+            provider: "openai",
+            model: this.sessionModel,
+            operation: "realtime_response",
+            provider_event_id: payload.event_id ?? `response:${doneResponseId}`,
+            usage: responseUsage,
+            occurred_at: new Date().toISOString(),
+          });
+        }
         const output = normalizeRealtimeResponseOutput(payload.response as { output?: unknown });
         this.callbacks?.onResponseDone?.({
           hasAudioOutput: responseHasAudioOutput(output),

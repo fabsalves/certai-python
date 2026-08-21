@@ -29,6 +29,7 @@ from app.models.assessment import CohortLessonNote
 from app.models.track import Lesson
 from app.models.cohort import CohortModuleProfessor, CohortProgress
 from app.services.storage import get_storage
+from app.services.usage import UsageScope, record_chat_usage
 
 CONSOLIDATION_SYSTEM_PROMPT = (
     "You will receive the professor's report about a lesson and, optionally, the "
@@ -52,7 +53,13 @@ class StoredFile:
     extension: str
 
 
-async def consolidate_notes(transcript: str, attachment_text: str = "") -> dict[str, str]:
+async def consolidate_notes(
+    transcript: str,
+    attachment_text: str = "",
+    *,
+    db: AsyncSession | None = None,
+    scope: UsageScope | None = None,
+) -> dict[str, str]:
     """The AI turns the professor's report (+ optional attachment) into
     summary + unclear points + lesson knowledge base."""
     empty = {"summary": "", "unclear_points": "", "knowledge_base": ""}
@@ -73,6 +80,9 @@ async def consolidate_notes(transcript: str, attachment_text: str = "") -> dict[
             {"role": "user", "content": user_content},
         ],
     )
+    if db is not None and scope is not None:
+        await record_chat_usage(db, scope=scope, operation="ingestion", response=resp)
+
     import json
 
     text = resp.choices[0].message.content or ""

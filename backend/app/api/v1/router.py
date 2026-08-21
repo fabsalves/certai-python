@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1 import auth, conversations, cohorts, realtime, tracks, users
+from app.api.v1 import auth, conversations, cohorts, costs, realtime, tracks, users
 from app.api.v1.admin import playground as admin_playground
 
 api_router = APIRouter()
@@ -10,4 +10,5 @@ api_router.include_router(tracks.router)
 api_router.include_router(cohorts.router)
 api_router.include_router(conversations.router)
 api_router.include_router(realtime.router)
+api_router.include_router(costs.router)
 api_router.include_router(admin_playground.router)

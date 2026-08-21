@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.context_builder import ContextBuilder
 from app.ai.engine import respond
 from app.ai.humanizer import humanize
+from app.services.usage import UsageScope
 from app.ai.tools import ToolContext
 from app.models.conversation import (
     Author,
@@ -178,7 +179,13 @@ async def generate_lesson_reply(
     )
 
     raw = await respond(bundle, history, tool_ctx)
-    final = await humanize(raw)
+    final = await humanize(
+        raw,
+        db=db,
+        scope=UsageScope(
+            cohort_id=cohort_id, student_id=student_id, lesson_id=lesson_id
+        ),
+    )
 
     await record_message(
         db,

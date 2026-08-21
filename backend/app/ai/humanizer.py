@@ -8,9 +8,12 @@ this module adds rewrite-task and text-formatting rules only.
 The system prompt is intentionally in pt-BR: it produces the text the user reads.
 """
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.ai.client import get_openai
 from app.ai.persona import LIRA_TONE
 from app.core.config import settings
+from app.services.usage import UsageScope, record_chat_usage
 
 SYSTEM = (
     "Reescreva a mensagem para aplicar o tom abaixo.\n\n"
@@ -24,7 +27,14 @@ SYSTEM = (
 )
 
 
-async def humanize(text: str) -> str:
+async def humanize(
+    text: str,
+    *,
+    db: AsyncSession | None = None,
+    scope: UsageScope | None = None,
+) -> str:
+    """`db` + `scope` are optional so callers without one still work; when they
+    are missing the pass simply is not metered -- never attributed to a guess."""
     if not text.strip():
         return text
     client = get_openai()
@@ -36,4 +46,6 @@ async def humanize(text: str) -> str:
             {"role": "user", "content": text},
         ],
     )
+    if db is not None and scope is not None:
+        await record_chat_usage(db, scope=scope, operation="humanizer", response=resp)
     return (resp.choices[0].message.content or "").strip() or text

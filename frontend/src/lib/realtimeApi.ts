@@ -19,6 +19,7 @@ export interface RealtimeTokenResponse {
   lock_token: string;
   realtime_model: string;
   realtime_voice: string;
+  realtime_transcription_model: string;
   play_session_opener: boolean;
 }
 
@@ -28,6 +29,15 @@ export interface TurnRelayItem {
   content: string;
   realtime_item_id: string;
   sequence: number;
+}
+
+export interface UsageRelayItem {
+  provider: "openai";
+  model: string;
+  operation: "realtime_response" | "input_transcription";
+  provider_event_id: string;
+  usage: Record<string, unknown>;
+  occurred_at: string;
 }
 
 export interface TurnsRelayResponse {
@@ -75,6 +85,38 @@ export async function relayTurns(
     lock_token: lockToken,
     turns,
   });
+  return data;
+}
+
+/**
+ * Relays billable usage. On teardown `keepalive` is required: axios rides on
+ * XHR, which the browser cancels while unloading, so the last batch — the one
+ * closing the most expensive turn — would be lost.
+ */
+export async function relayUsage(
+  voiceSessionId: string,
+  lockToken: string,
+  items: UsageRelayItem[],
+  keepalive = false,
+): Promise<{ inserted: number }> {
+  const body = {
+    voice_session_id: voiceSessionId,
+    lock_token: lockToken,
+    items,
+  };
+
+  if (keepalive) {
+    const response = await fetch("/api/v1/realtime/usage", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      keepalive: true,
+    });
+    if (!response.ok) throw new Error(`usage relay failed: ${response.status}`);
+    return (await response.json()) as { inserted: number };
+  }
+
+  const { data } = await realtimeHttp.post<{ inserted: number }>("/usage", body);
   return data;
 }
 

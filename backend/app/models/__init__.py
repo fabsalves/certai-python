@@ -24,6 +24,7 @@ from app.models.assessment import (
     StudentAssessment,
 )
 from app.models.student_progress import StudentLessonProgress, StudentLessonProgressStatus
+from app.models.usage import AiUsageEvent
 
 __all__ = [
     "Base",
@@ -52,4 +53,5 @@ __all__ = [
     "StudentAssessment",
     "StudentLessonProgress",
     "StudentLessonProgressStatus",
+    "AiUsageEvent",
 ]

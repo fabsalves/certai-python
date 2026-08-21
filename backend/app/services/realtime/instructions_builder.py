@@ -13,6 +13,7 @@ from app.ai.engine import SYSTEM_BASE
 from app.ai.persona import LIRA_TONE
 from app.core.config import settings
 from app.services.conversation_service import lesson_conversation_history
+from app.services.usage import UsageScope, record_chat_usage
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +128,12 @@ def format_history(history: list[dict]) -> str:
     return "\n".join(lines) if lines else "(nenhuma mensagem anterior)"
 
 
-async def _summarize_dropped_turns(dropped: list[dict]) -> str:
+async def _summarize_dropped_turns(
+    dropped: list[dict],
+    *,
+    db: AsyncSession | None = None,
+    scope: UsageScope | None = None,
+) -> str:
     if not dropped:
         return ""
     transcript = format_history(dropped)
@@ -150,6 +156,9 @@ async def _summarize_dropped_turns(dropped: list[dict]) -> str:
             {"role": "user", "content": transcript},
         ],
     )
+    if db is not None and scope is not None:
+        await record_chat_usage(db, scope=scope, operation="summarizer", response=resp)
+
     return (resp.choices[0].message.content or "").strip()
 
 
@@ -175,6 +184,9 @@ class RealtimeInstructionsBuilder:
             system_blocks=system_blocks,
             history=history,
             student_first_name=student_first_name,
+            scope=UsageScope(
+                cohort_id=cohort_id, student_id=student_id, lesson_id=lesson_id
+            ),
         )
 
     async def _assemble(
@@ -183,6 +195,7 @@ class RealtimeInstructionsBuilder:
         system_blocks: str,
         history: list[dict],
         student_first_name: str,
+        scope: UsageScope | None = None,
     ) -> str:
         base_prefix = (
             f"{SYSTEM_BASE}\n\n{VOICE_CONVERSATION_ORDER_BLOCK}\n\n{LIRA_TONE}\n\n"
@@ -226,7 +239,7 @@ class RealtimeInstructionsBuilder:
         if len(truncated) <= INSTRUCTIONS_CHAR_LIMIT:
             return finish(truncated)
 
-        summary = await _summarize_dropped_turns(dropped)
+        summary = await _summarize_dropped_turns(dropped, db=self._db, scope=scope)
         with_summary = render(format_history(recent), summary=summary)
         if len(with_summary) <= INSTRUCTIONS_CHAR_LIMIT:
             return finish(with_summary)

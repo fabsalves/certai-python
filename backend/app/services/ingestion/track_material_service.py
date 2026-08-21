@@ -25,6 +25,7 @@ from app.services.ingestion import (
 )
 from app.services.ingestion.extraction import UnsupportedFormatError, extract_text
 from app.services.storage import get_storage
+from app.services.usage import UsageScope, record_chat_usage
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,9 @@ TRACK_GUIDE_SYSTEM_PROMPT = (
 )
 
 
-async def build_track_guide(extracted_text: str) -> str:
+async def build_track_guide(
+    extracted_text: str, *, db: AsyncSession | None = None
+) -> str:
     """One LLM pass: raw material text -> macro guide in pt-BR."""
     if not extracted_text.strip():
         return ""
@@ -57,6 +60,13 @@ async def build_track_guide(extracted_text: str) -> str:
             {"role": "user", "content": extracted_text},
         ],
     )
+    if db is not None:
+        # A track serves many cohorts, so this spend has no cohort to charge.
+        # Recorded unattributed rather than dropped -- the total must stay honest.
+        await record_chat_usage(
+            db, scope=UsageScope(), operation="ingestion", response=resp
+        )
+
     text = resp.choices[0].message.content or ""
     try:
         guide = json.loads(text).get("guide", "")
@@ -88,7 +98,7 @@ async def ingest_track_material(db: AsyncSession, track_id: uuid.UUID) -> Track:
         return track
 
     track.material_extracted_text = extracted
-    track.material_guide = await build_track_guide(extracted)
+    track.material_guide = await build_track_guide(extracted, db=db)
     track.material_ingestion_status = INGESTION_DONE
     await db.flush()
     return track

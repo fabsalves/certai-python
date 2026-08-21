@@ -2,41 +2,68 @@
 
 .list-toolbar {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 10px;
   margin-bottom: 20px;
+  width: 100%;
 }
 
 .list-toolbar__search {
-  flex: 1 1 220px;
-  min-width: 0;
+  flex: 1 1 0;
+  width: auto;
+  min-width: 160px;
+  max-width: none;
+  /* Um pouco maior que a metade; filtros ficam com o restante. */
+  flex-basis: 55%;
 }
 
 .list-toolbar__filters {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 10px;
+  flex: 1 1 0;
+  flex-basis: 45%;
+  min-width: 0;
 }
 
 .list-toolbar__select {
-  flex: 0 1 auto;
-  min-width: min(100%, 220px);
+  flex: 1 1 0;
+  min-width: 140px;
   padding-block: 9px;
+}
+
+.list-toolbar__ui-select {
+  flex: 1 1 0;
+  min-width: 140px;
+}
+
+.list-toolbar__ui-select .ui-select {
+  width: 100%;
+}
+
+.list-toolbar__ui-select .ui-select__trigger {
+  min-height: 44px;
+  padding: 11px 14px;
+  font-size: 15px;
 }
 
 .filter-segment {
   display: inline-flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  flex: 0 0 auto;
   padding: 3px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface-sunken);
+  min-height: 44px;
+  align-items: stretch;
+  box-sizing: border-box;
 }
 
 .filter-segment__btn {
-  padding: 6px 12px;
+  padding: 8px 14px;
   border: none;
   border-radius: calc(var(--radius-sm) - 2px);
   background: transparent;
@@ -149,6 +176,23 @@
 .pager__chevron {
   width: 16px;
   height: 16px;
+}
+
+@media (max-width: 900px) {
+  .list-toolbar,
+  .list-toolbar__filters {
+    flex-wrap: wrap;
+  }
+
+  .list-toolbar__search {
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: none;
+  }
+
+  .list-toolbar__ui-select {
+    flex: 1 1 200px;
+  }
 }
 
 @media (max-width: 560px) {
