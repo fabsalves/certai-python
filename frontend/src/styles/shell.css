@@ -517,6 +517,19 @@
   line-height: 1.1;
 }
 
+.cost-stats {
+  display: grid;
+  gap: 20px;
+  margin-bottom: 24px;
+  width: 100%;
+}
+
+@media (max-width: 720px) {
+  .cost-stats {
+    grid-template-columns: 1fr !important;
+  }
+}
+
 .track-card {
   padding: 24px;
 }

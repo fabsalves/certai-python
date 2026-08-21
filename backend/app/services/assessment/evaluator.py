@@ -20,6 +20,7 @@ from app.ai.client import get_openai
 from app.core.config import settings
 from app.models.assessment import AssessmentScope, Level, MicroScore, StudentAssessment
 from app.services.ingestion import coerce_llm_text_field
+from app.services.usage import UsageScope, record_chat_usage
 
 logger = logging.getLogger(__name__)
 
@@ -182,6 +183,14 @@ async def run_evaluator_and_persist(
             {"role": "system", "content": EVALUATOR_SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
+    )
+    await record_chat_usage(
+        db,
+        scope=UsageScope(
+            cohort_id=cohort_id, student_id=student_id, lesson_id=lesson_id
+        ),
+        operation="evaluator",
+        response=resp,
     )
     raw_text = resp.choices[0].message.content or ""
     try:

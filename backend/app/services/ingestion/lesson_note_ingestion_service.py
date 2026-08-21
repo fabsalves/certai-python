@@ -20,6 +20,7 @@ from app.services.ingestion import (
 )
 from app.services.ingestion.extraction import UnsupportedFormatError, extract_text
 from app.services.lesson_completion_service import consolidate_notes
+from app.services.usage import UsageScope
 from app.services.storage import get_storage
 
 logger = logging.getLogger(__name__)
@@ -45,7 +46,13 @@ async def ingest_lesson_note(db: AsyncSession, note_id: uuid.UUID) -> CohortLess
                 "lesson note %s: attachment without text extractor (%s)", note_id, extension
             )
 
-    consolidated = await consolidate_notes(note.professor_transcript, attachment_text)
+    consolidated = await consolidate_notes(
+        note.professor_transcript,
+        attachment_text,
+        db=db,
+        # Cohort- and lesson-level work: no single student owns it.
+        scope=UsageScope(cohort_id=note.cohort_id, lesson_id=note.lesson_id),
+    )
 
     note.attachment_extracted_text = attachment_text
     note.summary = coerce_llm_text_field(consolidated.get("summary", ""))

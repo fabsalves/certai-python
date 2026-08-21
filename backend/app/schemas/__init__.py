@@ -476,3 +476,101 @@ class PlaygroundScoresOut(BaseModel):
     lesson_focus: PlaygroundLessonFocusOut
     scores_in_lesson: list[PlaygroundMicroScoreOut] = []
     scores_other_lessons: list[PlaygroundMicroScoreOut] = []
+
+
+# --- Custos de IA -----------------------------------------------------------
+# Valores em USD. A conversão para BRL é exibição (settings.USD_BRL_RATE).
+# `unpriced_events > 0` significa total INCOMPLETO — a tela deve avisar.
+
+
+class KindBreakdownOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    cost_kind: str
+    label: str
+    provider: str
+    total_tokens: float
+    cost_usd: float
+    unpriced_events: int = 0
+
+
+class LessonCostOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    lesson_id: uuid.UUID | None = None
+    lesson_title: str
+    module_title: str = ""
+    voice_minutes_est: float = 0
+    voice_cost_usd: float = 0
+    other_cost_usd: float = 0
+    cost_usd: float = 0
+    unpriced_events: int = 0
+
+
+class StudentCostOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    student_id: uuid.UUID | None = None
+    student_name: str
+    lesson_count: int = 0
+    voice_minutes_est: float = 0
+    cost_usd: float = 0
+    cost_per_lesson_usd: float = 0
+    unpriced_events: int = 0
+
+
+class CohortCostOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    cohort_id: uuid.UUID
+    cohort_title: str
+    track_id: uuid.UUID | None = None
+    track_title: str = ""
+    student_count: int = 0
+    lesson_count: int = 0
+    student_lesson_count: int = 0
+    voice_minutes_est: float = 0
+    cost_usd: float = 0
+    cost_per_student_usd: float = 0
+    # Custo de UMA avaliação por aluno: total / pares (aluno, aula) medidos.
+    cost_per_student_lesson_usd: float = 0
+    unpriced_events: int = 0
+
+
+class CohortsCostOut(BaseModel):
+    cohorts: list[CohortCostOut] = []
+    total_cost_usd: float = 0
+    # Ingestão de material de trilha: gasto real sem turma para atribuir.
+    unattributed_cost_usd: float = 0
+    unpriced_events: int = 0
+    models: list[str] = []
+    usd_brl_rate: float
+    period_from: datetime
+    period_to: datetime
+
+
+class CohortCostDetailOut(BaseModel):
+    cohort_id: uuid.UUID
+    cohort_title: str
+    track_title: str = ""
+    voice_minutes_est: float = 0
+    cost_usd: float = 0
+    unpriced_events: int = 0
+    by_kind: list[KindBreakdownOut] = []
+    students: list[StudentCostOut] = []
+    models: list[str] = []
+    usd_brl_rate: float
+    period_from: datetime
+    period_to: datetime
+
+
+class StudentCostDetailOut(BaseModel):
+    cohort_id: uuid.UUID
+    cohort_title: str
+    student_id: uuid.UUID
+    student_name: str
+    voice_minutes_est: float = 0
+    cost_usd: float = 0
+    unpriced_events: int = 0
+    by_kind: list[KindBreakdownOut] = []
+    lessons: list[LessonCostOut] = []
+    models: list[str] = []
+    usd_brl_rate: float
+    period_from: datetime
+    period_to: datetime

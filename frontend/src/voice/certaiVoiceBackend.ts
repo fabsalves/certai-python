@@ -3,6 +3,7 @@ import {
   fetchRealtimeToken,
   invokeRealtimeTool,
   relayTurns,
+  relayUsage,
   sendHeartbeat,
 } from "../lib/realtimeApi";
 import {
@@ -10,7 +11,12 @@ import {
   getStoredReconnectSessionId,
   setStoredVoiceSession,
 } from "../lib/sessionRealtimeLock";
-import type { VoiceBackend, VoiceSessionCredentials, VoiceTurnPayload } from "./types";
+import type {
+  VoiceBackend,
+  VoiceSessionCredentials,
+  VoiceTurnPayload,
+  VoiceUsagePayload,
+} from "./types";
 
 const SERVER_TOOLS = new Set([
   "score_understanding",
@@ -48,6 +54,18 @@ export function createCertaiVoiceBackend(handoffToken: string): VoiceBackend {
       const result = await relayTurns(voiceSessionId, lockToken, turns);
       console.log("[realtime] turns relayed", result);
       return { accepted: result.accepted };
+    },
+
+    async persistUsage(items: VoiceUsagePayload[], keepalive = false) {
+      if (!voiceSessionId || !lockToken || items.length === 0) return;
+      try {
+        const result = await relayUsage(voiceSessionId, lockToken, items, keepalive);
+        console.log("[realtime] usage relayed", result);
+      } catch (err) {
+        // Re-throw so RealtimeWebRTCClient can requeue; never surface to UI.
+        console.warn("[realtime] usage relay failed", err);
+        throw err;
+      }
     },
 
     async handleToolCall(name, callId, args) {

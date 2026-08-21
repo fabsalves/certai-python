@@ -5,8 +5,10 @@ from __future__ import annotations
 import logging
 
 from groq import AsyncGroq
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.services.usage import UsageScope, record_groq_transcription
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +35,26 @@ def _text_from_response(resp: object) -> str:
     return (getattr(resp, "text", None) or "").strip()
 
 
-async def transcribe_audio(content: bytes, filename: str = "audio.webm") -> str:
+def _duration_seconds(resp: object) -> float | None:
+    """verbose_json reports the audio duration; Whisper is billed by the hour."""
+    value = getattr(resp, "duration", None)
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+async def transcribe_audio(
+    content: bytes,
+    filename: str = "audio.webm",
+    *,
+    db: AsyncSession | None = None,
+    scope: UsageScope | None = None,
+    usage_event_id: str | None = None,
+) -> str:
+    """`db`/`scope`/`usage_event_id` are optional: metering only happens when the
+    caller knows who to charge. Duration comes from the verbose_json response, so
+    the json fallback path is not metered -- it has no duration to bill."""
     if not settings.GROQ_API_KEY:
         raise RuntimeError("Transcrição indisponível: GROQ_API_KEY não configurada")
 
@@ -53,6 +74,14 @@ async def transcribe_audio(content: bytes, filename: str = "audio.webm") -> str:
         )
         text = _text_from_response(resp)
         if text:
+            if db is not None and usage_event_id:
+                await record_groq_transcription(
+                    db,
+                    scope=scope or UsageScope(),
+                    model=settings.GROQ_TRANSCRIBE_MODEL,
+                    provider_event_id=usage_event_id,
+                    seconds=_duration_seconds(resp),
+                )
             return text
     except Exception:
         logger.warning(
