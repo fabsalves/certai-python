@@ -15,6 +15,7 @@ export interface KindBreakdown {
   total_tokens: number;
   cost_usd: number;
   unpriced_events: number;
+  voice_minutes_est: number;
 }
 
 export interface LessonCost {

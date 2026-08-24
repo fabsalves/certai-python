@@ -17,7 +17,6 @@ from app.models import Base
 from app.models.track import Lesson, Module, ModuleLevel, Track
 from app.models.cohort import Cohort, CohortModuleProfessor, Enrollment
 from app.models.user import Role, User
-from app.seed_usage import seed_ai_usage_events
 
 # Conteúdo publicado pelo designer na trilha — material que a turma estudou.
 # Sem gabarito resolvido no texto: a Lira deve extrair entendimento na conversa.
@@ -226,13 +225,8 @@ async def seed(*, force: bool = False) -> None:
 
     async with SessionLocal() as db:
         if not force and await db.scalar(select(User).limit(1)):
-            usage_rows = await seed_ai_usage_events(db)
-            if usage_rows:
-                await db.commit()
-                print(f"Consumo de IA demo inserido ({usage_rows} linhas). Abra /costs.")
-            else:
-                print("Data already present; skipping seed.")
-                print("Run: bin/db-reset   (or: python -m app.seed --force)")
+            print("Data already present; skipping seed.")
+            print("Run: bin/db-reset   (or: python -m app.seed --force)")
             return
 
         users: list[User] = []
@@ -340,13 +334,9 @@ async def seed(*, force: bool = False) -> None:
         for email in ENROLLED_STUDENT_EMAILS:
             db.add(Enrollment(cohort_id=cohort.id, student_id=users_by_email[email].id))
 
-        usage_rows = await seed_ai_usage_events(db)
-
         await db.commit()
 
         print("Seed done.")
-        if usage_rows:
-            print(f"  {usage_rows} linhas de consumo de IA (demo Custos)")
         print("")
         print("Logins principais:")
         print("  admin@certai.app / admin12345")

@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { DataTable, type DataColumn } from "../ui/DataTable";
 import {
+  formatMinutes,
   formatTokens,
   formatUsd,
   type KindBreakdown as KindBreakdownRow,
@@ -29,6 +30,12 @@ export function KindBreakdown({ rows }: { rows: KindBreakdownRow[] }) {
         header: "Tokens",
         align: "end",
         render: (row) => formatTokens(row.total_tokens),
+      },
+      {
+        id: "minutes",
+        header: "Tempo (est.)",
+        align: "end",
+        render: (row) => formatMinutes(row.voice_minutes_est),
       },
       {
         id: "usd",

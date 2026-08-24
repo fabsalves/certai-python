@@ -171,7 +171,9 @@ export function Costs() {
     return <CostsListSkeleton columns={7} />;
   }
 
-  const hasAnyMeasurement = cohorts.length > 0;
+  const hasUnattributed = (data?.unattributed_cost_usd ?? 0) > 0;
+  const hasAnyMeasurement =
+    cohorts.length > 0 || hasUnattributed || (data?.unpriced_events ?? 0) > 0;
   const hasResults = filtered.length > 0;
   const showTrackFilter = trackOptions.length > 2;
   const showModelFilter = modelOptions.length > 1;
@@ -236,7 +238,7 @@ export function Costs() {
         <div className="card empty-state">
           <p>Nenhum consumo medido neste período.</p>
           <p className="muted" style={{ marginTop: 6 }}>
-            Os totais aparecem aqui depois das conversas e avaliações.
+            Os totais aparecem aqui depois das conversas, avaliações e ingestão.
           </p>
         </div>
       )}
@@ -244,37 +246,62 @@ export function Costs() {
       {hasAnyMeasurement && data && (
         <>
           <CostStats
-            stats={[
-              {
-                label: "Total no período",
-                value: formatUsd(data.total_cost_usd),
-                hint: formatPeriod(data.period_from, data.period_to),
-              },
-              {
-                label: "Por avaliação (aluno-aula)",
-                value: formatUsd(avgPerStudentLesson),
-                hint: `${totalStudentLessons} aluno-aula com medição`,
-              },
-              {
-                label: "Por aluno",
-                value: formatUsd(avgPerStudent),
-                hint: `${totalStudents} matriculados`,
-              },
-              ...(data.unattributed_cost_usd > 0
+            stats={
+              cohorts.length === 0
                 ? [
+                    {
+                      label: "Total no período",
+                      value: formatUsd(data.total_cost_usd),
+                      hint: formatPeriod(data.period_from, data.period_to),
+                    },
                     {
                       label: "Sem turma atribuída",
                       value: formatUsd(data.unattributed_cost_usd),
                       hint: "Ingestão de material de trilha, que serve várias turmas",
                     },
                   ]
-                : []),
-            ]}
+                : [
+                    {
+                      label: "Total no período",
+                      value: formatUsd(data.total_cost_usd),
+                      hint: formatPeriod(data.period_from, data.period_to),
+                    },
+                    {
+                      label: "Por avaliação (aluno-aula)",
+                      value: formatUsd(avgPerStudentLesson),
+                      hint: `${totalStudentLessons} aluno-aula com medição`,
+                    },
+                    {
+                      label: "Por aluno",
+                      value: formatUsd(avgPerStudent),
+                      hint: `${totalStudents} matriculados`,
+                    },
+                    ...(data.unattributed_cost_usd > 0
+                      ? [
+                          {
+                            label: "Sem turma atribuída",
+                            value: formatUsd(data.unattributed_cost_usd),
+                            hint: "Ingestão de material de trilha, que serve várias turmas",
+                          },
+                        ]
+                      : []),
+                  ]
+            }
           />
 
           <UnpricedWarning count={data.unpriced_events} />
 
-          {!hasResults && <ListEmptyFilter />}
+          {cohorts.length === 0 && hasUnattributed && (
+            <div className="card empty-state">
+              <p>Nenhuma turma com consumo neste período.</p>
+              <p className="muted" style={{ marginTop: 6 }}>
+                O gasto acima é da ingestão de material da trilha. Ele não entra em
+                nenhuma turma porque a trilha pode servir várias.
+              </p>
+            </div>
+          )}
+
+          {cohorts.length > 0 && !hasResults && <ListEmptyFilter />}
 
           {hasResults && (
             <>

@@ -491,6 +491,7 @@ class KindBreakdownOut(BaseModel):
     total_tokens: float
     cost_usd: float
     unpriced_events: int = 0
+    voice_minutes_est: float = 0
 
 
 class LessonCostOut(BaseModel):

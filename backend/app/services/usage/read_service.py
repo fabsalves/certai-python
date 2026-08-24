@@ -57,12 +57,15 @@ OPERATION_LABELS: dict[str, str] = {
     "transcription": "Transcrição do professor",
 }
 
-# Audio tokens billed by the Realtime API, used to derive call minutes.
+# Fresh audio only. Cached audio is billed (cheap) but is reused context, not
+# new speech — converting it to minutes inflates "call time" by several times.
 _VOICE_AUDIO_KINDS = (
     "realtime_audio_in",
     "realtime_audio_out",
-    "realtime_audio_in_cached",
 )
+# Token-billed audio kinds that convert with ~10 tokens/second.
+_AUDIO_MINUTE_KINDS = _VOICE_AUDIO_KINDS + ("transcribe_audio_in",)
+_AUDIO_SECONDS_KINDS = frozenset({"transcribe_audio_seconds"})
 # Everything the voice channel bills, for the voice-vs-rest split per lesson.
 _VOICE_OPERATIONS = ("realtime_response", "input_transcription")
 
@@ -102,6 +105,7 @@ class KindBreakdownRow:
     total_tokens: Decimal
     cost_usd: Decimal
     unpriced_events: int
+    voice_minutes_est: float
 
 
 @dataclass(frozen=True)
@@ -201,6 +205,18 @@ def _minutes(audio_tokens: object) -> float:
     return float(
         (tokens / _AUDIO_TOKENS_PER_SECOND / Decimal("60")).quantize(Decimal("0.01"))
     )
+
+
+def _minutes_for_kind(cost_kind: str, quantity: object) -> float:
+    """Per-row estimate. Seconds kinds skip the token conversion."""
+    if cost_kind in _AUDIO_SECONDS_KINDS:
+        seconds = Decimal(str(quantity or 0))
+        if seconds <= 0:
+            return 0.0
+        return float((seconds / Decimal("60")).quantize(Decimal("0.01")))
+    if cost_kind in _AUDIO_MINUTE_KINDS:
+        return _minutes(quantity)
+    return 0.0
 
 
 def _cost_sum():
@@ -600,6 +616,7 @@ async def _kind_breakdown(
             total_tokens=_tokens(row.tokens),
             cost_usd=_money(row.cost),
             unpriced_events=int(row.unpriced or 0),
+            voice_minutes_est=_minutes_for_kind(row.cost_kind, row.tokens),
         )
         for row in rows
     ]
