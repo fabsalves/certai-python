@@ -27,12 +27,14 @@ _REALTIME_2 = {
 }
 
 # --- OpenAI ASR (input transcription during a call) --------------------------
-# gpt-4o-mini-transcribe is sold per minute (~$0.003). At ~10 audio tokens per
-# second that is ~600 tokens/min -> ~$5.00 / 1M audio tokens.
+# Official token rates (OpenAI pricing): Input / Output per 1M tokens.
+# Audio tokens from input_audio_transcription.completed bill at Input;
+# transcript tokens bill at Output. Minute estimates on the pricing page
+# ($0.003 / $0.006) are derived from typical token density, not a separate SKU.
 _TRANSCRIBE_MINI = {
-    "transcribe_audio_in": Decimal("5.00"),
-    "transcribe_text_in": Decimal("0.60"),
-    "transcribe_text_out": Decimal("0.60"),
+    "transcribe_audio_in": Decimal("1.25"),
+    "transcribe_text_in": Decimal("1.25"),
+    "transcribe_text_out": Decimal("5.00"),
 }
 
 # --- OpenAI Chat Completions (engine, humanizer, evaluator, ingestion) ------
@@ -53,7 +55,7 @@ OPENAI_RATES: dict[str, dict[str, Decimal]] = {
     "gpt-realtime": _REALTIME_2,
     "gpt-4o-mini-transcribe": _TRANSCRIBE_MINI,
     "gpt-4o-transcribe": {
-        "transcribe_audio_in": Decimal("6.00"),
+        "transcribe_audio_in": Decimal("2.50"),
         "transcribe_text_in": Decimal("2.50"),
         "transcribe_text_out": Decimal("10.00"),
     },
