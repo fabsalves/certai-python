@@ -15,6 +15,7 @@ from app.ai.client import get_openai
 from app.ai.context_builder import ContextBundle
 from app.ai.tools import TOOL_SCHEMAS, ToolContext, dispatch
 from app.core.config import settings
+from app.services.usage import UsageScope, record_chat_usage
 
 # System instruction: guidance, not shackles. No per-word bans -- the content
 # barrier is structural (it comes from the bundle), not from here.
@@ -72,6 +73,18 @@ async def respond(
             max_tokens=1024,
             messages=messages,
             tools=TOOL_SCHEMAS,
+        )
+        # Metered per API call, not per respond(): the tool loop can run several,
+        # and each one is billed for the whole context again.
+        await record_chat_usage(
+            tool_ctx.db,
+            scope=UsageScope(
+                cohort_id=tool_ctx.cohort_id,
+                student_id=tool_ctx.student_id,
+                lesson_id=tool_ctx.lesson_id,
+            ),
+            operation="engine",
+            response=resp,
         )
         message = resp.choices[0].message
 

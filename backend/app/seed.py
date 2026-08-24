@@ -359,6 +359,8 @@ async def seed(*, force: bool = False) -> None:
         print("  Lucas (lucas.nunes@) — pede esclarecimento (como assim?)")
         print("")
         print("Fluxo manual após seed: professor encerra aula → ingestão → aluno conversa.")
+        print("")
+        print("Custos (/costs): dados demo de consumo de IA já incluídos (voz, motor, avaliador, ingestão, Groq).")
 
 
 if __name__ == "__main__":

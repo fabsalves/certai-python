@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -30,6 +31,7 @@ from app.services.realtime.voice_session_service import (
     VoiceSessionService,
 )
 from app.services.student_progress_service import LessonNotInteractiveError, StudentProgressService
+from app.services.usage import UsageScope, ingest_usage_batch
 
 router = APIRouter(prefix="/realtime", tags=["realtime"])
 
@@ -101,6 +103,9 @@ class RealtimeTokenOut(BaseModel):
     lock_token: str
     realtime_model: str
     realtime_voice: str
+    # The browser needs it to attribute input-transcription usage to the right
+    # rate card -- it is a separately billed model.
+    realtime_transcription_model: str
     play_session_opener: bool = True
 
 
@@ -156,6 +161,27 @@ class ToolBridgeIn(BaseModel):
 class ToolBridgeOut(BaseModel):
     call_id: str
     output: str
+
+
+class RealtimeUsageItemIn(BaseModel):
+    """One provider event relayed from the browser, with its raw usage payload."""
+
+    provider: str = "openai"
+    model: str
+    operation: str  # "realtime_response" | "input_transcription"
+    provider_event_id: str
+    usage: dict[str, Any] = Field(default_factory=dict)
+    occurred_at: datetime | None = None
+
+
+class RealtimeUsageIn(BaseModel):
+    voice_session_id: uuid.UUID
+    lock_token: str
+    items: list[RealtimeUsageItemIn] = Field(default_factory=list)
+
+
+class RealtimeUsageOut(BaseModel):
+    inserted: int
 
 
 async def _load_session_context(
@@ -332,6 +358,7 @@ async def create_realtime_token(
         lock_token=voice_session.lock_token,
         realtime_model=secret.get("model") or settings.OPENAI_REALTIME_MODEL,
         realtime_voice=secret.get("voice") or settings.OPENAI_REALTIME_VOICE,
+        realtime_transcription_model=settings.OPENAI_REALTIME_TRANSCRIPTION_MODEL,
         play_session_opener=True,
     )
 
@@ -367,6 +394,45 @@ async def relay_turns(
         duplicates=result.duplicates,
         conversation_id=result.conversation_id,
     )
+
+
+@router.post("/usage", response_model=RealtimeUsageOut)
+async def relay_usage(
+    body: RealtimeUsageIn,
+    db: AsyncSession = Depends(get_db),
+) -> RealtimeUsageOut:
+    """Contabiliza o usage do Realtime capturado no browser.
+
+    O escopo (turma/aluno/aula) é resolvido server-side a partir da VoiceSession:
+    o browser nunca informa a quem o gasto pertence. Evento repetido é no-op
+    silencioso, garantido pelo unique (provider, provider_event_id, cost_kind).
+    """
+    if not body.items:
+        return RealtimeUsageOut(inserted=0)
+
+    try:
+        session = await _voice_session_service.assert_lock(
+            db, body.voice_session_id, body.lock_token
+        )
+    except VoiceSessionLockInvalid as exc:
+        raise _lock_http_error(exc) from exc
+
+    conversation = await db.get(Conversation, session.conversation_id)
+    if conversation is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Conversa não encontrada")
+
+    # Metering never fails the call: batch/ingest swallow DB errors; lock was
+    # already validated so a 200 with inserted=0 is the honest accounting miss.
+    inserted = await ingest_usage_batch(
+        db,
+        scope=UsageScope(
+            cohort_id=conversation.cohort_id,
+            student_id=conversation.user_id,
+            lesson_id=conversation.lesson_id,
+        ),
+        items=[item.model_dump() for item in body.items],
+    )
+    return RealtimeUsageOut(inserted=inserted)
 
 
 @router.post("/heartbeat", response_model=HeartbeatOut)

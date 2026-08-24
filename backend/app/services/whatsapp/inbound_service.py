@@ -18,6 +18,7 @@ from app.services.cinndi.types import CinndiParseResult
 from app.services.conversation_service import get_or_create_conversation, record_message
 from app.services.student_progress_service import StudentProgressService
 from app.services.transcription_service import transcribe_audio
+from app.services.usage import UsageScope
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +74,12 @@ def _message_source(parsed: CinndiParseResult) -> MessageSource:
     return MessageSource.WHATSAPP_TEXT
 
 
-async def _resolve_text(parsed: CinndiParseResult) -> str:
+async def _resolve_text(
+    parsed: CinndiParseResult,
+    *,
+    db=None,
+    scope: UsageScope | None = None,
+) -> str:
     if parsed.message is None:
         return ""
 
@@ -110,7 +116,13 @@ async def _resolve_text(parsed: CinndiParseResult) -> str:
         return body
 
     try:
-        return await transcribe_audio(audio_bytes, filename=filename)
+        return await transcribe_audio(
+            audio_bytes,
+            filename=filename,
+            db=db,
+            scope=scope,
+            usage_event_id=f"groq:inbound:{uuid.uuid4().hex}",
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning("failed to transcribe inbound audio: %s", exc)
         return body
@@ -156,7 +168,13 @@ async def persist_inbound(db, parsed: CinndiParseResult) -> InboundResult:
     ):
         return InboundResult(conversation_id=None, detail="lesson_closed")
 
-    text = await _resolve_text(parsed)
+    text = await _resolve_text(
+        parsed,
+        db=db,
+        scope=UsageScope(
+            cohort_id=cohort_id, student_id=student.id, lesson_id=lesson_id
+        ),
+    )
     if not text.strip():
         return InboundResult(conversation_id=None, detail="empty_message")
 

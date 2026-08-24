@@ -12,6 +12,8 @@ export const ACCESS = {
   learn: ["student"] as Role[],
   /** Playground de testes da IA — somente admin. */
   playground: ["admin"] as Role[],
+  /** Custos de IA — somente admin; não é assunto de designer nem professor. */
+  costs: ["admin"] as Role[],
 } as const;
 
 export function canAccess(role: Role, area: keyof typeof ACCESS): boolean {
