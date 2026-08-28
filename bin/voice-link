@@ -70,9 +70,10 @@ logging.disable(logging.CRITICAL)
 from sqlalchemy import select
 
 from app.core.database import SessionLocal
-from app.models.cohort import Cohort, Enrollment
+from app.models.cohort import Enrollment
 from app.models.track import Lesson
 from app.models.user import User
+from app.services.student_progress_service import StudentProgressService
 
 BASE_URL = os.environ["BASE_URL"]
 ADMIN_EMAIL = os.environ["ADMIN_EMAIL"]
@@ -102,29 +103,31 @@ def http_json(method: str, url: str, payload=None, headers=None):
 
 async def load_ids():
     async with SessionLocal() as db:
-        cohort = await db.scalar(select(Cohort).limit(1))
-        if cohort is None:
-            raise RuntimeError("Nenhuma turma no banco — rode bin/db-seed")
-
-        lesson = await db.scalar(select(Lesson).limit(1))
-        if lesson is None:
-            raise RuntimeError("Nenhuma aula no banco — rode bin/db-seed")
-
-        stmt = select(User).join(Enrollment).where(Enrollment.cohort_id == cohort.id)
+        stmt = select(User)
         if STUDENT_EMAIL:
             stmt = stmt.where(User.email == STUDENT_EMAIL)
+        else:
+            stmt = stmt.join(Enrollment)
         student = await db.scalar(stmt.limit(1))
         if student is None:
             hint = f" para {STUDENT_EMAIL}" if STUDENT_EMAIL else ""
-            raise RuntimeError(f"Nenhum aluno matriculado{hint} — rode bin/db-seed")
+            raise RuntimeError(f"Nenhum aluno{hint} — rode bin/db-seed")
 
+        route = await StudentProgressService.resolve_routable_route(db, student.id)
+        if route is None:
+            raise RuntimeError(
+                f"{student.email} não tem aula disparada/ativa. "
+                "No localhost, como professor da turma seed, encerre uma aula ainda não encerrada."
+            )
+        cohort_id, lesson_id = route
+        lesson = await db.get(Lesson, lesson_id)
         return {
-            "cohort_id": str(cohort.id),
+            "cohort_id": str(cohort_id),
             "user_id": str(student.id),
-            "lesson_id": str(lesson.id),
+            "lesson_id": str(lesson_id),
             "student_email": student.email,
             "student_name": student.name,
-            "lesson_title": lesson.title,
+            "lesson_title": lesson.title if lesson else str(lesson_id),
         }
 
 

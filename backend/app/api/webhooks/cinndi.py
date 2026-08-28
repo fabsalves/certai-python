@@ -1,4 +1,10 @@
-"""Cinndi webhook — thin edge, always 200. Path is per organization slug."""
+"""Cinndi webhook — thin edge, always 200.
+
+Production bot URL stays POST /webhooks/cinndi (Cinndi contract).
+POST /webhooks/cinndi/{org_slug} is optional when a bot URL includes the slug.
+Student WhatsApp (unique) finds the org and the active lesson chat.
+Voice links stay /voz/{token}.
+"""
 
 from __future__ import annotations
 
@@ -8,6 +14,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.tenancy import Organization
 from app.services.cinndi.payload_parser import parse_payload
@@ -38,22 +45,22 @@ def _webhook_allowed(request: Request, expected: str) -> bool:
     return hmac.compare_digest(got, expected)
 
 
-@router.post("/webhooks/cinndi")
-async def cinndi_webhook_removed():
-    raise HTTPException(
-        status.HTTP_410_GONE,
-        "Use POST /webhooks/cinndi/{org_slug}",
-    )
-
-
-@router.post("/webhooks/cinndi/{org_slug}")
-async def cinndi_org_webhook(org_slug: str, request: Request):
+async def _handle_cinndi_webhook(request: Request, org_slug: str | None):
     async with SessionLocal() as db:
-        org = await db.scalar(select(Organization).where(Organization.slug == org_slug))
-        if org is None or not org.is_active:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Unauthorized")
-        config = await resolve_org_config(db, org.id)
-        if not _webhook_allowed(request, config.cinndi_webhook_token):
+        if org_slug:
+            org = await db.scalar(
+                select(Organization).where(
+                    Organization.slug == org_slug,
+                    Organization.is_active.is_(True),
+                )
+            )
+            if org is None:
+                raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Unauthorized")
+            token = (await resolve_org_config(db, org.id)).cinndi_webhook_token
+        else:
+            token = settings.CINNDI_WEBHOOK_TOKEN
+
+        if not _webhook_allowed(request, token):
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Unauthorized")
 
         try:
@@ -82,3 +89,13 @@ async def cinndi_org_webhook(org_slug: str, request: Request):
             return {"status": 200, "detail": "error"}
 
     return {"status": 200, "detail": "ignored"}
+
+
+@router.post("/webhooks/cinndi")
+async def cinndi_webhook(request: Request):
+    return await _handle_cinndi_webhook(request, None)
+
+
+@router.post("/webhooks/cinndi/{org_slug}")
+async def cinndi_org_webhook(org_slug: str, request: Request):
+    return await _handle_cinndi_webhook(request, org_slug)

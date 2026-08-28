@@ -71,7 +71,11 @@ print(json.dumps({
 PY
 )
 
-url="${BASE_URL}/webhooks/cinndi/${ORG_SLUG:-demo}"
+if [[ -n "${ORG_SLUG:-}" ]]; then
+  url="${BASE_URL}/webhooks/cinndi/${ORG_SLUG}"
+else
+  url="${BASE_URL}/webhooks/cinndi"
+fi
 echo "→ POST ${url}"
 echo "  from=${SEED_STUDENT_PHONE}  line=${CINNDI_LINE}"
 
