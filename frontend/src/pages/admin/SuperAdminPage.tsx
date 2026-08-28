@@ -11,6 +11,7 @@ import type { AdminUser, OrgListItem } from "../../lib/admin";
 import { api } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { matchesAnySearch } from "../../lib/listSearch";
+import { useOrg } from "../../lib/orgContext";
 import { usePagination } from "../../lib/usePagination";
 
 type Tab = "orgs" | "users";
@@ -24,6 +25,7 @@ const ORG_STATUS_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
 
 export function SuperAdminPage() {
   const { user } = useAuth();
+  const { refreshOrgs } = useOrg();
   const [tab, setTab] = useState<Tab>("orgs");
   const [orgs, setOrgs] = useState<OrgListItem[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -230,7 +232,10 @@ export function SuperAdminPage() {
       <CreateOrgModal
         open={createOpen}
         onClose={() => setCreateOpen(false)}
-        onCreated={() => loadOrgs()}
+        onSaved={() => {
+          void loadOrgs();
+          refreshOrgs();
+        }}
       />
     </>
   );

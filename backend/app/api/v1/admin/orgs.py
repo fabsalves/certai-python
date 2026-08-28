@@ -1,4 +1,5 @@
 import re
+import unicodedata
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -23,6 +24,7 @@ from app.schemas import (
     OrgListItem,
     OrgSettingsOut,
     OrgSettingsUpdate,
+    OrgUpdate,
     PasswordUpdate,
     SettingsCatalogOut,
     UserCreate,
@@ -53,16 +55,34 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 def _slugify(name: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "org"
+    folded = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+    slug = re.sub(r"[^a-z0-9]+", "-", folded.lower()).strip("-") or "org"
+    return slug[:80].rstrip("-") or "org"
 
 
 async def _unique_slug(db: AsyncSession, base: str) -> str:
     slug = base
     n = 2
-    while await db.scalar(select(Organization.id).where(Organization.slug == slug)):
+    while True:
+        if await db.scalar(select(Organization.id).where(Organization.slug == slug)) is None:
+            return slug
         slug = f"{base}-{n}"
         n += 1
-    return slug
+
+
+async def _org_detail(db: AsyncSession, org: Organization) -> OrgDetailOut:
+    user_count = await db.scalar(select(func.count(User.id)).where(User.organization_id == org.id))
+    config = await resolve_org_config(db, org.id)
+    row = await get_or_create_org_settings(db, org.id)
+    return OrgDetailOut(
+        id=org.id,
+        name=org.name,
+        slug=org.slug,
+        is_active=org.is_active,
+        user_count=int(user_count or 0),
+        created_at=org.created_at,
+        settings=_settings_to_out(config, slug=org.slug, org_row=row),
+    )
 
 
 def _settings_to_out(config, *, slug: str = "", org_row=None) -> OrgSettingsOut:
@@ -176,24 +196,14 @@ async def create_organization(
     _: User = Depends(require_superadmin),
     db: AsyncSession = Depends(get_db),
 ) -> OrgDetailOut:
-    slug = await _unique_slug(db, payload.slug or _slugify(payload.name))
+    slug = await _unique_slug(db, _slugify(payload.slug or payload.name))
     org = Organization(name=payload.name, slug=slug)
     db.add(org)
     await db.flush()
     db.add(OrgSettings(organization_id=org.id, settings={}, secrets={}))
     await db.commit()
     await db.refresh(org)
-    config = await resolve_org_config(db, org.id)
-    row = await get_or_create_org_settings(db, org.id)
-    return OrgDetailOut(
-        id=org.id,
-        name=org.name,
-        slug=org.slug,
-        is_active=org.is_active,
-        user_count=0,
-        created_at=org.created_at,
-        settings=_settings_to_out(config, slug=org.slug, org_row=row),
-    )
+    return await _org_detail(db, org)
 
 
 @router.get("/orgs/{org_id}", response_model=OrgDetailOut)
@@ -203,18 +213,21 @@ async def get_organization(
     db: AsyncSession = Depends(get_db),
 ) -> OrgDetailOut:
     org = await _org_or_404(db, org_id)
-    user_count = await db.scalar(select(func.count(User.id)).where(User.organization_id == org_id))
-    config = await resolve_org_config(db, org_id)
-    row = await get_or_create_org_settings(db, org_id)
-    return OrgDetailOut(
-        id=org.id,
-        name=org.name,
-        slug=org.slug,
-        is_active=org.is_active,
-        user_count=int(user_count or 0),
-        created_at=org.created_at,
-        settings=_settings_to_out(config, slug=org.slug, org_row=row),
-    )
+    return await _org_detail(db, org)
+
+
+@router.patch("/orgs/{org_id}", response_model=OrgDetailOut)
+async def update_organization(
+    org_id: uuid.UUID,
+    payload: OrgUpdate,
+    _: User = Depends(require_superadmin),
+    db: AsyncSession = Depends(get_db),
+) -> OrgDetailOut:
+    org = await _org_or_404(db, org_id)
+    org.name = payload.name
+    await db.commit()
+    await db.refresh(org)
+    return await _org_detail(db, org)
 
 
 @router.patch("/orgs/{org_id}/settings", response_model=OrgSettingsOut)

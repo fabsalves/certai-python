@@ -18,6 +18,7 @@ interface OrgState {
   orgsLoading: boolean;
   selectedOrgId: string | null;
   setSelectedOrgId: (id: string | null) => void;
+  refreshOrgs: () => void;
   orgQuery: { org_id?: string };
   hasOrgLens: boolean;
 }
@@ -36,7 +37,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     }
   });
 
-  useEffect(() => {
+  const loadOrgs = useCallback(() => {
     if (user?.role !== "superadmin") {
       setOrgs([]);
       setOrgsLoading(false);
@@ -49,6 +50,10 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       .catch(() => setOrgs([]))
       .finally(() => setOrgsLoading(false));
   }, [user]);
+
+  useEffect(() => {
+    loadOrgs();
+  }, [loadOrgs]);
 
   useEffect(() => {
     if (!orgs.length || !selectedOrgId) return;
@@ -81,7 +86,15 @@ export function OrgProvider({ children }: { children: ReactNode }) {
 
   return (
     <OrgContext.Provider
-      value={{ orgs, orgsLoading, selectedOrgId, setSelectedOrgId, orgQuery, hasOrgLens }}
+      value={{
+        orgs,
+        orgsLoading,
+        selectedOrgId,
+        setSelectedOrgId,
+        refreshOrgs: loadOrgs,
+        orgQuery,
+        hasOrgLens,
+      }}
     >
       {children}
     </OrgContext.Provider>

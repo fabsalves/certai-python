@@ -590,6 +590,10 @@ class OrgCreate(BaseModel):
     slug: OptionalNameStr = None
 
 
+class OrgUpdate(BaseModel):
+    name: NameStr
+
+
 class OrgListItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID

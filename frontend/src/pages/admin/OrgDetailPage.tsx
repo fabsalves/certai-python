@@ -1,22 +1,26 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { AdminPageSkeleton } from "../../components/admin/AdminPageSkeleton";
+import { CreateOrgModal } from "../../components/admin/CreateOrgModal";
 import { IntegrationsForm } from "../../components/admin/IntegrationsForm";
 import { MembersTable } from "../../components/admin/MembersTable";
 import { PageHeader } from "../../components/layout/PageHeader";
 import type { AdminUser, OrgDetail } from "../../lib/admin";
 import { api } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
+import { useOrg } from "../../lib/orgContext";
 
 type Tab = "members" | "integrations";
 
 export function OrgDetailPage() {
   const { orgId } = useParams<{ orgId: string }>();
   const { user } = useAuth();
+  const { refreshOrgs } = useOrg();
   const [tab, setTab] = useState<Tab>("members");
   const [org, setOrg] = useState<OrgDetail | null>(null);
   const [members, setMembers] = useState<AdminUser[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const loadMembers = useCallback(async () => {
@@ -69,11 +73,16 @@ export function OrgDetailPage() {
         title={org.name}
         description={`Slug ${org.slug}. Membros e chaves desta organização.`}
         actions={
-          tab === "members" ? (
-            <button type="button" className="btn btn-primary" onClick={() => setCreateOpen(true)}>
-              Novo membro
+          <>
+            <button type="button" className="btn btn-ghost" onClick={() => setEditOpen(true)}>
+              Editar
             </button>
-          ) : undefined
+            {tab === "members" ? (
+              <button type="button" className="btn btn-primary" onClick={() => setCreateOpen(true)}>
+                Novo membro
+              </button>
+            ) : null}
+          </>
         }
       />
 
@@ -110,6 +119,16 @@ export function OrgDetailPage() {
           onSaved={(settings) => setOrg({ ...org, settings })}
         />
       )}
+
+      <CreateOrgModal
+        open={editOpen}
+        org={org}
+        onClose={() => setEditOpen(false)}
+        onSaved={(next) => {
+          setOrg(next);
+          refreshOrgs();
+        }}
+      />
     </>
   );
 }
