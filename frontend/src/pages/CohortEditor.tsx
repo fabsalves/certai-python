@@ -82,7 +82,7 @@ export function CohortEditor() {
   const runAction = useApiAction();
   const feedback = useFeedback();
   const isNew = cohortId === "new";
-  const canManage = user?.role === "admin" || user?.role === "designer";
+  const canManage = user?.role === "org_admin";
   const isProfessor = user?.role === "professor";
 
   const [cohort, setCohort] = useState<Cohort | null>(null);

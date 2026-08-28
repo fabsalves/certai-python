@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
-from app.core.deps import CurrentUser, require_roles
+from app.core.deps import CurrentUser, OrgIdQuery, org_id_for_product, require_org_scope, require_roles
 from app.models.cohort import (
     Cohort,
     CohortModuleProfessor,
@@ -69,13 +69,15 @@ from app.services.upload_validation import (
 
 router = APIRouter(prefix="/cohorts", tags=["cohorts"])
 
-can_manage = require_roles(Role.ADMIN, Role.DESIGNER)
-can_view = require_roles(Role.ADMIN, Role.DESIGNER, Role.PROFESSOR)
+can_manage = require_roles(Role.ORG_ADMIN)
+can_view = require_roles(Role.ORG_ADMIN, Role.PROFESSOR, Role.SUPERADMIN)
 
 
-async def _get_cohort_or_404(db: AsyncSession, cohort_id: uuid.UUID) -> Cohort:
+async def _get_cohort_or_404(db: AsyncSession, cohort_id: uuid.UUID, user: User) -> Cohort:
     cohort = await db.get(Cohort, cohort_id)
     if cohort is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Turma não encontrada")
+    if user.role != Role.SUPERADMIN and cohort.organization_id != user.organization_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Turma não encontrada")
     return cohort
 
@@ -157,6 +159,10 @@ async def _validate_module_professors(
             "Informe ao menos um professor para cada módulo ativo da trilha",
         )
 
+    track = await db.get(Track, track_id)
+    if track is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Trilha não encontrada")
+
     seen_pairs: set[tuple[uuid.UUID, uuid.UUID]] = set()
     for item in assignments:
         module = await db.get(Module, item.module_id)
@@ -164,7 +170,11 @@ async def _validate_module_professors(
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Módulo inválido para a trilha")
 
         professor = await db.get(User, item.professor_id)
-        if professor is None or professor.role != Role.PROFESSOR:
+        if (
+            professor is None
+            or professor.role != Role.PROFESSOR
+            or professor.organization_id != track.organization_id
+        ):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Professor inválido")
 
         pair = (item.module_id, item.professor_id)
@@ -449,7 +459,12 @@ async def _lesson_closings(
 
 
 @router.get("", response_model=list[CohortListOut], dependencies=[Depends(can_view)])
-async def list_cohorts(user: CurrentUser, db: Annotated[AsyncSession, Depends(get_db)]):
+async def list_cohorts(
+    user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    selected_org_id: OrgIdQuery = None,
+):
+    org_id = org_id_for_product(user, selected_org_id)
     enrollment_count = (
         select(func.count())
         .select_from(Enrollment)
@@ -457,8 +472,10 @@ async def list_cohorts(user: CurrentUser, db: Annotated[AsyncSession, Depends(ge
         .correlate(Cohort)
         .scalar_subquery()
     )
-    stmt = select(Cohort, Track.title, enrollment_count).join(
-        Track, Cohort.track_id == Track.id
+    stmt = (
+        select(Cohort, Track.title, enrollment_count)
+        .join(Track, Cohort.track_id == Track.id)
+        .where(Cohort.organization_id == org_id)
     )
     if user.role == Role.PROFESSOR:
         stmt = stmt.where(
@@ -489,23 +506,28 @@ async def list_cohorts(user: CurrentUser, db: Annotated[AsyncSession, Depends(ge
 async def get_cohort(
     cohort_id: uuid.UUID, user: CurrentUser, db: Annotated[AsyncSession, Depends(get_db)]
 ):
-    cohort = await _get_cohort_or_404(db, cohort_id)
+    cohort = await _get_cohort_or_404(db, cohort_id, user)
     await _assert_cohort_access(db, user, cohort)
     return await _cohort_detail(db, cohort)
 
 
 @router.post("", response_model=CohortOut, status_code=status.HTTP_201_CREATED,
              dependencies=[Depends(can_manage)])
-async def create_cohort(body: CohortCreate, db: Annotated[AsyncSession, Depends(get_db)]):
+async def create_cohort(
+    body: CohortCreate,
+    user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    org_id = require_org_scope(user)
     track = await db.get(Track, body.track_id)
-    if track is None:
+    if track is None or track.organization_id != org_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Trilha não encontrada")
     if not track.is_active:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Trilha desativada")
 
     await _validate_module_professors(db, None, body.track_id, body.module_professors)
 
-    cohort = Cohort(name=body.name, track_id=body.track_id)
+    cohort = Cohort(name=body.name, track_id=body.track_id, organization_id=org_id)
     db.add(cohort)
     await db.flush()
     await _replace_module_professors(db, cohort.id, body.module_professors)
@@ -516,9 +538,10 @@ async def create_cohort(body: CohortCreate, db: Annotated[AsyncSession, Depends(
 async def update_cohort(
     cohort_id: uuid.UUID,
     body: CohortUpdate,
+    user: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    cohort = await _get_cohort_or_404(db, cohort_id)
+    cohort = await _get_cohort_or_404(db, cohort_id, user)
 
     if body.module_professors is not None:
         await _validate_module_professors(
@@ -541,7 +564,7 @@ async def update_cohort(
 async def list_enrollments(
     cohort_id: uuid.UUID, user: CurrentUser, db: Annotated[AsyncSession, Depends(get_db)]
 ):
-    cohort = await _get_cohort_or_404(db, cohort_id)
+    cohort = await _get_cohort_or_404(db, cohort_id, user)
     await _assert_cohort_access(db, user, cohort)
     stmt = (
         select(Enrollment, User.name, User.email, User.whatsapp)
@@ -569,12 +592,19 @@ async def list_enrollments(
 @router.post("/{cohort_id}/enrollments", status_code=status.HTTP_201_CREATED,
              dependencies=[Depends(can_manage)])
 async def enroll(
-    cohort_id: uuid.UUID, body: EnrollmentCreate, db: Annotated[AsyncSession, Depends(get_db)]
+    cohort_id: uuid.UUID,
+    body: EnrollmentCreate,
+    user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    cohort = await _get_cohort_or_404(db, cohort_id)
+    cohort = await _get_cohort_or_404(db, cohort_id, user)
 
     student = await db.get(User, body.student_id)
-    if student is None or student.role != Role.STUDENT:
+    if (
+        student is None
+        or student.role != Role.STUDENT
+        or student.organization_id != cohort.organization_id
+    ):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Aluno inválido")
 
     exists = await db.scalar(
@@ -601,9 +631,10 @@ async def enroll(
 async def enroll_bulk(
     cohort_id: uuid.UUID,
     body: EnrollmentBulkCreate,
+    user: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    cohort = await _get_cohort_or_404(db, cohort_id)
+    cohort = await _get_cohort_or_404(db, cohort_id, user)
 
     unique_ids = list(dict.fromkeys(body.student_ids))
     if not unique_ids:
@@ -611,7 +642,11 @@ async def enroll_bulk(
 
     students = (
         await db.execute(
-            select(User.id).where(User.id.in_(unique_ids), User.role == Role.STUDENT)
+            select(User.id).where(
+                User.id.in_(unique_ids),
+                User.role == Role.STUDENT,
+                User.organization_id == cohort.organization_id,
+            )
         )
     ).scalars().all()
     if len(students) != len(unique_ids):
@@ -646,8 +681,12 @@ async def enroll_bulk(
     dependencies=[Depends(can_manage)],
 )
 async def unenroll(
-    cohort_id: uuid.UUID, student_id: uuid.UUID, db: Annotated[AsyncSession, Depends(get_db)]
+    cohort_id: uuid.UUID,
+    student_id: uuid.UUID,
+    user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
 ):
+    await _get_cohort_or_404(db, cohort_id, user)
     enrollment = await db.scalar(
         select(Enrollment).where(
             Enrollment.cohort_id == cohort_id, Enrollment.student_id == student_id
@@ -682,7 +721,7 @@ async def list_unassigned_students(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Enrolled students with no class in a split module."""
-    cohort = await _get_cohort_or_404(db, cohort_id)
+    cohort = await _get_cohort_or_404(db, cohort_id, user)
     await _assert_cohort_access(db, user, cohort)
 
     if user.role == Role.PROFESSOR:
@@ -729,7 +768,7 @@ async def claim_class_student(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Professor pulls an unassigned student into their own class (mid-track join)."""
-    cohort = await _get_cohort_or_404(db, cohort_id)
+    cohort = await _get_cohort_or_404(db, cohort_id, user)
     await _assert_cohort_access(db, user, cohort)
 
     try:
@@ -756,7 +795,7 @@ async def claim_class_student(
 async def get_cohort_track(
     cohort_id: uuid.UUID, user: CurrentUser, db: Annotated[AsyncSession, Depends(get_db)]
 ):
-    cohort = await _get_cohort_or_404(db, cohort_id)
+    cohort = await _get_cohort_or_404(db, cohort_id, user)
     await _assert_cohort_access(db, user, cohort)
     track = await db.scalar(
         select(Track)
@@ -776,7 +815,7 @@ async def get_cohort_track(
 async def get_progress(
     cohort_id: uuid.UUID, user: CurrentUser, db: Annotated[AsyncSession, Depends(get_db)]
 ):
-    cohort = await _get_cohort_or_404(db, cohort_id)
+    cohort = await _get_cohort_or_404(db, cohort_id, user)
     await _assert_cohort_access(db, user, cohort)
 
     ordered = await ordered_active_lessons(db, cohort.track_id)
@@ -884,7 +923,7 @@ async def list_lesson_assessments(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Latest lesson assessments for this class, plus concluded students still pending."""
-    cohort = await _get_cohort_or_404(db, cohort_id)
+    cohort = await _get_cohort_or_404(db, cohort_id, user)
     await _assert_cohort_access(db, user, cohort)
     try:
         result = await StudentAssessmentReadService.latest_lesson_assessments(
@@ -921,7 +960,7 @@ async def list_student_track_levels(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Latest track-level assessment summary for every enrolled student (batch)."""
-    cohort = await _get_cohort_or_404(db, cohort_id)
+    cohort = await _get_cohort_or_404(db, cohort_id, user)
     await _assert_cohort_access(db, user, cohort)
     try:
         result = await StudentAssessmentReadService.latest_track_levels(
@@ -955,7 +994,7 @@ async def list_student_assessments(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Latest lesson/module/track assessments for one enrolled student."""
-    cohort = await _get_cohort_or_404(db, cohort_id)
+    cohort = await _get_cohort_or_404(db, cohort_id, user)
     await _assert_cohort_access(db, user, cohort)
 
     visible = await _visible_student_ids(db, user, cohort)
@@ -989,7 +1028,7 @@ async def list_student_lesson_micro_scores(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Point-in-time Lira micro-scores for one student in one lesson (professor UI)."""
-    cohort = await _get_cohort_or_404(db, cohort_id)
+    cohort = await _get_cohort_or_404(db, cohort_id, user)
     await _assert_cohort_access(db, user, cohort)
 
     visible = await _visible_student_ids(db, user, cohort)
@@ -1067,7 +1106,7 @@ async def list_lesson_notes(
     cohort_id: uuid.UUID, user: CurrentUser, db: Annotated[AsyncSession, Depends(get_db)]
 ):
     """Metadata of professor reports (attachment/audio), one per lesson and class."""
-    cohort = await _get_cohort_or_404(db, cohort_id)
+    cohort = await _get_cohort_or_404(db, cohort_id, user)
     await _assert_cohort_access(db, user, cohort)
 
     stmt = (
@@ -1119,7 +1158,7 @@ async def download_lesson_attachment(
     db: Annotated[AsyncSession, Depends(get_db)],
     module_professor_id: Annotated[uuid.UUID | None, Query()] = None,
 ):
-    cohort = await _get_cohort_or_404(db, cohort_id)
+    cohort = await _get_cohort_or_404(db, cohort_id, user)
     await _assert_cohort_access(db, user, cohort)
     class_id = await _resolve_note_class_id(
         db, user, cohort, lesson_id, module_professor_id
@@ -1145,7 +1184,7 @@ async def download_lesson_audio(
     db: Annotated[AsyncSession, Depends(get_db)],
     module_professor_id: Annotated[uuid.UUID | None, Query()] = None,
 ):
-    cohort = await _get_cohort_or_404(db, cohort_id)
+    cohort = await _get_cohort_or_404(db, cohort_id, user)
     await _assert_cohort_access(db, user, cohort)
     class_id = await _resolve_note_class_id(
         db, user, cohort, lesson_id, module_professor_id
@@ -1169,7 +1208,7 @@ async def transcribe_lesson_report(
     audio: Annotated[UploadFile, File(description="Áudio do relato da aula")],
 ):
     """Transcreve o áudio do professor via Groq. O texto retorna para revisão antes do envio."""
-    cohort = await _get_cohort_or_404(db, cohort_id)
+    cohort = await _get_cohort_or_404(db, cohort_id, user)
     await _lesson_class_of_professor(db, user, cohort, lesson_id)
 
     if not is_allowed_report_audio(audio.content_type, audio.filename):
@@ -1189,6 +1228,7 @@ async def transcribe_lesson_report(
             db=db,
             scope=UsageScope(cohort_id=cohort_id, lesson_id=lesson_id),
             usage_event_id=f"groq:report:{uuid.uuid4().hex}",
+            organization_id=cohort.organization_id,
         )
     except RuntimeError as e:
         raise HTTPException(status.HTTP_503_UNAVAILABLE, str(e)) from e
@@ -1215,7 +1255,7 @@ async def complete(
     """The professor signals their own class studied the lesson. Advances that
     class and unlocks its context. The AI ingestion (and only then the WhatsApp
     dispatch) runs asynchronously after this request commits."""
-    cohort = await _get_cohort_or_404(db, cohort_id)
+    cohort = await _get_cohort_or_404(db, cohort_id, user)
     module_class = await _lesson_class_of_professor(db, user, cohort, lesson_id)
 
     unassigned = await ModuleClassService.unassigned_student_ids(
@@ -1268,7 +1308,7 @@ async def reingest_lesson_note(
 ):
     """Re-enqueue the AI ingestion of a failed lesson report. On completion the
     task chains the WhatsApp dispatch that was held back."""
-    cohort = await _get_cohort_or_404(db, cohort_id)
+    cohort = await _get_cohort_or_404(db, cohort_id, user)
     module_class = await _lesson_class_of_professor(db, user, cohort, lesson_id)
 
     note = await _latest_lesson_note(db, cohort_id, lesson_id, module_class.id)

@@ -6,12 +6,14 @@ import {
   useState,
   type CSSProperties,
   type KeyboardEvent,
+  type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
 
 export interface SelectOption {
   value: string;
   label: string;
+  description?: string;
   disabled?: boolean;
 }
 
@@ -25,7 +27,8 @@ interface SelectProps {
   placeholder?: string;
   required?: boolean;
   className?: string;
-  variant?: "default" | "drawer";
+  variant?: "default" | "drawer" | "sidebar";
+  icon?: ReactNode;
   "aria-label"?: string;
 }
 
@@ -33,6 +36,20 @@ function ChevronIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
       <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M5 12.5 9.5 17 19 7"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -48,6 +65,7 @@ export function Select({
   required = false,
   className = "",
   variant = "default",
+  icon,
   "aria-label": ariaLabel,
 }: SelectProps) {
   const listId = useId();
@@ -67,11 +85,12 @@ export function Select({
     const trigger = triggerRef.current;
     if (!trigger) return;
     const rect = trigger.getBoundingClientRect();
+    const matchTrigger = variant === "sidebar";
     setMenuStyle({
       position: "fixed",
-      top: rect.bottom + 6,
+      top: rect.bottom + (matchTrigger ? 4 : 6),
       left: rect.left,
-      width: Math.max(rect.width, 260),
+      width: matchTrigger ? rect.width : Math.max(rect.width, 260),
       minWidth: rect.width,
       zIndex: 80,
     });
@@ -89,7 +108,7 @@ export function Select({
       window.removeEventListener("resize", updateMenuPosition);
       window.removeEventListener("scroll", updateMenuPosition, true);
     };
-  }, [open]);
+  }, [open, variant]);
 
   useEffect(() => {
     if (!open) return;
@@ -172,6 +191,7 @@ export function Select({
   const selectClass = [
     "ui-select",
     variant === "drawer" ? "ui-select--drawer" : "",
+    variant === "sidebar" ? "ui-select--sidebar" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -184,7 +204,7 @@ export function Select({
       <ul
         ref={menuRef}
         id={listId}
-        className="ui-select__menu"
+        className={`ui-select__menu${variant === "sidebar" ? " ui-select__menu--sidebar" : ""}`}
         role="listbox"
         aria-labelledby={label ? id : undefined}
         aria-label={label ? undefined : ariaLabel}
@@ -215,7 +235,17 @@ export function Select({
                 if (!opt.disabled) choose(opt.value);
               }}
             >
-              {opt.label}
+              <span className="ui-select__option-copy">
+                <span className="ui-select__option-label">{opt.label}</span>
+                {opt.description && (
+                  <span className="ui-select__option-desc">{opt.description}</span>
+                )}
+              </span>
+              {variant === "sidebar" && isSelected && (
+                <span className="ui-select__option-check" aria-hidden>
+                  <CheckIcon />
+                </span>
+              )}
             </li>
           );
         })}
@@ -246,6 +276,11 @@ export function Select({
           onClick={() => (open ? setOpen(false) : openMenu())}
           onKeyDown={onTriggerKeyDown}
         >
+          {icon && (
+            <span className="ui-select__icon" aria-hidden>
+              {icon}
+            </span>
+          )}
           <span className={`ui-select__value${isPlaceholder ? " is-placeholder" : ""}`}>
             {displayLabel}
           </span>

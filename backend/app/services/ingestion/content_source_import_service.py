@@ -49,6 +49,8 @@ async def import_catalog_source(
     current_text: str,
     previous_storage_key: str | None,
     storage_prefix: str,
+    organization_id: uuid.UUID | None = None,
+    db=None,
 ) -> CatalogSourceImport:
     """Transcribe/extract, append to catalog text, replace the stored source file."""
     filename = source.filename or ""
@@ -79,7 +81,10 @@ async def import_catalog_source(
 
     try:
         extracted = await import_lesson_text(
-            content=content, filename=filename or f"source{ext}"
+            content=content,
+            filename=filename or f"source{ext}",
+            organization_id=organization_id,
+            db=db,
         )
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc

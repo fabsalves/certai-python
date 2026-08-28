@@ -1,23 +1,31 @@
 import enum
+import uuid
 
-from sqlalchemy import Boolean, Enum, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import Boolean, Enum, ForeignKey, Integer, String
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
 
 
 class Role(str, enum.Enum):
-    """System roles. Each one determines allowed routes and actions."""
+    """System roles. Superadmin is platform-only; the rest belong to an org."""
 
-    ADMIN = "admin"            # platform-wide management
-    DESIGNER = "designer"      # defines tracks, modules and lessons
-    PROFESSOR = "professor"    # teaches, signals lesson completion per cohort
-    STUDENT = "student"        # consumes the track, talks to the agent
+    SUPERADMIN = "superadmin"
+    ORG_ADMIN = "org_admin"
+    PROFESSOR = "professor"
+    STUDENT = "student"
 
 
 class User(Base):
     __tablename__ = "users"
 
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        index=True,
+        nullable=True,
+    )
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -28,3 +36,6 @@ class User(Base):
     whatsapp: Mapped[str | None] = mapped_column(
         String(20), unique=True, index=True, nullable=True
     )
+    token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+
+    organization: Mapped["Organization"] = relationship(back_populates="users")  # noqa: F821

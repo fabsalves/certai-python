@@ -113,7 +113,7 @@ export function periodKeyFromSearch(value: string | null): PeriodKey {
   return "30";
 }
 
-function costQueryParams(days: PeriodDays, model: string): Record<string, string> {
+function costQueryParams(days: PeriodDays, model: string, orgId?: string): Record<string, string> {
   const params: Record<string, string> = {};
   if (days === null) {
     params.from = "2020-01-01T00:00:00Z";
@@ -121,6 +121,7 @@ function costQueryParams(days: PeriodDays, model: string): Record<string, string
     params.from = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
   }
   if (model.trim()) params.model = model.trim();
+  if (orgId) params.org_id = orgId;
   return params;
 }
 
@@ -135,9 +136,10 @@ export function costsSearchParams(period: PeriodKey, model: string): string {
 export async function fetchCohortCosts(
   days: PeriodDays,
   model = "",
+  orgId?: string,
 ): Promise<CohortsCost> {
   const { data } = await api.get<CohortsCost>("/costs/cohorts", {
-    params: costQueryParams(days, model),
+    params: costQueryParams(days, model, orgId),
   });
   return data;
 }
@@ -146,9 +148,10 @@ export async function fetchCohortCostDetail(
   cohortId: string,
   days: PeriodDays,
   model = "",
+  orgId?: string,
 ): Promise<CohortCostDetail> {
   const { data } = await api.get<CohortCostDetail>(`/costs/cohorts/${cohortId}`, {
-    params: costQueryParams(days, model),
+    params: costQueryParams(days, model, orgId),
   });
   return data;
 }
@@ -158,10 +161,11 @@ export async function fetchStudentCostDetail(
   studentId: string,
   days: PeriodDays,
   model = "",
+  orgId?: string,
 ): Promise<StudentCostDetail> {
   const { data } = await api.get<StudentCostDetail>(
     `/costs/cohorts/${cohortId}/students/${studentId}`,
-    { params: costQueryParams(days, model) },
+    { params: costQueryParams(days, model, orgId) },
   );
   return data;
 }

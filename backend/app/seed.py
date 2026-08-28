@@ -12,8 +12,10 @@ import subprocess
 from sqlalchemy import select, text
 
 from app.core.database import SessionLocal, engine
+from app.core.config import settings as app_settings
 from app.core.security import hash_password
 from app.models import Base
+from app.models.tenancy import Organization, OrgSettings
 from app.models.track import Lesson, Module, ModuleLevel, Track
 from app.models.cohort import Cohort, CohortModuleProfessor, Enrollment
 from app.models.user import Role, User
@@ -139,8 +141,7 @@ Na conversa com a Lira:
 """
 
 STAFF_USERS = [
-    ("admin@certai.app", "Admin", Role.ADMIN, "admin12345"),
-    ("designer@certai.app", "Designer", Role.DESIGNER, "design12345"),
+    ("admin@certai.app", "Admin", Role.ORG_ADMIN, "admin12345"),
 ]
 
 PROFESSOR_USERS = [
@@ -167,12 +168,29 @@ ENROLLED_STUDENT_EMAILS = {
 }
 
 
+def _env_model_settings() -> dict[str, str]:
+    return {
+        "engine_model": app_settings.ENGINE_MODEL,
+        "humanizer_model": app_settings.HUMANIZER_MODEL,
+        "evaluator_model": app_settings.EVALUATOR_MODEL,
+        "groq_transcribe_model": app_settings.GROQ_TRANSCRIBE_MODEL,
+        "openai_realtime_model": app_settings.OPENAI_REALTIME_MODEL,
+        "openai_realtime_voice": app_settings.OPENAI_REALTIME_VOICE,
+    }
+
+
 def _run_alembic(*args: str) -> None:
     subprocess.run(["alembic", *args], check=True)
 
 
 def _make_user(
-    email: str, name: str, role: Role, password: str, whatsapp: str | None = None
+    email: str,
+    name: str,
+    role: Role,
+    password: str,
+    *,
+    whatsapp: str | None = None,
+    organization_id=None,
 ) -> User:
     return User(
         email=email,
@@ -180,6 +198,7 @@ def _make_user(
         role=role,
         hashed_password=hash_password(password),
         whatsapp=whatsapp,
+        organization_id=organization_id,
     )
 
 
@@ -229,13 +248,35 @@ async def seed(*, force: bool = False) -> None:
             print("Run: bin/db-reset   (or: python -m app.seed --force)")
             return
 
-        users: list[User] = []
+        org = Organization(name="CertAI Demo", slug="demo")
+        db.add(org)
+        await db.flush()
+        model_settings = _env_model_settings()
+        db.add(OrgSettings(organization_id=org.id, settings=model_settings, secrets={}))
+
+        superadmin = _make_user(
+            "superadmin@certai.app", "Superadmin", Role.SUPERADMIN, "super12345"
+        )
+        users: list[User] = [superadmin]
         for email, name, role, password in STAFF_USERS:
-            users.append(_make_user(email, name, role, password))
+            users.append(_make_user(email, name, role, password, organization_id=org.id))
         for email, name, password in PROFESSOR_USERS:
-            users.append(_make_user(email, name, Role.PROFESSOR, password))
+            users.append(
+                _make_user(
+                    email, name, Role.PROFESSOR, password, organization_id=org.id
+                )
+            )
         for email, name, password, whatsapp in STUDENT_USERS:
-            users.append(_make_user(email, name, Role.STUDENT, password, whatsapp=whatsapp))
+            users.append(
+                _make_user(
+                    email,
+                    name,
+                    Role.STUDENT,
+                    password,
+                    whatsapp=whatsapp,
+                    organization_id=org.id,
+                )
+            )
 
         db.add_all(users)
         await db.flush()
@@ -249,6 +290,7 @@ async def seed(*, force: bool = False) -> None:
             competency="Redigir pareceres claros e objetivos",
             description="Do rascunho à entrega, com revisão em pares e argumentação objetiva.",
             published=True,
+            organization_id=org.id,
         )
         db.add(track)
         await db.flush()
@@ -315,7 +357,7 @@ async def seed(*, force: bool = False) -> None:
             ),
         ])
 
-        cohort = Cohort(name="VPF, Turma 1", track_id=track.id)
+        cohort = Cohort(name="VPF, Turma 1", track_id=track.id, organization_id=org.id)
         db.add(cohort)
         await db.flush()
         db.add_all([
@@ -339,7 +381,8 @@ async def seed(*, force: bool = False) -> None:
         print("Seed done.")
         print("")
         print("Logins principais:")
-        print("  admin@certai.app / admin12345")
+        print("  superadmin@certai.app / super12345  (plataforma, sem org)")
+        print("  admin@certai.app / admin12345  (org_admin da org demo)")
         print("  prof@certai.app / prof12345  (Ana Paula — Fundamentos)")
         print("  marcos.ferreira@certai.app / prof12345  (Marcos — Prática)")
         print("  camila.oliveira@certai.app / prof12345  (Camila — disponível p/ multi-prof)")
@@ -347,6 +390,9 @@ async def seed(*, force: bool = False) -> None:
         print("  eriko@certai.app / aluno12345  (Ériko Sampaio — WhatsApp real)")
         print("")
         print(f"Turma: {cohort.name}")
+        print(f"  Org: {org.name} (slug {org.slug})")
+        print(f"  Modelos (ENV): {', '.join(f'{k}={v}' for k, v in model_settings.items())}")
+        print(f"  Webhook Cinndi: POST /webhooks/cinndi/{org.slug}")
         print(f"  {len(ENROLLED_STUDENT_EMAILS)} alunos matriculados")
         print(f"  {len(STUDENT_USERS) - len(ENROLLED_STUDENT_EMAILS)} alunos disponíveis p/ matrícula em lote")
         print("  Demais alunos: senha aluno12345")

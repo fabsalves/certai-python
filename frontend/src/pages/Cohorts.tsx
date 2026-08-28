@@ -73,7 +73,7 @@ export function Cohorts() {
   const [trackFilter, setTrackFilter] = useState("");
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [loading, setLoading] = useState(true);
-  const canManage = user?.role === "admin" || user?.role === "designer";
+  const canManage = user?.role === "org_admin";
 
   const loadCohorts = useCallback(() => {
     setLoading(true);

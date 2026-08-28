@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
+import { homePathForRole } from "../lib/access";
 import { normalizedEmail } from "../lib/validation";
 
 export function Login() {
@@ -16,8 +17,8 @@ export function Login() {
     setError("");
     setBusy(true);
     try {
-      await login(normalizedEmail(email), password);
-      navigate("/");
+      const logged = await login(normalizedEmail(email), password);
+      navigate(homePathForRole(logged.role));
     } catch {
       setError("E-mail ou senha incorretos. Tente novamente.");
     } finally {

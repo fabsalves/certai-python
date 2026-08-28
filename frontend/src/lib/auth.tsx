@@ -7,7 +7,7 @@ import {
 } from "react";
 import { api, tokens } from "./api";
 
-export type Role = "admin" | "designer" | "professor" | "student";
+export type Role = "superadmin" | "org_admin" | "professor" | "student";
 
 export interface User {
   id: string;
@@ -16,12 +16,13 @@ export interface User {
   role: Role;
   is_active: boolean;
   whatsapp?: string | null;
+  organization_id?: string | null;
 }
 
 interface AuthState {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<User>;
   logout: () => void;
   refreshUser: () => Promise<void>;
 }
@@ -52,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     tokens.set(data.access_token, data.refresh_token);
     const me = await api.get<User>("/users/me");
     setUser(me.data);
+    return me.data;
   }
 
   async function refreshUser() {
@@ -76,8 +78,8 @@ export const useAuth = () => useContext(AuthContext);
 
 // Keys in English (code); labels in Portuguese (shown to the user).
 export const roleLabel: Record<Role, string> = {
-  admin: "Administrador",
-  designer: "Designer de conteúdo",
+  superadmin: "Superadmin",
+  org_admin: "Administrador da organização",
   professor: "Professor",
   student: "Aluno",
 };

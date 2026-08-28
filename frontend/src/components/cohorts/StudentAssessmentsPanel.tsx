@@ -153,7 +153,7 @@ export function StudentAssessmentsPanel({
 }: Props) {
   const { user } = useAuth();
   const canEditStudent =
-    user?.role === "admin" || user?.role === "designer";
+    user?.role === "org_admin";
   const [editOpen, setEditOpen] = useState(false);
   const [data, setData] = useState<StudentAssessments | null>(null);
   const [loading, setLoading] = useState(true);

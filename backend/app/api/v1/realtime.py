@@ -230,7 +230,7 @@ def _author_from_turn(author: str) -> Author:
 async def generate_handoff_token(
     body: HandoffGenerateIn,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(require_roles(Role.ADMIN, Role.PROFESSOR)),
+    _user: User = Depends(require_roles(Role.ORG_ADMIN, Role.PROFESSOR)),
 ) -> HandoffGenerateOut:
     """Gera link de handoff (48h, reusável). Usado no dispatch na Etapa E; aqui para testes."""
     student = await db.get(User, body.user_id)

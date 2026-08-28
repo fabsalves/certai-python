@@ -103,7 +103,7 @@ json.dump({
 }, sys.stdout, ensure_ascii=False)
 PY
 
-url="${BASE_URL}/webhooks/cinndi"
+url="${BASE_URL}/webhooks/cinndi/${ORG_SLUG:-demo}"
 echo "→ POST ${url} (Cinndi inbound audio, base64)"
 echo "  file=${REL_PATH}  from=${SEED_STUDENT_PHONE}  line=${CINNDI_LINE}"
 

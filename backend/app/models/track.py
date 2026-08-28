@@ -15,10 +15,13 @@ class ModuleLevel(str, enum.Enum):
 
 
 class Track(Base):
-    """Learning journey. Created by a designer. Static structure."""
+    """Learning journey. Owned by an organization."""
 
     __tablename__ = "tracks"
 
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), index=True
+    )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="")
     competency: Mapped[str] = mapped_column(String(255), default="")  # what the student must absorb

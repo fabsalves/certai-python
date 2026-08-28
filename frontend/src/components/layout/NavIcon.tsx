@@ -54,6 +54,27 @@ const icons: Record<NavItem["icon"], ReactNode> = {
       <path d="M15 14h.01" />
     </>
   ),
+  admin: (
+    <>
+      <path d="M3 21h18" />
+      <path d="M5 21V8l7-4 7 4v13" />
+      <path d="M9 21v-6h6v6" />
+      <path d="M9 10h2" />
+      <path d="M13 10h2" />
+      <path d="M9 14h2" />
+      <path d="M13 14h2" />
+    </>
+  ),
+  settings: (
+    <>
+      <path d="M4 7h16" />
+      <path d="M4 12h16" />
+      <path d="M4 17h16" />
+      <circle cx="9" cy="7" r="1.75" />
+      <circle cx="15" cy="12" r="1.75" />
+      <circle cx="11" cy="17" r="1.75" />
+    </>
+  ),
 };
 
 export function NavIcon({ icon }: { icon: NavItem["icon"] }) {

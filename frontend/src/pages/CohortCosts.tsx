@@ -30,9 +30,12 @@ import {
 import { matchesAnySearch } from "../lib/listSearch";
 import { useListView } from "../lib/useListView";
 import { usePagination } from "../lib/usePagination";
+import { OrgLensGate } from "../components/layout/OrgSwitcher";
+import { useOrg } from "../lib/orgContext";
 
 export function CohortCosts() {
   const { cohortId = "" } = useParams();
+  const { orgQuery, hasOrgLens } = useOrg();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [view, setView] = useListView("costs-cohort");
@@ -57,13 +60,16 @@ export function CohortCosts() {
   };
 
   const load = useCallback(() => {
-    if (!cohortId) return;
+    if (!cohortId || !hasOrgLens) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-    fetchCohortCostDetail(cohortId, periodDaysFromKey(period), model)
+    fetchCohortCostDetail(cohortId, periodDaysFromKey(period), model, orgQuery.org_id)
       .then(setData)
       .catch(() => setData(null))
       .finally(() => setLoading(false));
-  }, [cohortId, period, model]);
+  }, [cohortId, period, model, hasOrgLens, orgQuery.org_id]);
 
   useEffect(() => {
     load();
@@ -149,6 +155,15 @@ export function CohortCosts() {
     ],
     [cohortId, navigate, qs],
   );
+
+  if (!hasOrgLens) {
+    return (
+      <>
+        <PageHeader title="Custos da turma" description="Consumo de IA por aluno." />
+        <OrgLensGate>{null}</OrgLensGate>
+      </>
+    );
+  }
 
   if (loading && !data) {
     return (

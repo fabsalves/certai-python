@@ -148,14 +148,24 @@ async def _transcribe_audio(audio_path: str, conversation_id: UUID) -> dict:
     from pathlib import Path
 
     from app.core.database import SessionLocal
-    from app.models.conversation import Author, Message
+    from app.models.cohort import Cohort
+    from app.models.conversation import Author, Conversation, Message
     from app.services.transcription_service import transcribe_audio
 
     filename = Path(audio_path).name or "audio.webm"
-    with open(audio_path, "rb") as f:
-        text = await transcribe_audio(f.read(), filename=filename)
-
     async with SessionLocal() as db:
+        conversation = await db.get(Conversation, conversation_id)
+        org_id = None
+        if conversation is not None:
+            cohort = await db.get(Cohort, conversation.cohort_id)
+            org_id = cohort.organization_id if cohort is not None else None
+        with open(audio_path, "rb") as f:
+            text = await transcribe_audio(
+                f.read(),
+                filename=filename,
+                db=db,
+                organization_id=org_id,
+            )
         db.add(Message(conversation_id=conversation_id, author=Author.PROFESSOR, content=text))
         await db.commit()
     return {"conversation_id": str(conversation_id), "chars": len(text)}

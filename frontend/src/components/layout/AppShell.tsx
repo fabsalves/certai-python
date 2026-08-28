@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { AccountEditModal } from "../account/AccountEditModal";
-import { roleLabel, useAuth } from "../../lib/auth";
-import { navForRole, navItemForPath } from "./nav";
+import { roleLabel, useAuth, type Role } from "../../lib/auth";
+import { isNavActive, navForRole, navItemForPath } from "./nav";
 import { NavIcon } from "./NavIcon";
+import { OrgSwitcher } from "./OrgSwitcher";
 import { ShellAccountMenu } from "./ShellAccountMenu";
 import { Tooltip } from "../ui/Tooltip";
 
@@ -13,18 +14,20 @@ const MOBILE_BREAKPOINT = 860;
 function NavLinks({
   items,
   pathname,
+  role,
   collapsed,
   mobile,
 }: {
   items: ReturnType<typeof navForRole>;
   pathname: string;
+  role: Role;
   collapsed: boolean;
   mobile: boolean;
 }) {
   return (
     <>
       {items.map((n) => {
-        const active = n.to === "/" ? pathname === "/" : pathname.startsWith(n.to);
+        const active = isNavActive(pathname, n.to, role);
         const link = (
           <Link
             key={n.to}
@@ -91,6 +94,7 @@ export function AppShell() {
   const items = navForRole(user.role);
   const current = navItemForPath(pathname, user.role);
   const isPlayground = pathname.startsWith("/admin/playground");
+  const showOrgSwitcher = user.role === "superadmin";
   const shellClass = [
     "shell",
     !narrow && collapsed ? "is-collapsed" : "",
@@ -106,6 +110,7 @@ export function AppShell() {
           <Link to="/" className="shell-brand">
             <span className="shell-brand-text">CertAI</span>
           </Link>
+          {showOrgSwitcher && <OrgSwitcher variant="bar" />}
           <ShellAccountMenu
             variant="bar"
             user={user}
@@ -149,7 +154,14 @@ export function AppShell() {
                 »
               </button>
             )}
-            <NavLinks items={items} pathname={pathname} collapsed={collapsed} mobile={false} />
+            {showOrgSwitcher && <OrgSwitcher variant="rail" collapsed={collapsed} />}
+            <NavLinks
+              items={items}
+              pathname={pathname}
+              role={user.role}
+              collapsed={collapsed}
+              mobile={false}
+            />
           </nav>
 
           <div className="shell-nav-foot">
@@ -176,7 +188,9 @@ export function AppShell() {
                 </>
               )}
             </div>
-            <span className="shell-topbar-title">{roleLabel[user.role]}</span>
+            <div className="shell-topbar-end">
+              <span className="shell-topbar-title">{roleLabel[user.role]}</span>
+            </div>
           </header>
         )}
 
@@ -187,7 +201,13 @@ export function AppShell() {
 
       {narrow && (
         <nav className="shell-nav shell-nav--bottom" aria-label="Principal">
-          <NavLinks items={items} pathname={pathname} collapsed={false} mobile />
+          <NavLinks
+            items={items}
+            pathname={pathname}
+            role={user.role}
+            collapsed={false}
+            mobile
+          />
         </nav>
       )}
 

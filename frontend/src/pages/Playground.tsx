@@ -8,6 +8,8 @@ import { PlaygroundScoresPanel } from "../components/playground/PlaygroundScores
 import { PlaygroundSessionHead } from "../components/playground/PlaygroundSessionHead";
 import { Select } from "../components/ui/Select";
 import { api } from "../lib/api";
+import { OrgLensGate } from "../components/layout/OrgSwitcher";
+import { useOrg } from "../lib/orgContext";
 import type { Cohort, CohortProgress, Enrollment } from "../lib/cohorts";
 import {
   lessonClosedByProfessor,
@@ -54,6 +56,7 @@ function SettingsIcon() {
 }
 
 export function Playground() {
+  const { orgQuery, hasOrgLens } = useOrg();
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [cohortId, setCohortId] = useState(() => readPlaygroundSession()?.cohortId ?? "");
   const [cohort, setCohort] = useState<Cohort | null>(null);
@@ -83,8 +86,13 @@ export function Playground() {
   }, []);
 
   useEffect(() => {
+    if (!hasOrgLens) {
+      setCohorts([]);
+      setLoading(false);
+      return;
+    }
     api
-      .get<Cohort[]>("/cohorts")
+      .get<Cohort[]>("/cohorts", { params: orgQuery })
       .then((res) => {
         setCohorts(res.data);
         setCohortId((prev) => {
@@ -94,7 +102,7 @@ export function Playground() {
       })
       .catch(() => setLoadError("Não foi possível carregar as turmas."))
       .finally(() => setLoading(false));
-  }, []);
+  }, [hasOrgLens, orgQuery.org_id]);
 
   useEffect(() => {
     if (!cohortId) return;
@@ -285,6 +293,14 @@ export function Playground() {
       <SettingsIcon />
     </button>
   );
+
+  if (!hasOrgLens) {
+    return (
+      <div className="playground-shell playground-shell--centered">
+        <OrgLensGate>{null}</OrgLensGate>
+      </div>
+    );
+  }
 
   // Keep skeleton until cohort list AND session payload are ready (avoids white flash).
   const waitingSession = Boolean(cohortId) && (sessionLoading || !cohort || !track || !progress);

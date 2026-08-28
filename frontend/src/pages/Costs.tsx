@@ -29,9 +29,12 @@ import {
 import { matchesAnySearch } from "../lib/listSearch";
 import { useListView } from "../lib/useListView";
 import { usePagination } from "../lib/usePagination";
+import { OrgLensGate } from "../components/layout/OrgSwitcher";
+import { useOrg } from "../lib/orgContext";
 
 export function Costs() {
   const navigate = useNavigate();
+  const { orgQuery, hasOrgLens } = useOrg();
   const [searchParams, setSearchParams] = useSearchParams();
   const [view, setView] = useListView("costs");
   const [search, setSearch] = useState("");
@@ -56,12 +59,17 @@ export function Costs() {
   };
 
   const load = useCallback(() => {
+    if (!hasOrgLens) {
+      setData(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-    fetchCohortCosts(periodDaysFromKey(period), model)
+    fetchCohortCosts(periodDaysFromKey(period), model, orgQuery.org_id)
       .then(setData)
       .catch(() => setData(null))
       .finally(() => setLoading(false));
-  }, [period, model]);
+  }, [period, model, hasOrgLens, orgQuery.org_id]);
 
   useEffect(() => {
     load();
@@ -193,7 +201,7 @@ export function Costs() {
   const avgPerStudent = totalStudents > 0 ? cohortsCost / totalStudents : 0;
 
   return (
-    <>
+    <OrgLensGate>
       <PageHeader
         title="Custos"
         description="Consumo de IA por turma, aluno e aula. Valores estimados em USD a partir do usage da API."
@@ -324,6 +332,6 @@ export function Costs() {
           )}
         </>
       )}
-    </>
+    </OrgLensGate>
   );
 }

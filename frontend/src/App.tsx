@@ -3,9 +3,13 @@ import { AppShell } from "./components/layout/AppShell";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { RoleRoute } from "./components/RoleRoute";
 import { AuthProvider } from "./lib/auth";
+import { OrgProvider } from "./lib/orgContext";
 import { ConfirmProvider } from "./lib/confirm";
 import { FeedbackProvider } from "./lib/feedback";
 import { ThemeProvider } from "./lib/theme";
+import { OrgAdminPage } from "./pages/admin/OrgAdminPage";
+import { OrgDetailPage } from "./pages/admin/OrgDetailPage";
+import { SuperAdminPage } from "./pages/admin/SuperAdminPage";
 import { CohortCosts } from "./pages/CohortCosts";
 import { CohortEditor } from "./pages/CohortEditor";
 import { Costs } from "./pages/Costs";
@@ -24,6 +28,7 @@ export default function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
+        <OrgProvider>
         <ConfirmProvider>
           <FeedbackProvider>
           <BrowserRouter>
@@ -48,6 +53,9 @@ export default function App() {
             <Route path="professors" element={<RoleRoute area="professors"><Professors /></RoleRoute>} />
             <Route path="learn" element={<RoleRoute area="learn"><Learn /></RoleRoute>} />
             <Route path="admin/playground" element={<RoleRoute area="playground"><Playground /></RoleRoute>} />
+            <Route path="admin" element={<RoleRoute area="admin"><SuperAdminPage /></RoleRoute>} />
+            <Route path="admin/orgs/:orgId" element={<RoleRoute area="admin"><OrgDetailPage /></RoleRoute>} />
+            <Route path="settings" element={<RoleRoute area="settings"><OrgAdminPage /></RoleRoute>} />
 
             <Route path="costs" element={<RoleRoute area="costs"><Costs /></RoleRoute>} />
             <Route path="costs/:cohortId" element={<RoleRoute area="costs"><CohortCosts /></RoleRoute>} />
@@ -62,6 +70,7 @@ export default function App() {
         </BrowserRouter>
         </FeedbackProvider>
       </ConfirmProvider>
+        </OrgProvider>
     </AuthProvider>
     </ThemeProvider>
   );

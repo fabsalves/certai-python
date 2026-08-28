@@ -71,7 +71,7 @@ print(json.dumps({
 PY
 )
 
-url="${BASE_URL}/webhooks/cinndi"
+url="${BASE_URL}/webhooks/cinndi/${ORG_SLUG:-demo}"
 echo "→ POST ${url}"
 echo "  from=${SEED_STUDENT_PHONE}  line=${CINNDI_LINE}"
 

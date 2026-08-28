@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.deps import CurrentUser, require_roles
+from app.core.deps import require_roles
 from app.models.cohort import Cohort, CohortModuleProfessor, CohortProgress, Enrollment
 from app.models.track import Lesson
 from app.models.user import Role, User
@@ -39,12 +39,14 @@ from app.services.upload_validation import (
 
 router = APIRouter(prefix="/admin/playground", tags=["admin-playground"])
 
-admin_only = require_roles(Role.ADMIN)
+admin_only = require_roles(Role.ORG_ADMIN, Role.SUPERADMIN)
 
 
-async def _get_cohort_or_404(db: AsyncSession, cohort_id: uuid.UUID) -> Cohort:
+async def _get_cohort_or_404(db: AsyncSession, cohort_id: uuid.UUID, user: User) -> Cohort:
     cohort = await db.get(Cohort, cohort_id)
     if cohort is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Turma não encontrada")
+    if user.role != Role.SUPERADMIN and cohort.organization_id != user.organization_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Turma não encontrada")
     return cohort
 
@@ -130,7 +132,7 @@ async def get_lesson_context(
 ):
     """Snapshot of the context bundle and ingestions the Lira receives for this
     lesson, as seen by one student -- classes of the same module differ."""
-    await _get_cohort_or_404(db, cohort_id)
+    await _get_cohort_or_404(db, cohort_id, user)
     if await db.get(Lesson, lesson_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Aula não encontrada")
     await _ensure_enrolled_student(db, cohort_id, student_id)
@@ -165,7 +167,7 @@ async def list_student_scores(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Micro-scores recorded for a student — read-only, admin playground."""
-    await _get_cohort_or_404(db, cohort_id)
+    await _get_cohort_or_404(db, cohort_id, user)
     await _ensure_enrolled_student(db, cohort_id, student_id)
 
     try:
@@ -195,7 +197,7 @@ async def list_student_messages(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Histórico da conversa do aluno na aula — somente admin."""
-    await _get_cohort_or_404(db, cohort_id)
+    await _get_cohort_or_404(db, cohort_id, user)
     await _ensure_enrolled_student(db, cohort_id, student_id)
 
     messages = await list_lesson_messages(db, cohort_id, student_id, lesson_id)
@@ -223,7 +225,7 @@ async def send_student_message(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Envia mensagem como aluno matriculado — sessão segregada por turma e aluno."""
-    await _get_cohort_or_404(db, cohort_id)
+    await _get_cohort_or_404(db, cohort_id, user)
     await _ensure_enrolled_student(db, cohort_id, student_id)
     try:
         return await student_lesson_message(
@@ -251,7 +253,7 @@ async def transcribe_lesson_report(
     audio: Annotated[UploadFile, File(description="Áudio do relato da aula")],
 ):
     """Transcreve relato como professor do módulo — somente admin."""
-    await _get_cohort_or_404(db, cohort_id)
+    cohort = await _get_cohort_or_404(db, cohort_id, user)
     await _professor_class(db, cohort_id, professor_id, lesson_id)
 
     if not is_allowed_report_audio(audio.content_type, audio.filename):
@@ -265,7 +267,12 @@ async def transcribe_lesson_report(
 
     filename = audio.filename or "report.webm"
     try:
-        text = await transcribe_audio(content, filename=filename)
+        text = await transcribe_audio(
+            content,
+            filename=filename,
+            db=db,
+            organization_id=cohort.organization_id,
+        )
     except RuntimeError as e:
         raise HTTPException(status.HTTP_503_UNAVAILABLE, str(e)) from e
     except Exception as e:
@@ -290,7 +297,7 @@ async def complete_lesson_as_professor(
     audio_source: Annotated[str, Form()] = "",
 ):
     """Encerra aula como professor do módulo — somente admin."""
-    cohort = await _get_cohort_or_404(db, cohort_id)
+    cohort = await _get_cohort_or_404(db, cohort_id, user)
     module_class = await _professor_class(db, cohort_id, professor_id, lesson_id)
 
     unassigned = await ModuleClassService.unassigned_student_ids(

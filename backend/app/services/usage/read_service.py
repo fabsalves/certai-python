@@ -306,6 +306,7 @@ class UsageCostReadService:
         date_from: datetime,
         date_to: datetime,
         model: str | None = None,
+        organization_id: uuid.UUID | None = None,
     ) -> CohortsCostResult:
         stmt = (
             select(
@@ -327,6 +328,8 @@ class UsageCostReadService:
             .group_by(AiUsageEvent.cohort_id, Cohort.name, Cohort.track_id, Track.title)
             .order_by(_cost_sum().desc())
         )
+        if organization_id is not None:
+            stmt = stmt.where(Cohort.organization_id == organization_id)
         rows = (
             await db.execute(
                 _apply_filters(
@@ -374,33 +377,39 @@ class UsageCostReadService:
 
         # Track-material ingestion has no cohort to charge. Reported apart so the
         # grand total stays honest without inflating any cohort's per-student cost.
-        unattributed_stmt = select(_cost_sum()).where(AiUsageEvent.cohort_id.is_(None))
-        unattributed = _money(
-            (
-                await db.execute(
-                    _apply_filters(
-                        unattributed_stmt,
-                        date_from=date_from,
-                        date_to=date_to,
-                        model=model,
+        if organization_id is not None:
+            unattributed = _ZERO
+        else:
+            unattributed_stmt = select(_cost_sum()).where(AiUsageEvent.cohort_id.is_(None))
+            unattributed = _money(
+                (
+                    await db.execute(
+                        _apply_filters(
+                            unattributed_stmt,
+                            date_from=date_from,
+                            date_to=date_to,
+                            model=model,
+                        )
                     )
-                )
-            ).scalar_one()
-        )
-        unpriced_stmt = select(_unpriced_count())
-        total_unpriced = int(
-            (
-                await db.execute(
-                    _apply_filters(
-                        unpriced_stmt,
-                        date_from=date_from,
-                        date_to=date_to,
-                        model=model,
+                ).scalar_one()
+            )
+        if organization_id is not None:
+            total_unpriced = sum(c.unpriced_events for c in cohorts)
+        else:
+            unpriced_stmt = select(_unpriced_count())
+            total_unpriced = int(
+                (
+                    await db.execute(
+                        _apply_filters(
+                            unpriced_stmt,
+                            date_from=date_from,
+                            date_to=date_to,
+                            model=model,
+                        )
                     )
-                )
-            ).scalar_one()
-            or 0
-        )
+                ).scalar_one()
+                or 0
+            )
 
         models = await _list_models(db, date_from=date_from, date_to=date_to)
 
@@ -422,9 +431,12 @@ class UsageCostReadService:
         date_from: datetime,
         date_to: datetime,
         model: str | None = None,
+        organization_id: uuid.UUID | None = None,
     ) -> CohortCostDetailResult | None:
         cohort = await db.get(Cohort, cohort_id)
         if cohort is None:
+            return None
+        if organization_id is not None and cohort.organization_id != organization_id:
             return None
         track_title = (
             await db.scalar(select(Track.title).where(Track.id == cohort.track_id))
@@ -505,10 +517,13 @@ class UsageCostReadService:
         date_from: datetime,
         date_to: datetime,
         model: str | None = None,
+        organization_id: uuid.UUID | None = None,
     ) -> StudentCostDetailResult | None:
         cohort = await db.get(Cohort, cohort_id)
         student = await db.get(User, student_id)
         if cohort is None or student is None:
+            return None
+        if organization_id is not None and cohort.organization_id != organization_id:
             return None
 
         scope_where = [

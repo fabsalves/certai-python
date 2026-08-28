@@ -174,7 +174,7 @@ export function CohortEnrollments({
   const confirm = useConfirm();
   const runAction = useApiAction();
   const canManageEnrollments =
-    user?.role === "admin" || user?.role === "designer";
+    user?.role === "org_admin";
   const detailRef = useRef<HTMLDivElement>(null);
 
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);

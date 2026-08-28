@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import logging
+import uuid
 
 from groq import AsyncGroq
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.services.org_config import OrgConfig, resolve_org_config
 from app.services.usage import UsageScope, record_groq_transcription
 
 logger = logging.getLogger(__name__)
@@ -44,6 +46,18 @@ def _duration_seconds(resp: object) -> float | None:
         return None
 
 
+async def _resolve_config(
+    db: AsyncSession | None,
+    organization_id: uuid.UUID | None,
+    config: OrgConfig | None,
+) -> OrgConfig:
+    if config is not None:
+        return config
+    if db is not None and organization_id is not None:
+        return await resolve_org_config(db, organization_id)
+    return OrgConfig.from_settings(settings)
+
+
 async def transcribe_audio(
     content: bytes,
     filename: str = "audio.webm",
@@ -51,17 +65,25 @@ async def transcribe_audio(
     db: AsyncSession | None = None,
     scope: UsageScope | None = None,
     usage_event_id: str | None = None,
+    organization_id: uuid.UUID | None = None,
+    config: OrgConfig | None = None,
 ) -> str:
     """`db`/`scope`/`usage_event_id` are optional: metering only happens when the
     caller knows who to charge. Duration comes from the verbose_json response, so
-    the json fallback path is not metered -- it has no duration to bill."""
-    if not settings.GROQ_API_KEY:
+    the json fallback path is not metered -- it has no duration to bill.
+
+    Model and Groq key come from org settings (GROQ_TRANSCRIBE_MODEL / GROQ_API_KEY),
+    with ENV as the platform default.
+    """
+    resolved = await _resolve_config(db, organization_id, config)
+    if not resolved.groq_api_key:
         raise RuntimeError("Transcrição indisponível: GROQ_API_KEY não configurada")
 
-    client = AsyncGroq(api_key=settings.GROQ_API_KEY)
+    model = resolved.groq_transcribe_model
+    client = AsyncGroq(api_key=resolved.groq_api_key)
     common = dict(
         file=(filename, content),
-        model=settings.GROQ_TRANSCRIBE_MODEL,
+        model=model,
         language="pt",
         temperature=0.0,
         prompt=_TRANSCRIBE_PROMPT_PT,
@@ -78,7 +100,7 @@ async def transcribe_audio(
                 await record_groq_transcription(
                     db,
                     scope=scope or UsageScope(),
-                    model=settings.GROQ_TRANSCRIBE_MODEL,
+                    model=model,
                     provider_event_id=usage_event_id,
                     seconds=_duration_seconds(resp),
                 )

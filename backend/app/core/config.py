@@ -32,6 +32,7 @@ class Settings(BaseSettings):
 
     # --- Segurança ---
     SECRET_KEY: str = Field(min_length=32)
+    ENCRYPTION_KEY: str = ""
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 14
     JWT_ALGORITHM: str = "HS256"
@@ -102,6 +103,7 @@ class Settings(BaseSettings):
     WHATSAPP_TEMPLATE_LANG: str = "pt_BR"
     ASSISTANT_NAME: str = "Lira"
     INBOUND_DEBOUNCE_SECONDS: int = 5
+    PUBLIC_API_BASE_URL: str = "http://localhost:8000"
 
     # --- Custos de IA ---
     # Só exibição: todo cálculo e persistência são em USD.

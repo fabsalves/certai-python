@@ -9,6 +9,7 @@ pydantic-settings==2.7.0
 email-validator==2.2.0
 python-jose==3.3.0
 pyjwt==2.10.1
+cryptography==44.0.3
 bcrypt==4.2.1
 greenlet==3.5.3
 python-multipart==0.0.20

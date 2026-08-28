@@ -6,10 +6,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.deps import CurrentUser, require_roles
+from app.core.deps import CurrentUser, require_org_scope, require_roles
+from app.core.passwords import validate_new_password
 from app.core.security import generate_password, hash_password
 from app.models.user import Role, User
 from app.schemas import (
+    PasswordUpdate,
     StudentBulkCreate,
     StudentBulkOut,
     StudentBulkSkipped,
@@ -18,23 +20,21 @@ from app.schemas import (
     UserOut,
     UserUpdate,
 )
+from app.services.access import (
+    assert_assignable_role,
+    assert_same_org,
+    validate_user_update,
+)
 
 router = APIRouter(prefix="/users", tags=["users"])
 
-can_manage_users = require_roles(Role.ADMIN, Role.DESIGNER)
-
-_DESIGNER_CREATABLE = {Role.STUDENT, Role.PROFESSOR}
+can_manage_users = require_roles(Role.ORG_ADMIN)
 
 
 def _assert_can_create(user: User, role: Role) -> None:
-    if user.role == Role.DESIGNER:
-        if role not in _DESIGNER_CREATABLE:
-            raise HTTPException(
-                status.HTTP_403_FORBIDDEN,
-                "Designer só pode cadastrar alunos e professores",
-            )
-    elif user.role != Role.ADMIN:
+    if user.role != Role.ORG_ADMIN:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Você não tem permissão para esta ação")
+    assert_assignable_role(role)
 
 
 @router.get("/me", response_model=UserOut)
@@ -48,10 +48,15 @@ async def me(user: CurrentUser):
     dependencies=[Depends(can_manage_users)],
 )
 async def list_users(
+    user: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
     role: Role | None = Query(None),
 ):
-    stmt = select(User).where(User.is_active.is_(True))
+    org_id = require_org_scope(user)
+    stmt = select(User).where(
+        User.organization_id == org_id,
+        User.role != Role.SUPERADMIN,
+    )
     if role is not None:
         stmt = stmt.where(User.role == role)
     stmt = stmt.order_by(User.name)
@@ -69,6 +74,7 @@ async def create_user(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     _assert_can_create(user, body.role)
+    org_id = require_org_scope(user)
 
     if await db.scalar(select(User).where(User.email == body.email)):
         raise HTTPException(
@@ -80,6 +86,7 @@ async def create_user(
         )
     plain = generate_password()
     new_user = User(
+        organization_id=org_id,
         email=body.email,
         name=body.name,
         role=body.role,
@@ -105,6 +112,7 @@ async def create_students_bulk(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     _assert_can_create(user, Role.STUDENT)
+    org_id = require_org_scope(user)
 
     unique_students: list = []
     seen_emails: set[str] = set()
@@ -147,7 +155,11 @@ async def create_students_bulk(
 
         existing = existing_by_email.get(item.email)
         if existing is not None:
-            if existing.role == Role.STUDENT and existing.is_active:
+            if (
+                existing.role == Role.STUDENT
+                and existing.is_active
+                and existing.organization_id == org_id
+            ):
                 reused_ids.append(existing.id)
             else:
                 skipped.append(
@@ -163,6 +175,7 @@ async def create_students_bulk(
             continue
 
         new_user = User(
+            organization_id=org_id,
             email=item.email,
             name=item.name,
             role=Role.STUDENT,
@@ -189,8 +202,10 @@ async def update_user(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     target = await db.get(User, user_id)
-    if target is None or not target.is_active:
+    if target is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Usuário não encontrado")
+    if target.role == Role.SUPERADMIN:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Este usuário não pode ser editado")
 
     if actor.id == target.id:
         if target.role == Role.STUDENT and not body.whatsapp:
@@ -198,19 +213,20 @@ async def update_user(
                 status.HTTP_400_BAD_REQUEST,
                 "WhatsApp é obrigatório para alunos",
             )
-    elif target.role == Role.STUDENT:
-        _assert_can_create(actor, Role.STUDENT)
-        if not body.whatsapp:
+        if body.role is not None or body.is_active is not None:
+            validate_user_update(actor, target, role=body.role, is_active=body.is_active)
+    elif actor.role == Role.ORG_ADMIN:
+        assert_same_org(actor, target.organization_id)
+        if target.role == Role.STUDENT and body.whatsapp is None and not target.whatsapp:
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
                 "WhatsApp é obrigatório para alunos",
             )
-    elif target.role == Role.PROFESSOR:
-        _assert_can_create(actor, Role.PROFESSOR)
+        validate_user_update(actor, target, role=body.role, is_active=body.is_active)
     else:
         raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "Este usuário não pode ser editado",
+            status.HTTP_403_FORBIDDEN,
+            "Você não tem permissão para esta ação",
         )
 
     if body.email != target.email:
@@ -220,7 +236,7 @@ async def update_user(
                 detail="E-mail já cadastrado",
             )
 
-    if target.role == Role.STUDENT and body.whatsapp != target.whatsapp:
+    if target.role == Role.STUDENT and body.whatsapp and body.whatsapp != target.whatsapp:
         if await db.scalar(select(User).where(User.whatsapp == body.whatsapp)):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -229,7 +245,38 @@ async def update_user(
 
     target.name = body.name
     target.email = body.email
-    if target.role == Role.STUDENT:
+    if target.role == Role.STUDENT and body.whatsapp is not None:
         target.whatsapp = body.whatsapp
+    if actor.role == Role.ORG_ADMIN and actor.id != target.id:
+        if body.role is not None:
+            target.role = body.role
+        if body.is_active is not None:
+            target.is_active = body.is_active
     await db.flush()
     return target
+
+
+@router.patch("/{user_id}/password", status_code=status.HTTP_204_NO_CONTENT)
+async def update_user_password(
+    user_id: UUID,
+    body: PasswordUpdate,
+    actor: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    try:
+        validate_new_password(body.password)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+
+    target = await db.get(User, user_id)
+    if target is None or target.role == Role.SUPERADMIN:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Usuário não encontrado")
+
+    if actor.role == Role.ORG_ADMIN:
+        assert_same_org(actor, target.organization_id)
+    elif actor.id != target.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Você não tem permissão para esta ação")
+
+    target.hashed_password = hash_password(body.password)
+    target.token_version = int(target.token_version or 0) + 1
+    await db.flush()

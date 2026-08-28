@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import uuid
 from pathlib import Path
 
 from app.services.ingestion.extraction import UnsupportedFormatError, extract_text
@@ -46,11 +47,22 @@ def append_imported_text(existing: str | None, incoming: str) -> str:
     return f"{base}\n\n{addition}"
 
 
-async def import_lesson_text(*, content: bytes, filename: str) -> str:
+async def import_lesson_text(
+    *,
+    content: bytes,
+    filename: str,
+    organization_id: uuid.UUID | None = None,
+    db=None,
+) -> str:
     """Process upload in memory and return text for the lesson content field."""
     kind = classify_source(filename)
     if kind == "audio":
-        transcript = await transcribe_audio(content, filename=filename)
+        transcript = await transcribe_audio(
+            content,
+            filename=filename,
+            db=db,
+            organization_id=organization_id,
+        )
         return _normalize_transcript(transcript)
 
     try:

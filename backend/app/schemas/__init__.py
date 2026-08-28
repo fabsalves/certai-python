@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field, model_validator
 
@@ -83,6 +83,7 @@ class UserOut(UserBase):
     role: Role
     is_active: bool
     whatsapp: str | None = None
+    organization_id: uuid.UUID | None = None
 
 
 class UserCreatedOut(UserOut):
@@ -95,6 +96,12 @@ class UserUpdate(BaseModel):
     name: NameStr
     email: NormalizedEmailStr
     whatsapp: OptionalWhatsappStr = None
+    role: Role | None = None
+    is_active: bool | None = None
+
+
+class PasswordUpdate(BaseModel):
+    password: str = Field(min_length=10, max_length=128)
 
 
 class StudentBulkItem(BaseModel):
@@ -575,3 +582,98 @@ class StudentCostDetailOut(BaseModel):
     usd_brl_rate: float
     period_from: datetime
     period_to: datetime
+
+
+# --- Organizations ---
+class OrgCreate(BaseModel):
+    name: NameStr
+    slug: OptionalNameStr = None
+
+
+class OrgListItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    name: str
+    slug: str
+    is_active: bool
+    user_count: int = 0
+    created_at: datetime
+
+
+class ModelOptionOut(BaseModel):
+    id: str
+    label: str
+    provider: str
+    category: str
+    group: str
+    description: str
+    context: str | None = None
+    badge: str | None = None
+
+
+class SettingsCatalogOut(BaseModel):
+    version: str
+    chat_models: list[ModelOptionOut]
+    openai_realtime_models: list[ModelOptionOut]
+    openai_realtime_voices: list[ModelOptionOut]
+    groq_transcribe_models: list[ModelOptionOut]
+    defaults: dict[str, str]
+
+
+class OrgSettingsOut(BaseModel):
+    organization_slug: str = ""
+    webhook_base_url: str = ""
+    engine_model: str
+    humanizer_model: str
+    evaluator_model: str
+    groq_transcribe_model: str
+    openai_realtime_model: str
+    openai_realtime_voice: str
+    cinndi_api_url: str
+    cinndi_sender_phone: str
+    whatsapp_invite_template: str
+    whatsapp_invite_voice_template: str
+    whatsapp_invite_use_voice_template: bool
+    whatsapp_template_lang: str
+    assistant_name: str
+    configured: dict[str, bool]
+    available: dict[str, bool] = Field(default_factory=dict)
+    masked_secrets: dict[str, str]
+
+
+class OrgSettingsUpdate(BaseModel):
+    engine_model: str | None = None
+    humanizer_model: str | None = None
+    evaluator_model: str | None = None
+    groq_transcribe_model: str | None = None
+    openai_realtime_model: str | None = None
+    openai_realtime_voice: str | None = None
+    cinndi_api_url: str | None = None
+    cinndi_sender_phone: str | None = None
+    whatsapp_invite_template: str | None = None
+    whatsapp_invite_voice_template: str | None = None
+    whatsapp_invite_use_voice_template: bool | None = None
+    whatsapp_template_lang: str | None = None
+    openai_api_key: str | None = None
+    groq_api_key: str | None = None
+    cinndi_api_key: str | None = None
+    cinndi_webhook_token: str | None = None
+    clear_secrets: list[str] = Field(default_factory=list)
+
+
+class OrgDetailOut(OrgListItem):
+    settings: OrgSettingsOut
+
+
+class AdminUserOut(UserOut):
+    organization_name: str | None = None
+
+
+class CredentialTestRequest(BaseModel):
+    field: Literal["openai_api_key", "groq_api_key"]
+    value: str | None = Field(default=None, max_length=500)
+
+
+class CredentialTestResponse(BaseModel):
+    ok: bool = True
+    message: str

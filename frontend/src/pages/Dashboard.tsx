@@ -1,14 +1,15 @@
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { PageHeader } from "../components/layout/PageHeader";
 
 export function Dashboard() {
   const { user } = useAuth();
   if (!user) return null;
+  if (user.role === "superadmin") return <Navigate to="/admin" replace />;
 
   const firstName = user.name.split(" ")[0];
   const isStudent = user.role === "student";
-  const isContentRole = user.role === "admin" || user.role === "designer";
+  const isContentRole = user.role === "org_admin";
   const isProfessor = user.role === "professor";
 
   return (

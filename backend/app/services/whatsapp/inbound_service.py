@@ -79,6 +79,7 @@ async def _resolve_text(
     *,
     db=None,
     scope: UsageScope | None = None,
+    organization_id: uuid.UUID | None = None,
 ) -> str:
     if parsed.message is None:
         return ""
@@ -122,6 +123,7 @@ async def _resolve_text(
             db=db,
             scope=scope,
             usage_event_id=f"groq:inbound:{uuid.uuid4().hex}",
+            organization_id=organization_id,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("failed to transcribe inbound audio: %s", exc)
@@ -174,6 +176,7 @@ async def persist_inbound(db, parsed: CinndiParseResult) -> InboundResult:
         scope=UsageScope(
             cohort_id=cohort_id, student_id=student.id, lesson_id=lesson_id
         ),
+        organization_id=student.organization_id,
     )
     if not text.strip():
         return InboundResult(conversation_id=None, detail="empty_message")

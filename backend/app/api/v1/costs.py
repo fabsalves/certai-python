@@ -1,6 +1,6 @@
 """Área Custos: gasto de IA agregado por turma, aluno e aula.
 
-Somente admin, igual ao Playground. Período e modelo são filtro de banco;
+Somente org_admin (e superadmin com organização selecionada). Período e modelo são filtro de banco;
 busca/trilha/paginação ficam no client, como nas demais listagens.
 """
 
@@ -15,8 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.deps import require_roles
-from app.models.user import Role
+from app.core.deps import OrgIdQuery, org_id_for_product, require_roles
+from app.models.user import Role, User
 from app.schemas import (
     CohortCostDetailOut,
     CohortsCostOut,
@@ -26,7 +26,7 @@ from app.services.usage.read_service import UsageCostReadService, default_window
 
 router = APIRouter(prefix="/costs", tags=["costs"])
 
-can_view_costs = require_roles(Role.ADMIN)
+can_view_costs = require_roles(Role.ORG_ADMIN, Role.SUPERADMIN)
 
 DateFrom = Annotated[datetime | None, Query(alias="from")]
 DateTo = Annotated[datetime | None, Query(alias="to")]
@@ -41,14 +41,17 @@ def _clean_model(model: str | None) -> str | None:
 @router.get("/cohorts", response_model=CohortsCostOut, dependencies=[Depends(can_view_costs)])
 async def list_cohort_costs(
     db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(can_view_costs)],
     date_from: DateFrom = None,
     date_to: DateTo = None,
     model: ModelFilter = None,
+    selected_org_id: OrgIdQuery = None,
 ) -> CohortsCostOut:
     start, end = default_window(date_from, date_to)
     model_filter = _clean_model(model)
+    org_id = org_id_for_product(user, selected_org_id)
     result = await UsageCostReadService.list_cohorts(
-        db, date_from=start, date_to=end, model=model_filter
+        db, date_from=start, date_to=end, model=model_filter, organization_id=org_id
     )
     return CohortsCostOut(
         cohorts=result.cohorts,
@@ -70,18 +73,22 @@ async def list_cohort_costs(
 async def cohort_cost_detail(
     cohort_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(can_view_costs)],
     date_from: DateFrom = None,
     date_to: DateTo = None,
     model: ModelFilter = None,
+    selected_org_id: OrgIdQuery = None,
 ) -> CohortCostDetailOut:
     start, end = default_window(date_from, date_to)
     model_filter = _clean_model(model)
+    org_id = org_id_for_product(user, selected_org_id)
     detail = await UsageCostReadService.cohort_detail(
         db,
         cohort_id=cohort_id,
         date_from=start,
         date_to=end,
         model=model_filter,
+        organization_id=org_id,
     )
     if detail is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Turma não encontrada")
@@ -110,12 +117,15 @@ async def student_cost_detail(
     cohort_id: uuid.UUID,
     student_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(can_view_costs)],
     date_from: DateFrom = None,
     date_to: DateTo = None,
     model: ModelFilter = None,
+    selected_org_id: OrgIdQuery = None,
 ) -> StudentCostDetailOut:
     start, end = default_window(date_from, date_to)
     model_filter = _clean_model(model)
+    org_id = org_id_for_product(user, selected_org_id)
     detail = await UsageCostReadService.student_detail(
         db,
         cohort_id=cohort_id,
@@ -123,6 +133,7 @@ async def student_cost_detail(
         date_from=start,
         date_to=end,
         model=model_filter,
+        organization_id=org_id,
     )
     if detail is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Aluno ou turma não encontrado")

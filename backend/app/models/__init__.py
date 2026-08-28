@@ -1,4 +1,5 @@
 from app.models.base import Base
+from app.models.tenancy import Organization, OrgSettings
 from app.models.user import Role, User
 from app.models.track import Lesson, Module, ModuleLevel, Track
 from app.models.cohort import (
@@ -28,6 +29,8 @@ from app.models.usage import AiUsageEvent
 
 __all__ = [
     "Base",
+    "Organization",
+    "OrgSettings",
     "Role",
     "User",
     "Track",

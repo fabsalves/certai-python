@@ -30,6 +30,8 @@ import {
 import { matchesAnySearch } from "../lib/listSearch";
 import { useListView } from "../lib/useListView";
 import { usePagination } from "../lib/usePagination";
+import { OrgLensGate } from "../components/layout/OrgSwitcher";
+import { useOrg } from "../lib/orgContext";
 
 type Scope = "all" | "measured";
 
@@ -40,6 +42,7 @@ const SCOPE_OPTIONS: Array<{ value: Scope; label: string }> = [
 
 export function StudentCosts() {
   const { cohortId = "", studentId = "" } = useParams();
+  const { orgQuery, hasOrgLens } = useOrg();
   const [searchParams, setSearchParams] = useSearchParams();
   const [view, setView] = useListView("costs-student");
   const [search, setSearch] = useState("");
@@ -64,13 +67,16 @@ export function StudentCosts() {
   };
 
   const load = useCallback(() => {
-    if (!cohortId || !studentId) return;
+    if (!cohortId || !studentId || !hasOrgLens) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-    fetchStudentCostDetail(cohortId, studentId, periodDaysFromKey(period), model)
+    fetchStudentCostDetail(cohortId, studentId, periodDaysFromKey(period), model, orgQuery.org_id)
       .then(setData)
       .catch(() => setData(null))
       .finally(() => setLoading(false));
-  }, [cohortId, studentId, period, model]);
+  }, [cohortId, studentId, period, model, hasOrgLens, orgQuery.org_id]);
 
   useEffect(() => {
     load();
@@ -145,6 +151,15 @@ export function StudentCosts() {
     ],
     [],
   );
+
+  if (!hasOrgLens) {
+    return (
+      <>
+        <PageHeader title="Custos do aluno" />
+        <OrgLensGate>{null}</OrgLensGate>
+      </>
+    );
+  }
 
   if (loading && !data) {
     return (
