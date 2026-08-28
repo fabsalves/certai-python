@@ -112,4 +112,4 @@ Se quiser testar **digitando/gravando no celular**:
 2. Cadastrar URL na Cinndi: `POST https://<tunnel>/webhooks/cinndi`
 3. Não precisa por a URL do tunnel no `.env`
 
-Ver também: [whatsapp-template-certai_convite_aula.md](./whatsapp-template-certai_convite_aula.md)
+Ver também: [whatsapp-template-certai_convite_aula.md](./whatsapp-template-certai_convite_aula.md) · [tenancy-conversa.md](./tenancy-conversa.md)

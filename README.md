@@ -229,7 +229,7 @@ certai/
 ├── bin/db-reset         re-semeia o banco de dev
 ├── bin/send-message     simula inbound WhatsApp (texto) — ver docs/whatsapp-dev-local.md
 ├── bin/send-audio       simula inbound WhatsApp (áudio)
-├── docs/                guias (WhatsApp local, template Cinndi, …)
+├── docs/                guias (WhatsApp local, org/conversa, template Cinndi, …)
 ├── Procfile.dev
 ├── docker-compose.yml
 └── .env.example
