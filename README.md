@@ -54,6 +54,9 @@ A marca é definida na criação e **não pode ser alterada**: `is_sandbox` não
 `CohortUpdate`, então não há contrato por onde virá-la. Uma turma real é permanentemente
 não-zerável. Detalhes em [`docs/turma-de-teste.plan.md`](docs/turma-de-teste.plan.md).
 
+Roteiro de teste dos dois pacotes (bateria automatizada + validação manual):
+[`docs/como-testar-dinamismo.md`](docs/como-testar-dinamismo.md).
+
 ---
 
 ## Stack
