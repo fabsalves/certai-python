@@ -15,7 +15,7 @@ commit).
 ```bash
 bin/db-reset && bin/verify-dinamismo
 ```
-**26/26** — os três cenários do doc de produto + caminho feliz. Com `--with-ai`: 29/29, e a IA lê
+**28/28** — os três cenários do doc de produto + caminho feliz. Com `--with-ai`: 31/31, e a IA lê
 um relato de verdade.
 
 ```bash

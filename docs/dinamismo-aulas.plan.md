@@ -397,10 +397,11 @@ a Fase 7 os verifica como regressão.
 
 ## Resultado
 
-**`bin/verify-dinamismo` — 26/26 verificações; com `--with-ai`, 29/29.**
+**`bin/verify-dinamismo` — 28/28 verificações; com `--with-ai`, 31/31.**
 
 ```
 1 · Caminho feliz (regressão)      4/4   cobertura default, bundle idêntico ao pré-mudança
+1b · Descrição da IA no feliz      2/2   texto sem informação nova não é persistido
 2 · Aula incompleta                6/6   pendência registrada, fora da cobrança, turma avança
 3 · Aula composta                  3/3   carryover fecha a pendência, uma conversa na âncora
 4 · Pendência resolvida            4/4   resolve sem UPDATE, histórico e evidência rastreados

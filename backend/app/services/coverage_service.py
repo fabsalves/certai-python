@@ -291,6 +291,21 @@ async def session_scope(
     return scope
 
 
+def _says_nothing_new(segment: CoverageSegmentIn, anchor_lesson_id: uuid.UUID) -> bool:
+    """True when a segment reports the plan being followed, and nothing else.
+
+    Only meaningful for a lone segment: once a session touches a second lesson,
+    the coverage is informative and every segment's description matters, the
+    anchor's included.
+    """
+    return (
+        segment.lesson_id == anchor_lesson_id
+        and segment.kind == "planned"
+        and segment.extent == "full"
+        and not segment.pending.strip()
+    )
+
+
 def _is_bare_default(row: LessonCoverage) -> bool:
     """The happy path carries no information beyond "the plan was followed".
 
@@ -395,6 +410,15 @@ async def persist_coverage(
     is dropped rather than trusted, so neither a model nor a crafted request can
     write coverage against an arbitrary lesson.
     """
+    # A lone segment on the anchor, fully covered, owing nothing, says only "the
+    # plan was followed". The proposal fills `covered` with a description so the
+    # professor can see the AI understood the report, but persisting that text
+    # would put a two-sentence paraphrase in the context bundle -- declared to the
+    # engine as the authority, outranking the lesson's real material. So the happy
+    # path is stored bare, and the bundle stays exactly as it was before coverage.
+    if len(segments) == 1 and _says_nothing_new(segments[0], note.lesson_id):
+        segments = [default_segment(note.lesson_id)]
+
     rows: list[LessonCoverage] = []
     seen: set[uuid.UUID] = set()
     for segment in segments:

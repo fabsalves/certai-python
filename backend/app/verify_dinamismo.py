@@ -203,6 +203,43 @@ async def run(with_ai: bool) -> int:
             "avaliador informado de que a aula seguiu o plano",
         )
 
+        # The AI proposal describes the lesson even when nothing deviated, so the
+        # happy path arrives here with `covered` filled. Persisting that text
+        # would put a paraphrase in the bundle, declared as the authority above
+        # the lesson's own material. It has to be stored bare.
+        section("1b · Caminho feliz com descrição da IA")
+        described = second[0] if second else None
+        if described is None:
+            report.check(True, "pulado (seed sem segundo módulo)")
+        else:
+          await _close(
+            db,
+            cohort,
+            described,
+            classes[described.module_id],
+            "Fechei todo o conteúdo previsto da aula.",
+            [
+                CoverageSegmentIn(
+                    lesson_id=described.id,
+                    kind="planned",
+                    extent="full",
+                    covered="Os alunos revisaram o parecer de um colega.",
+                    source="ai",
+                )
+            ],
+          )
+          rows = await _coverage_rows(db, cohort.id, described.id)
+          report.check(
+            len(rows) == 1 and not rows[0].covered,
+            "descrição sem informação nova não é persistida",
+            f"covered={rows[0].covered!r}" if rows else "(sem linha)",
+          )
+          blocks, taught = await _bundle_blocks(db, cohort.id, described.id, student_id)
+          report.check(
+            taught == [] and "actually taught" not in blocks,
+            "bundle segue sem o bloco, como no caminho feliz",
+          )
+
         # ---------------------------------------------------------------- 2
         section("2 · Aula incompleta — encerrada antes do ponto planejado")
         incomplete = first[1]
@@ -366,7 +403,7 @@ async def run(with_ai: bool) -> int:
         else:
             section("5 · Aula adiantada — avançou no conteúdo da aula seguinte")
             class_b = classes[second[0].module_id]
-            ahead, next_lesson = second[0], second[1]
+            ahead, next_lesson = second[1], second[2]
             advance_text = "adiantei o conceito de argumentação objetiva da aula seguinte"
             await _close(
                 db,
