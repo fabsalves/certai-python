@@ -120,3 +120,66 @@ class CohortLessonNote(Base):
     audio_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
     # pending -> processing -> done | failed. Dispatch to students only after done.
     ingestion_status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+
+
+class CoverageKind(str, enum.Enum):
+    """Where a covered segment sits relative to the session's anchor lesson."""
+
+    PLANNED = "planned"      # the anchor lesson itself
+    CARRYOVER = "carryover"  # tail of an earlier lesson, closed in this session
+    ADVANCE = "advance"      # content of a later lesson, taught ahead of plan
+
+
+class CoverageExtent(str, enum.Enum):
+    FULL = "full"
+    PARTIAL = "partial"
+
+
+class LessonCoverage(Base):
+    """What one teaching session actually covered, per lesson.
+
+    A session (one CohortLessonNote) keeps its anchor lesson, and declares here
+    the real shape of what was taught: the anchor itself, the tail of an earlier
+    lesson, content of a later one -- or all three.
+
+    Append-only, like StudentAssessment: the standing coverage of a lesson is the
+    most recent row for that class. A later session that covers a pending tail
+    writes a new row with an empty `pending`, so pendency resolves with no UPDATE
+    and no parallel state machine.
+    """
+
+    __tablename__ = "lesson_coverage"
+
+    note_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cohort_lesson_notes.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    # cohort_id and module_professor_id are denormalized from the note on purpose:
+    # standing-pendency lookups are per teaching class and run on the hot path of
+    # both context assembly and assessment.
+    cohort_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("cohorts.id", ondelete="CASCADE"), index=True
+    )
+    lesson_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("lessons.id", ondelete="CASCADE"), index=True
+    )
+    module_professor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cohort_module_professors.id", ondelete="RESTRICT"),
+        index=True,
+        nullable=False,
+    )
+    kind: Mapped[CoverageKind] = mapped_column(
+        Enum(CoverageKind, values_callable=_enum_values, native_enum=False, length=20),
+        nullable=False,
+    )
+    extent: Mapped[CoverageExtent] = mapped_column(
+        Enum(CoverageExtent, values_callable=_enum_values, native_enum=False, length=20),
+        nullable=False,
+    )
+    covered: Mapped[str] = mapped_column(Text, default="")  # what was taught, pt-BR
+    pending: Mapped[str] = mapped_column(Text, default="")  # what this lesson still owes
+    # "ai" = proposal accepted as-is | "professor" = adjusted before submitting.
+    source: Mapped[str] = mapped_column(String(20), default="ai", nullable=False)

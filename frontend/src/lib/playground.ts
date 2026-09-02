@@ -79,6 +79,14 @@ export interface PlaygroundContext {
     module?: string;
     description?: string;
   }>;
+  /** Only when the session diverged from the plan; empty on the happy path. */
+  taught_scope: Array<{
+    lesson: string;
+    origin: "planned" | "carryover" | "advance";
+    extent: "full" | "partial";
+    covered: string;
+    pending: string;
+  }>;
   cohort_notes_in_bundle: Array<{
     summary: string;
     unclear_points: string;

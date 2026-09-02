@@ -9,6 +9,14 @@ import {
   fileKindFromName,
 } from "../ui/FileAttachment";
 import { AudioProcessStatus, AudioWaveform } from "../ui/AudioProcessStatus";
+import { LessonCoverageConfirm } from "./LessonCoverageConfirm";
+import {
+  type CoverageCandidate,
+  type CoverageSegment,
+  coverageProposePath,
+  proposeCoverage,
+  toSubmitPayload,
+} from "../../lib/coverage";
 
 const AUDIO_ACCEPT =
   ".mp3,.m4a,.wav,.ogg,.webm,.mpeg,audio/*,audio/webm,audio/mpeg,audio/mp4,audio/ogg,audio/wav";
@@ -23,6 +31,7 @@ interface Props {
   onCompleted: () => void;
   transcribePath?: string;
   completePath?: string;
+  proposePath?: string;
 }
 
 export function LessonReportCapture({
@@ -33,6 +42,7 @@ export function LessonReportCapture({
   onCompleted,
   transcribePath,
   completePath,
+  proposePath,
 }: Props) {
   const runAction = useApiAction();
   const {
@@ -52,6 +62,13 @@ export function LessonReportCapture({
   const [transcribing, setTranscribing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const transcribedRef = useRef<Blob | File | null>(null);
+  const [segments, setSegments] = useState<CoverageSegment[]>([]);
+  const [candidates, setCandidates] = useState<CoverageCandidate[]>([]);
+  const [proposing, setProposing] = useState(false);
+  const [proposalFailed, setProposalFailed] = useState(false);
+  // The report the current proposal was derived from -- so editing the text
+  // invalidates it and a re-read is asked for, instead of submitting a stale one.
+  const proposedForRef = useRef<string | null>(null);
 
   useEffect(() => {
     reset();
@@ -60,6 +77,10 @@ export function LessonReportCapture({
     setAudioFile(null);
     setAudioSource(null);
     transcribedRef.current = null;
+    setSegments([]);
+    setCandidates([]);
+    setProposalFailed(false);
+    proposedForRef.current = null;
   }, [cohortId, lessonId, reset]);
 
   async function transcribeAudioBlob(audio: Blob, filename: string) {
@@ -83,6 +104,52 @@ export function LessonReportCapture({
     });
     setTranscribing(false);
   }
+
+  // The professor writes or dictates the report; the AI reads it and proposes
+  // what was actually covered. Debounced so typing does not fire a call per key.
+  useEffect(() => {
+    const text = transcript.trim();
+    if (!canComplete || transcribing) return;
+    if (!text) {
+      setSegments([]);
+      setCandidates([]);
+      setProposalFailed(false);
+      proposedForRef.current = null;
+      return;
+    }
+    if (proposedForRef.current === text) return;
+
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      setProposing(true);
+      try {
+        const proposal = await proposeCoverage(
+          proposePath ?? coverageProposePath(cohortId),
+          lessonId,
+          text,
+        );
+        if (!active) return;
+        setSegments(proposal.segments);
+        setCandidates(proposal.candidates);
+        setProposalFailed(!proposal.from_ai);
+        proposedForRef.current = text;
+      } catch {
+        if (!active) return;
+        // Never blocks the closing: the anchor-only default stands.
+        setSegments([]);
+        setCandidates([]);
+        setProposalFailed(true);
+        proposedForRef.current = text;
+      } finally {
+        if (active) setProposing(false);
+      }
+    }, 900);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [transcript, transcribing, canComplete, cohortId, lessonId, proposePath]);
 
   useEffect(() => {
     if (status === "recording") {
@@ -127,6 +194,9 @@ export function LessonReportCapture({
     const form = new FormData();
     form.append("lesson_id", lessonId);
     form.append("transcript", transcript);
+    if (segments.length > 0) {
+      form.append("coverage", JSON.stringify(toSubmitPayload(segments)));
+    }
     if (attachment) {
       form.append("attachment", attachment);
     }
@@ -149,6 +219,10 @@ export function LessonReportCapture({
         clearAudio();
         setTranscript("");
         setAttachment(null);
+        setSegments([]);
+        setCandidates([]);
+        setProposalFailed(false);
+        proposedForRef.current = null;
         onCompleted();
       },
     });
@@ -274,6 +348,18 @@ export function LessonReportCapture({
             placeholder="Grave ou anexe um áudio, ou digite o que a turma viu, dúvidas comuns, pontos de atenção…"
           />
         </div>
+
+        {transcript.trim() && (
+          <LessonCoverageConfirm
+            segments={segments}
+            candidates={candidates}
+            anchorLessonId={lessonId}
+            loading={proposing}
+            failed={proposalFailed}
+            disabled={busy}
+            onChange={setSegments}
+          />
+        )}
 
         <FileAttachmentBlock
           label="Anexo opcional"

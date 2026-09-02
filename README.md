@@ -28,6 +28,21 @@ A IA decide; o código persiste.
 
 O encerramento de aula pelo professor **avança a turma e libera o contexto** no mesmo evento.
 
+### Planejado ≠ ministrado
+
+A aula real não obedece ao plano: ela pode ficar incompleta, avançar no conteúdo da seguinte, ou
+começar fechando o que faltou da anterior. Cada sessão de encerramento declara sua **cobertura
+real** — segmentos por aula, com o que foi dado e o que ficou pendente. A IA deriva isso do
+próprio relato do professor, que confirma num toque.
+
+O escopo ministrado é a autoridade: é o que a Lira explora e o que a avaliação cobra. Conteúdo
+pendente sai da conta — o aluno não é medido pelo que não recebeu. Conteúdo adiantado entra como
+descrição do que foi dito em sala, nunca como catálogo da aula futura, então a barreira "não
+ensine o futuro" continua estrutural. A pendência é a linha de cobertura mais recente da aula
+(append-only): uma sessão posterior que fecha a cauda a resolve sem UPDATE.
+
+Detalhes em [`docs/dinamismo-aulas.plan.md`](docs/dinamismo-aulas.plan.md).
+
 ---
 
 ## Stack
@@ -51,6 +66,7 @@ ContextBuilder ──► monta o bundle por escopo (aula/módulo/trilha),
                    recortado pela progressão da turma:
                      • mapa da trilha  -> sempre
                      • conteúdo        -> só o que a turma já estudou
+                     • escopo ministrado -> só quando a aula desviou do plano
       │
       ▼
    MOTOR (único, scope-agnostic) ──► loop de raciocínio + tools
@@ -214,7 +230,7 @@ certai/
 │   │   ├── models/      User, Track/Module/Lesson, Cohort/Progress, Conversation, Assessment
 │   │   ├── schemas/     contratos Pydantic
 │   │   ├── api/v1/      auth, users, tracks, cohorts, conversations
-│   │   ├── services/    lesson_completion (cycle trigger)
+│   │   ├── services/    lesson_completion (cycle trigger), coverage (planejado vs. ministrado)
 │   │   ├── ai/          engine, context_builder, tools, humanizer, client
 │   │   └── workers/     celery_app, tasks (Groq, dispatch, evaluation)
 │   ├── alembic/         migrations
@@ -227,6 +243,7 @@ certai/
 ├── bin/dev              foreman — sobe API, workers e frontend
 ├── bin/db-seed          seed do banco (aceita --force)
 ├── bin/db-reset         re-semeia o banco de dev
+├── bin/verify-dinamismo verifica aula incompleta/adiantada/composta ponta a ponta
 ├── bin/send-message     simula inbound WhatsApp (texto) — ver docs/whatsapp-dev-local.md
 ├── bin/send-audio       simula inbound WhatsApp (áudio)
 ├── docs/                guias (WhatsApp local, org/conversa, template Cinndi, …)

@@ -89,6 +89,14 @@ export function CohortProgressPanel({
     ? progress.current_lesson_id === null && ownClosedCount > 0
     : progress.current_lesson_id === null && progress.completed_lesson_ids.length > 0;
 
+  // Content of this lesson that was closed without being taught. Operational
+  // data the professor needs to see -- a professor sees their own class only.
+  const pendingClasses = (
+    viewerProfessorId
+      ? classStatuses.filter((item) => item.professor_id === viewerProfessorId)
+      : classStatuses
+  ).filter((item) => item.closed && item.pending.trim());
+
   const [notes, setNotes] = useState<CohortLessonNote[]>([]);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [reingesting, setReingesting] = useState(false);
@@ -302,6 +310,26 @@ export function CohortProgressPanel({
         onClose={() => setClaimModalOpen(false)}
         onConfirm={claimStudents}
       />
+
+      {pendingClasses.length > 0 && (
+        <div className="coverage-pending">
+          <p className="coverage-pending__title">
+            Conteúdo desta aula que ficou pendente
+          </p>
+          {pendingClasses.map((item) => (
+            <p key={item.module_professor_id} className="coverage-pending__item">
+              {showProfessorNames && (
+                <span className="coverage-pending__who">{item.professor_name}: </span>
+              )}
+              {item.pending}
+            </p>
+          ))}
+          <p className="coverage-pending__hint">
+            A Lira não cobra isso dos alunos. Informe no relato quando fechar em
+            uma aula seguinte.
+          </p>
+        </div>
+      )}
 
       {activeLessonId && (
         <LessonAssessmentDistribution

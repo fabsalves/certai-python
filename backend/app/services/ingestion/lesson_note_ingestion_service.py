@@ -19,6 +19,7 @@ from app.services.ingestion import (
     coerce_llm_text_field,
 )
 from app.services.ingestion.extraction import UnsupportedFormatError, extract_text
+from app.services import coverage_service
 from app.services.lesson_completion_service import consolidate_notes
 from app.services.usage import UsageScope
 from app.services.storage import get_storage
@@ -46,9 +47,15 @@ async def ingest_lesson_note(db: AsyncSession, note_id: uuid.UUID) -> CohortLess
                 "lesson note %s: attachment without text extractor (%s)", note_id, extension
             )
 
+    # The confirmed coverage bounds the consolidation: a pendency never reaches
+    # the students' context, and content taught ahead does not land in this
+    # lesson's knowledge base.
+    coverage_block = await coverage_service.coverage_block_for_note(db, note.id)
+
     consolidated = await consolidate_notes(
         note.professor_transcript,
         attachment_text,
+        coverage_block=coverage_block,
         db=db,
         # Cohort- and lesson-level work: no single student owns it.
         scope=UsageScope(cohort_id=note.cohort_id, lesson_id=note.lesson_id),

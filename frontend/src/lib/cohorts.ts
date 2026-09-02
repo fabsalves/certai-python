@@ -34,6 +34,12 @@ export interface LessonClassStatus {
   professor_name: string;
   closed: boolean;
   closed_at: string | null;
+  /** What this class actually taught of the lesson. */
+  covered: string;
+  /** What is still owed. Non-empty = part of the plan was not taught. */
+  pending: string;
+  /** "" when the session reported nothing beyond the plan. */
+  extent: "" | "full" | "partial";
 }
 
 export interface LessonClasses {

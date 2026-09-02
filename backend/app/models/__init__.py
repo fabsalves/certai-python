@@ -20,7 +20,10 @@ from app.models.voice_session import VoiceSession, VoiceSessionStatus
 from app.models.assessment import (
     AssessmentScope,
     CohortLessonNote,
+    CoverageExtent,
+    CoverageKind,
     Level,
+    LessonCoverage,
     MicroScore,
     StudentAssessment,
 )
@@ -54,6 +57,9 @@ __all__ = [
     "Level",
     "AssessmentScope",
     "StudentAssessment",
+    "LessonCoverage",
+    "CoverageKind",
+    "CoverageExtent",
     "StudentLessonProgress",
     "StudentLessonProgressStatus",
     "AiUsageEvent",

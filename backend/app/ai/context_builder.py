@@ -6,7 +6,14 @@ to the AI. The ContextBuilder hands the AI:
   - the track MAP (sequence, titles, where each thing lives) -> always, so the AI
     can orient ("you'll see this in Lesson 6");
   - the current lesson CONTENT -> full catalog + that module's description + full class note;
-  - prior unlocked lessons -> note summary/unclear_points only (no catalog, no KB).
+  - prior unlocked lessons -> note summary/unclear_points only (no catalog, no KB);
+  - what the session ACTUALLY taught -> only when it diverged from the plan.
+
+The last one separates planned from taught. A lesson may have been left incomplete,
+absorbed the tail of the previous one, or run ahead into the next: the bundle says
+which, so the AI works on what the student received instead of what was scheduled.
+Content taught ahead enters as a description of what was said in class -- never as
+the next lesson's catalog, so the barrier below still holds.
 
 A future lesson has no content in the bundle. The AI cannot teach it because it
 does not exist in the context -- with no textual rule.
@@ -26,6 +33,7 @@ from sqlalchemy.orm import selectinload
 from app.models.assessment import CohortLessonNote
 from app.models.track import Lesson, Module, Track
 from app.models.cohort import Cohort, CohortProgress
+from app.services import coverage_service
 from app.services.cohort import ModuleClassService
 from app.services.ingestion import INGESTION_DONE
 
@@ -40,6 +48,11 @@ class ContextBundle:
     cohort_notes: list[dict] = field(default_factory=list)
     current_position: dict | None = None
     track_guide: str = ""  # macro guide from the track material, available at any lesson
+    # What the session that closed this lesson ACTUALLY taught, per lesson: the
+    # anchor, plus a pending tail of the previous lesson or content taught ahead.
+    # Empty whenever the lesson went as planned -- then the planned content is the
+    # whole story and this block does not appear at all.
+    taught_scope: list[dict] = field(default_factory=list)
 
     def to_system_blocks(self) -> str:
         import json
@@ -47,6 +60,17 @@ class ContextBundle:
         blocks = (
             "## Track map (full sequence, titles only)\n"
             f"{json.dumps(self.track_map, ensure_ascii=False, indent=2)}\n\n"
+        )
+        if self.taught_scope:
+            blocks += (
+                "## What this session actually taught (authority for this lesson)\n"
+                "Diverged from the plan. `covered` is what the student received; "
+                "`pending` was NOT taught to them. `origin`: planned = this lesson, "
+                "carryover = tail of the previous one closed in this session, "
+                "advance = content of the next one taught ahead.\n"
+                f"{json.dumps(self.taught_scope, ensure_ascii=False, indent=2)}\n\n"
+            )
+        blocks += (
             "## Current lesson content\n"
             f"{json.dumps(self.unlocked_content, ensure_ascii=False, indent=2)}\n\n"
             "## Notes for this cohort\n"
@@ -75,14 +99,20 @@ class ContextBuilder:
         )
         return (await self.db.execute(stmt)).scalar_one()
 
+    async def _student_classes_by_module(
+        self, cohort_id: uuid.UUID, student_id: uuid.UUID
+    ) -> dict[uuid.UUID, uuid.UUID]:
+        """The class this student belongs to, per module."""
+        return await ModuleClassService.classes_by_module_for_student(
+            self.db, cohort_id, student_id
+        )
+
     async def _student_class_ids(
         self, cohort_id: uuid.UUID, student_id: uuid.UUID
     ) -> set[uuid.UUID]:
         """The classes this student belongs to, one per module. Everything the
         student may see is scoped to them."""
-        resolved = await ModuleClassService.classes_by_module_for_student(
-            self.db, cohort_id, student_id
-        )
+        resolved = await self._student_classes_by_module(cohort_id, student_id)
         return set(resolved.values())
 
     async def _unlocked_lessons(
@@ -103,12 +133,14 @@ class ContextBuilder:
     ) -> ContextBundle:
         """Context scoped to a specific lesson (student conversation)."""
         track = await self._track_of_cohort(cohort_id)
-        class_ids = await self._student_class_ids(cohort_id, student_id)
+        classes_by_module = await self._student_classes_by_module(cohort_id, student_id)
+        class_ids = set(classes_by_module.values())
         unlocked = await self._unlocked_lessons(cohort_id, class_ids)
 
         track_map: list[dict] = []
         content: list[dict] = []
         position = None
+        anchor_module_id: uuid.UUID | None = None
         for module in track.modules:
             if not module.is_active:
                 continue
@@ -132,6 +164,7 @@ class ContextBuilder:
                     )
                     content.append({"lesson": lesson.title, "content": lesson.content})
                 if lesson.id == lesson_id:
+                    anchor_module_id = module.id
                     position = {
                         "track": track.title,
                         "module": module.title,
@@ -141,6 +174,21 @@ class ContextBuilder:
         notes = await self._notes(
             cohort_id, list(unlocked), class_ids, current_lesson_id=lesson_id
         )
+        # Only for an unlocked lesson: a locked one has no session to report on.
+        # Scoped to this student's own class, like everything else here.
+        anchor_class_id = (
+            classes_by_module.get(anchor_module_id)
+            if anchor_module_id is not None
+            else None
+        )
+        taught_scope: list[dict] = []
+        if anchor_class_id is not None and lesson_id in unlocked:
+            taught_scope = await coverage_service.session_scope(
+                self.db,
+                cohort_id=cohort_id,
+                module_professor_id=anchor_class_id,
+                anchor_lesson_id=lesson_id,
+            )
         return ContextBundle(
             scope="lesson",
             track_map=track_map,
@@ -152,6 +200,7 @@ class ContextBuilder:
                 if track.material_ingestion_status == INGESTION_DONE
                 else ""
             ),
+            taught_scope=taught_scope,
         )
 
     async def build_module(

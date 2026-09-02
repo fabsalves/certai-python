@@ -28,12 +28,15 @@ from app.core.db_events import enqueue_after_commit
 from app.models.assessment import CohortLessonNote
 from app.models.track import Lesson
 from app.models.cohort import CohortModuleProfessor, CohortProgress
+from app.schemas import CoverageSegmentIn
+from app.services import coverage_service
 from app.services.storage import get_storage
 from app.services.usage import UsageScope, record_chat_usage
 
 CONSOLIDATION_SYSTEM_PROMPT = (
     "You will receive the professor's report about a lesson and, optionally, the "
-    "extracted text of a document the professor attached. Produce a JSON object "
+    "extracted text of a document the professor attached and the confirmed "
+    "coverage of the session. Produce a JSON object "
     "with keys 'summary', 'unclear_points' and 'knowledge_base', written in "
     "Brazilian Portuguese. 'summary' and 'unclear_points' consolidate the "
     "professor's report. 'knowledge_base' distills the attached document into a "
@@ -41,7 +44,14 @@ CONSOLIDATION_SYSTEM_PROMPT = (
     "definitions, examples, and points worth exploring with students through "
     "open questions. Be neutral and descriptive -- never judgemental or "
     "moralizing. Use an empty string for 'knowledge_base' when there is no "
-    "document. Reply with the JSON only."
+    "document.\n\n"
+    "When a coverage section is present, it is the boundary of this "
+    "consolidation: describe only what it declares as ministered. Content it "
+    "marks as NOT ministered must stay out of all three fields -- the students "
+    "did not receive it. Content it attributes to a neighbouring lesson belongs "
+    "here only as what was actually taught in this session, never as that "
+    "lesson's full material.\n\n"
+    "Reply with the JSON only."
 )
 
 
@@ -57,16 +67,27 @@ async def consolidate_notes(
     transcript: str,
     attachment_text: str = "",
     *,
+    coverage_block: str = "",
     db: AsyncSession | None = None,
     scope: UsageScope | None = None,
 ) -> dict[str, str]:
     """The AI turns the professor's report (+ optional attachment) into
-    summary + unclear points + lesson knowledge base."""
+    summary + unclear points + lesson knowledge base.
+
+    `coverage_block` is the session's confirmed coverage. When present it bounds
+    the consolidation to what was actually ministered -- which is what keeps a
+    pendency out of the students' context, and keeps content taught ahead from
+    landing in this lesson's knowledge base.
+    """
     empty = {"summary": "", "unclear_points": "", "knowledge_base": ""}
     if not transcript.strip() and not attachment_text.strip():
         return empty
 
     user_content = f"## Relato do professor\n{transcript.strip() or '(sem relato)'}"
+    if coverage_block.strip():
+        user_content += (
+            f"\n\n## Cobertura confirmada desta sessão\n{coverage_block.strip()}"
+        )
     if attachment_text.strip():
         user_content += f"\n\n## Documento anexado (texto extraído)\n{attachment_text.strip()}"
 
@@ -115,6 +136,7 @@ async def complete_lesson(
     attachment: StoredFile | None = None,
     audio: StoredFile | None = None,
     audio_source: str | None = None,
+    coverage: list[CoverageSegmentIn] | None = None,
 ) -> CohortLessonNote:
     lesson = await db.get(Lesson, lesson_id)
     if lesson is None:
@@ -191,6 +213,21 @@ async def complete_lesson(
         )
 
     await db.flush()
+
+    # The session declares what it actually covered. Without an informed
+    # coverage this writes the happy-path row (anchor, full) -- so a client that
+    # knows nothing about coverage behaves exactly as before.
+    window = await coverage_service.candidate_window(
+        db, cohort_id, lesson_id, module_professor_id=module_professor_id
+    )
+    positions = {item.id: index for index, item in enumerate(window)}
+    await coverage_service.persist_coverage(
+        db,
+        note=note,
+        segments=coverage or [coverage_service.default_segment(lesson_id)],
+        allowed_positions=positions,
+        anchor_position=positions.get(lesson_id, 0),
+    )
 
     from app.services.cohort import ModuleClassService
     from app.services.student_progress_service import StudentProgressService
