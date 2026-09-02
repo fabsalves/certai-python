@@ -2075,6 +2075,38 @@ html.modal-scroll-lock body {
   min-width: 0;
 }
 
+/* --- Divisão de alunos pendente --- */
+
+.pending-division {
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-50);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pending-division__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.pending-division__text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  flex: 1 1 320px;
+}
+
+.cohort-students__section-title--pending {
+  color: var(--accent);
+}
+
 .cohort-students__badge-slot {
   flex-shrink: 0;
   justify-self: end;
@@ -4642,6 +4674,14 @@ html.modal-scroll-lock body {
   border-radius: 999px;
   background: var(--brand-50);
   color: var(--brand);
+}
+
+.editor-tabs__alert {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: 0 0 auto;
 }
 
 .editor-tabs__panel {

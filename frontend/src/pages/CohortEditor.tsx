@@ -29,6 +29,7 @@ import {
   assignmentsFromCohort,
   assignmentsPayload,
   pathProgressForViewer,
+  pendingDivisions,
   professorsForModule,
   suggestSplit,
   uniqueProfessorNames,
@@ -122,6 +123,14 @@ export function CohortEditor() {
 
   const trackTitle = cohort?.track_title ?? selectedTrack?.title ?? "";
   const canOpenProfessorsTab = Boolean(!isNew || (name.trim() && trackId));
+  // Same helper the Alunos tab uses, so the marker and the warning agree.
+  const divisionPending = useMemo(() => {
+    if (!canManage || !cohort || !track) return [];
+    const moduleOrder = sortedModules(track)
+      .filter((mod) => mod.is_active)
+      .map((mod) => ({ id: mod.id, title: mod.title, position: mod.position }));
+    return pendingDivisions(moduleAssignments, enrollments, moduleOrder);
+  }, [canManage, cohort, track, moduleAssignments, enrollments]);
 
   const reloadProgress = useCallback(async (id: string) => {
     const { data } = await api.get<CohortProgress>(`/cohorts/${id}/progress`);
@@ -545,6 +554,8 @@ export function CohortEditor() {
                     label: "Alunos",
                     disabled: !cohort,
                     count: cohort ? enrollments.length : undefined,
+                    alert: divisionPending.length > 0,
+                    alertLabel: "Há alunos sem professor",
                   },
                   {
                     id: "progress",
@@ -667,6 +678,9 @@ export function CohortEditor() {
                       focusStudentId={focusStudentId}
                       onFocusStudentHandled={() => setFocusStudentId(null)}
                       onChanged={reloadCohort}
+                      assignments={moduleAssignments}
+                      professors={professors}
+                      onApplyDivision={applyDivision}
                     />
                   )}
                 </EditorTabPanel>
@@ -697,6 +711,8 @@ export function CohortEditor() {
                     label: "Alunos",
                     disabled: !cohort,
                     count: cohort ? enrollments.length : undefined,
+                    alert: divisionPending.length > 0,
+                    alertLabel: "Há alunos sem professor",
                   },
                   {
                     id: "progress",
@@ -722,6 +738,9 @@ export function CohortEditor() {
                       focusStudentId={focusStudentId}
                       onFocusStudentHandled={() => setFocusStudentId(null)}
                       onChanged={reloadCohort}
+                      assignments={moduleAssignments}
+                      professors={professors}
+                      onApplyDivision={applyDivision}
                     />
                   )}
                 </EditorTabPanel>

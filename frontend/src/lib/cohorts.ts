@@ -479,6 +479,36 @@ export function unassignedStudentIds(
   return enrolledIds.filter((id) => !assigned.has(id));
 }
 
+export interface PendingDivision {
+  moduleId: string;
+  moduleTitle: string;
+  studentIds: string[];
+}
+
+/** Modules whose students still have no professor.
+ *
+ * The single source of truth for "there is a division pending": the tab
+ * indicator and the warning inside Alunos both read this, so they can never
+ * disagree. Leans on `unassignedStudentIds`, which already returns nothing for a
+ * module with a single professor -- there, the whole cohort is that professor's
+ * class and nothing needs assigning.
+ */
+export function pendingDivisions(
+  assignments: ModuleAssignments,
+  enrollments: Enrollment[],
+  moduleOrder: { id: string; title: string; position: number }[],
+): PendingDivision[] {
+  const enrolledIds = enrollments.map((item) => item.student_id);
+  return [...moduleOrder]
+    .sort((a, b) => a.position - b.position)
+    .map((mod) => ({
+      moduleId: mod.id,
+      moduleTitle: mod.title,
+      studentIds: unassignedStudentIds(assignments[mod.id] ?? [], enrolledIds),
+    }))
+    .filter((item) => item.studentIds.length > 0);
+}
+
 /** Split suggested when a module gains a second professor: reuse the previous
  *  module's division when the professors match, otherwise divide in order. */
 export function suggestSplit(

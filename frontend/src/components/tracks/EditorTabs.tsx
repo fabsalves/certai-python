@@ -5,6 +5,10 @@ export interface EditorTabItem {
   label: string;
   disabled?: boolean;
   count?: number;
+  /** Something in this tab is still pending. Shown apart from `count`, which
+   *  means "how many items" and would be misleading if tinted. */
+  alert?: boolean;
+  alertLabel?: string;
 }
 
 interface Props {
@@ -35,6 +39,13 @@ export function EditorTabs({ tabs, active, onChange, children }: Props) {
               {tab.label}
               {tab.count != null && tab.count > 0 && (
                 <span className="editor-tabs__count">{tab.count}</span>
+              )}
+              {tab.alert && (
+                <span
+                  className="editor-tabs__alert"
+                  title={tab.alertLabel}
+                  aria-label={tab.alertLabel ?? "Pendência nesta aba"}
+                />
               )}
             </button>
           );
