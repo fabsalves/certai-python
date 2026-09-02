@@ -39,6 +39,7 @@ from app.models.student_progress import (
 from app.models.track import Lesson
 from app.models.usage import AiUsageEvent
 from app.schemas import CoverageSegmentIn
+from app.services import coverage_service
 from app.services.cohort import (
     NothingToUndoError,
     SandboxOnlyError,
@@ -78,10 +79,15 @@ def section(title: str) -> None:
     print(f"\n{BOLD}{title}{OFF}")
 
 
-async def _build_sandbox_cohort(db: AsyncSession, source: Cohort) -> Cohort:
+async def _build_sandbox_cohort(
+    db: AsyncSession,
+    source: Cohort,
+    *,
+    name: str = "Turma de teste (verify-sandbox)",
+) -> Cohort:
     """A test cohort mirroring the seed one: same track, professors, students."""
     sandbox = Cohort(
-        name="Turma de teste (verify-sandbox)",
+        name=name,
         track_id=source.track_id,
         organization_id=source.organization_id,
         is_sandbox=True,
@@ -177,10 +183,14 @@ async def run() -> int:
             raise SystemExit("O seed precisa de um módulo com pelo menos 3 aulas.")
 
         sandbox = await _build_sandbox_cohort(db, real)
+        # A neighbour cohort with progression of its own. Every rewind below runs
+        # on `sandbox`; this one exists to prove the blast radius is one cohort.
+        # A test cohort, not the seed's: the seed must be left as it was found,
+        # and a real cohort has no way to be cleaned up (undo refuses it, by design).
+        neighbour = await _build_sandbox_cohort(db, real, name="Turma vizinha (verify-sandbox)")
         await db.commit()
-        # Kept as a plain value: a rollback in the cleanup expires the ORM
-        # object, and reading `.id` off it would then need to hit the database.
-        sandbox_id = sandbox.id
+        # Kept as plain values: a rollback in the cleanup expires the ORM
+        # objects, and reading `.id` off them would then need to hit the database.
         classes = await _classes_of(db, sandbox)
         module_class = classes[module_lessons[0].module_id]
         student_ids = list(
@@ -191,6 +201,26 @@ async def run() -> int:
                     )
                 )
             ).all()
+        )
+        sandbox_id = sandbox.id
+        neighbour_id = neighbour.id
+        neighbour_class = (await _classes_of(db, neighbour))[module_lessons[0].module_id]
+        await _close(
+            db,
+            neighbour,
+            module_lessons[0],
+            neighbour_class,
+            "Aula da turma vizinha, com pendência.",
+            [
+                CoverageSegmentIn(
+                    lesson_id=module_lessons[0].id,
+                    kind="planned",
+                    extent="partial",
+                    covered="metade do conteúdo",
+                    pending="a outra metade",
+                    source="professor",
+                )
+            ],
         )
         print(f"{DIM}turma real={real.name}  turma de teste={sandbox.name}{OFF}")
 
@@ -354,8 +384,6 @@ async def run() -> int:
                 ],
             )
 
-            from app.services import coverage_service
-
             resolved = await coverage_service.current_pendings(
                 db,
                 cohort_id=sandbox.id,
@@ -463,10 +491,27 @@ async def run() -> int:
                 "cobertura default gravada, como no caminho feliz",
             )
 
-            section("9 · A turma real seguiu intacta")
+            section("9 · O raio de dano é de uma turma só")
+            report.check(
+                await _count(db, CohortLessonNote, cohort_id=neighbour_id) == 1
+                and await _count(db, LessonCoverage, cohort_id=neighbour_id) == 1
+                and await _count(db, CohortProgress, cohort_id=neighbour_id) == 1,
+                "a turma vizinha manteve relato, cobertura e progresso",
+            )
+            neighbour_pending = await coverage_service.current_pendings(
+                db,
+                cohort_id=neighbour_id,
+                module_professor_id=neighbour_class.id,
+                lesson_ids=[module_lessons[0].id],
+            )
+            report.check(
+                neighbour_pending.get(module_lessons[0].id) == "a outra metade",
+                "a pendência da turma vizinha segue de pé",
+                neighbour_pending.get(module_lessons[0].id, "(perdida)"),
+            )
             report.check(
                 await _count(db, CohortLessonNote, cohort_id=real.id) == notes_real,
-                "nenhum relato da turma real foi afetado",
+                "a turma real segue como estava",
                 f"{notes_real} relato(s), como antes",
             )
         finally:
@@ -474,15 +519,17 @@ async def run() -> int:
             # cohort_progress references cohort_module_professors with RESTRICT,
             # so the cohort cannot be dropped while it still has progress.
             await db.rollback()
-            fresh = await db.get(Cohort, sandbox_id)
-            if fresh is not None:
+            for cohort_id in (sandbox_id, neighbour_id):
+                fresh = await db.get(Cohort, cohort_id)
+                if fresh is None:
+                    continue
                 await SandboxService.reset_progress(db, fresh)
                 # Core delete, not ORM: the ORM cascade would lazy-load the
                 # cohort's collections mid-flush. Postgres already cascades
                 # enrollments and teaching classes, and progress is gone above.
                 await db.execute(delete(Cohort).where(Cohort.id == fresh.id))
                 await db.commit()
-            print(f"\n{DIM}turma de teste removida{OFF}")
+            print(f"\n{DIM}turmas de teste removidas{OFF}")
 
     total = len(report.checks)
     print()

@@ -193,7 +193,7 @@ de construção manual que precisam do campo explicitamente.
 
 ## Resultado
 
-**`bin/verify-sandbox` — 22/22 verificações.** O script cria a própria turma de teste e a remove
+**`bin/verify-sandbox` — 24/24 verificações.** O script cria a própria turma de teste e a remove
 no fim, então roda em sequência sem `db-reset` entre execuções.
 
 ```
@@ -205,7 +205,8 @@ no fim, então roda em sequência sem `db-reset` entre execuções.
 6 · Desfazer em sequência caminha atrás    1/1
 7 · Zerar preserva cadastro e custos       4/4
 8 · Depois de zerar, o ciclo roda de novo  2/2
-9 · A turma real seguiu intacta            1/1
+9 · O raio de dano é de uma turma só       3/3   turma vizinha com relato, cobertura,
+                                                 progresso e pendência sobrevive a tudo
 ```
 
 Validado também pela API: turma real recusa as duas ações (400 com a mensagem certa), criação com
