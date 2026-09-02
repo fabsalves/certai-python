@@ -248,21 +248,21 @@ export function CohortEditor() {
   }, [isNew, selectedTrack, professors]);
 
   useEffect(() => {
-    const nextTab = (location.state as { tab?: EditorTab } | null)?.tab;
-    if (
-      nextTab === "meta" ||
-      nextTab === "professors" ||
-      nextTab === "students" ||
-      nextTab === "progress"
-    ) {
-      setTab(nextTab);
-      return;
-    }
-    if (isProfessor) {
-      setTab("progress");
-      return;
-    }
-    setTab("meta");
+    // A professor has no "Dados da turma" or "Professores". The Turmas list
+    // always navigates with tab "meta", so an unhonoured request has to fall
+    // back here -- otherwise `tab` holds a tab that renders nothing while the
+    // bar highlights another one.
+    const allowed: EditorTab[] = isProfessor
+      ? ["students", "progress"]
+      : ["meta", "professors", "students", "progress"];
+    const requested = (location.state as { tab?: EditorTab } | null)?.tab;
+    setTab(
+      requested && allowed.includes(requested)
+        ? requested
+        : isProfessor
+          ? "progress"
+          : "meta",
+    );
   }, [cohortId, isNew, isProfessor, location.state, location.key]);
 
   const metaDirty = cohort ? name !== cohort.name : name.trim().length > 0 || trackId.length > 0;
