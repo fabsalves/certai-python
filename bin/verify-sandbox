@@ -1,0 +1,20 @@
+#!/usr/bin/env sh
+# Verifica o rebobinar de turma de teste: recusa em turma real, desfazer o último
+# encerramento, pendência que volta sozinha, e zerar preservando o cadastro.
+#
+# Usage:
+#   bin/db-reset && bin/verify-sandbox
+#
+# Cria sua própria turma de teste e a remove no fim — o seed fica intacto.
+set -eu
+
+ROOT="$(CDPATH= cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT/backend"
+
+if [ ! -d .venv ]; then
+  printf 'Crie o venv primeiro: cd backend && python3.11 -m venv .venv && pip install -r requirements.txt\n' >&2
+  exit 1
+fi
+
+. .venv/bin/activate
+exec python -m app.verify_sandbox "$@"

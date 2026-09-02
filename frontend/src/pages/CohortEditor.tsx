@@ -94,6 +94,7 @@ export function CohortEditor() {
   const [loading, setLoading] = useState(!isNew);
   const [name, setName] = useState("");
   const [trackId, setTrackId] = useState("");
+  const [isSandbox, setIsSandbox] = useState(false);
   const [moduleAssignments, setModuleAssignments] = useState<ModuleAssignments>({});
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -433,7 +434,12 @@ export function CohortEditor() {
     if (isNew) {
       await runAction({
         run: () =>
-          api.post<Cohort>("/cohorts", { name: nextName, track_id: trackId, module_professors }),
+          api.post<Cohort>("/cohorts", {
+            name: nextName,
+            track_id: trackId,
+            module_professors,
+            is_sandbox: isSandbox,
+          }),
         successMessage: "Turma criada.",
         errorMessage: "Não foi possível criar a turma.",
         onSuccess: ({ data }) => {
@@ -586,6 +592,34 @@ export function CohortEditor() {
                           A trilha não pode ser alterada após a criação.
                         </p>
                       )}
+                      {isNew ? (
+                        <div className="field">
+                          <label className="field-check" htmlFor="cohort-sandbox">
+                            <input
+                              id="cohort-sandbox"
+                              type="checkbox"
+                              checked={isSandbox}
+                              onChange={(e) => setIsSandbox(e.target.checked)}
+                            />
+                            Turma de teste
+                          </label>
+                          <p className="muted" style={{ fontSize: 13 }}>
+                            Roda o fluxo real, mas o andamento pode ser desfeito ou
+                            zerado quantas vezes precisar. Não pode ser alterado
+                            depois — e uma turma normal nunca poderá ser zerada.
+                          </p>
+                        </div>
+                      ) : (
+                        cohort?.is_sandbox && (
+                          <div className="field">
+                            <span className="tag tag--brand">Turma de teste</span>
+                            <p className="muted" style={{ fontSize: 13 }}>
+                              O andamento desta turma pode ser desfeito ou zerado na
+                              aba Andamento. A marca não pode ser alterada.
+                            </p>
+                          </div>
+                        )
+                      )}
                     </div>
 
                     {(isNew || metaDirty) && (
@@ -646,6 +680,8 @@ export function CohortEditor() {
                       canComplete={canCompleteLesson}
                       professorName={ownClass?.professor_name}
                       viewerProfessorId={isProfessor ? user?.id : undefined}
+                      isSandbox={cohort.is_sandbox}
+                      canRewind={canManage}
                       onCompleted={onProgressChanged}
                       onOpenStudent={openStudentFromAndamento}
                     />
@@ -703,6 +739,8 @@ export function CohortEditor() {
                       canComplete={canCompleteLesson}
                       professorName={ownClass?.professor_name}
                       viewerProfessorId={isProfessor ? user?.id : undefined}
+                      isSandbox={cohort.is_sandbox}
+                      canRewind={canManage}
                       onCompleted={onProgressChanged}
                       onOpenStudent={openStudentFromAndamento}
                     />

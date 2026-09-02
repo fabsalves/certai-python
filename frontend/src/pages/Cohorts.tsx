@@ -119,9 +119,16 @@ export function Cohorts() {
         header: "Turma",
         primary: true,
         render: (cohort) => (
-          <Link to={cohortTo(cohort.id)} state={{ tab: "meta" }} className="table__link table__primary">
-            {cohort.name}
-          </Link>
+          <>
+            <Link to={cohortTo(cohort.id)} state={{ tab: "meta" }} className="table__link table__primary">
+              {cohort.name}
+            </Link>
+            {cohort.is_sandbox && (
+              <span className="tag tag--brand" style={{ marginLeft: 8 }}>
+                Teste
+              </span>
+            )}
+          </>
         ),
       },
       {

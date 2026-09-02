@@ -43,6 +43,7 @@ from app.schemas import (
     LessonMicroScoresOut,
     ModuleProfessorIn,
     ModuleProfessorOut,
+    SandboxRewindOut,
     PendingAssessmentStudentOut,
     ClaimClassStudentIn,
     UnassignedStudentOut,
@@ -58,7 +59,12 @@ from app.services.assessment.read_service import (
     StudentAssessmentReadService,
 )
 from app.services import coverage_service
-from app.services.cohort import ModuleClassService
+from app.services.cohort import (
+    ModuleClassService,
+    NothingToUndoError,
+    SandboxOnlyError,
+    SandboxService,
+)
 from app.services.cohort.mid_join_service import MidJoinService
 from app.services.lesson_completion_service import complete_lesson
 from app.services.storage.download import file_response
@@ -75,6 +81,11 @@ from app.services.upload_validation import (
 router = APIRouter(prefix="/cohorts", tags=["cohorts"])
 
 can_manage = require_roles(Role.ORG_ADMIN)
+
+SANDBOX_ONLY_MESSAGE = (
+    "Esta ação só existe em turma de teste. A marca é definida na criação da "
+    "turma e não pode ser alterada."
+)
 can_view = require_roles(Role.ORG_ADMIN, Role.PROFESSOR, Role.SUPERADMIN)
 
 
@@ -402,6 +413,7 @@ async def _cohort_detail(db: AsyncSession, cohort: Cohort) -> CohortDetailOut:
         track_title=track_title or "",
         enrollment_count=enrollment_count or 0,
         module_professors=await _load_module_professors(db, cohort.id),
+        is_sandbox=cohort.is_sandbox,
     )
 
 
@@ -505,6 +517,7 @@ async def list_cohorts(
                 track_title=track_title,
                 enrollment_count=count or 0,
                 module_professors=await _load_module_professors(db, cohort.id),
+                is_sandbox=cohort.is_sandbox,
             )
         )
     return result
@@ -535,7 +548,12 @@ async def create_cohort(
 
     await _validate_module_professors(db, None, body.track_id, body.module_professors)
 
-    cohort = Cohort(name=body.name, track_id=body.track_id, organization_id=org_id)
+    cohort = Cohort(
+        name=body.name,
+        track_id=body.track_id,
+        organization_id=org_id,
+        is_sandbox=body.is_sandbox,
+    )
     db.add(cohort)
     await db.flush()
     await _replace_module_professors(db, cohort.id, body.module_professors)
@@ -1252,6 +1270,50 @@ async def transcribe_lesson_report(
 # The candidate window spans at most 4 lessons; more than that is not a
 # deviation to record.
 COVERAGE_SEGMENTS_MAX = 8
+
+
+@router.post(
+    "/{cohort_id}/sandbox/undo-last-closure",
+    response_model=SandboxRewindOut,
+    dependencies=[Depends(can_manage)],
+)
+async def undo_last_closure(
+    cohort_id: uuid.UUID,
+    user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Rewinds the most recent lesson closure of a test cohort.
+
+    The tester's loop: a bug shows up, gets fixed and deployed, and only that
+    step is redone. Refuses any cohort that is not a test cohort -- there is no
+    override (see `Cohort.is_sandbox`)."""
+    cohort = await _get_cohort_or_404(db, cohort_id, user)
+    try:
+        return await SandboxService.undo_last_closure(db, cohort)
+    except SandboxOnlyError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, SANDBOX_ONLY_MESSAGE)
+    except NothingToUndoError:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "Esta turma não tem aula encerrada para desfazer"
+        )
+
+
+@router.post(
+    "/{cohort_id}/sandbox/reset",
+    response_model=SandboxRewindOut,
+    dependencies=[Depends(can_manage)],
+)
+async def reset_sandbox_progress(
+    cohort_id: uuid.UUID,
+    user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Clears a test cohort's whole progression, keeping its setup."""
+    cohort = await _get_cohort_or_404(db, cohort_id, user)
+    try:
+        return await SandboxService.reset_progress(db, cohort)
+    except SandboxOnlyError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, SANDBOX_ONLY_MESSAGE)
 
 
 def _parse_coverage_form(raw: str) -> list[CoverageSegmentIn] | None:

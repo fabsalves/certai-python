@@ -17,6 +17,15 @@ export interface Cohort {
   track_title: string;
   enrollment_count: number;
   module_professors: ModuleProfessor[];
+  /** A test cohort, whose progression can be rewound. Set at creation only. */
+  is_sandbox: boolean;
+}
+
+export interface SandboxRewind {
+  action: "undo_last_closure" | "reset_progress";
+  lesson_title: string;
+  professor_name: string;
+  removed: Record<string, number>;
 }
 
 export interface Enrollment {

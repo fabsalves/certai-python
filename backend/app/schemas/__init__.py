@@ -221,11 +221,15 @@ class CohortCreate(BaseModel):
     name: NameStr
     track_id: uuid.UUID
     module_professors: list[ModuleProfessorIn]
+    # A test cohort, whose progression the admin can rewind. Only settable here:
+    # CohortUpdate has no such field, which is what makes the mark immutable.
+    is_sandbox: bool = False
 
 
 class CohortUpdate(BaseModel):
     name: OptionalNameStr = None
     module_professors: list[ModuleProfessorIn] | None = None
+    # `is_sandbox` is deliberately absent -- see Cohort.is_sandbox.
 
 
 class CohortOut(BaseModel):
@@ -233,6 +237,7 @@ class CohortOut(BaseModel):
     id: uuid.UUID
     name: str
     track_id: uuid.UUID
+    is_sandbox: bool = False
 
 
 class CohortListOut(CohortOut):
@@ -396,6 +401,15 @@ class CohortTrackLevelOut(BaseModel):
 
 class CohortTrackLevelsOut(BaseModel):
     students: list[CohortTrackLevelOut] = []
+
+
+class SandboxRewindOut(BaseModel):
+    """What a rewind removed, so the UI can report it back."""
+
+    action: Literal["undo_last_closure", "reset_progress"]
+    lesson_title: str = ""      # undo only: the closure that was undone
+    professor_name: str = ""    # undo only
+    removed: dict[str, int] = {}
 
 
 # --- Lesson coverage (planned vs. taught) ---

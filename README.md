@@ -43,6 +43,17 @@ ensine o futuro" continua estrutural. A pendência é a linha de cobertura mais 
 
 Detalhes em [`docs/dinamismo-aulas.plan.md`](docs/dinamismo-aulas.plan.md).
 
+### Turma de teste
+
+Uma turma pode ser marcada como **turma de teste** na criação. Nela, e só nela, o admin pode
+desfazer o último encerramento de aula ou zerar o andamento inteiro — rodando o ciclo real
+quantas vezes precisar, inclusive em produção. O cadastro da turma e os custos de IA são
+preservados; só o andamento zera.
+
+A marca é definida na criação e **não pode ser alterada**: `is_sandbox` não existe em
+`CohortUpdate`, então não há contrato por onde virá-la. Uma turma real é permanentemente
+não-zerável. Detalhes em [`docs/turma-de-teste.plan.md`](docs/turma-de-teste.plan.md).
+
 ---
 
 ## Stack
@@ -230,7 +241,8 @@ certai/
 │   │   ├── models/      User, Track/Module/Lesson, Cohort/Progress, Conversation, Assessment
 │   │   ├── schemas/     contratos Pydantic
 │   │   ├── api/v1/      auth, users, tracks, cohorts, conversations
-│   │   ├── services/    lesson_completion (cycle trigger), coverage (planejado vs. ministrado)
+│   │   ├── services/    lesson_completion (cycle trigger), coverage (planejado vs.
+│   │   │                ministrado), cohort/sandbox (rebobinar turma de teste)
 │   │   ├── ai/          engine, context_builder, tools, humanizer, client
 │   │   └── workers/     celery_app, tasks (Groq, dispatch, evaluation)
 │   ├── alembic/         migrations
@@ -244,6 +256,7 @@ certai/
 ├── bin/db-seed          seed do banco (aceita --force)
 ├── bin/db-reset         re-semeia o banco de dev
 ├── bin/verify-dinamismo verifica aula incompleta/adiantada/composta ponta a ponta
+├── bin/verify-sandbox   verifica o rebobinar de turma de teste
 ├── bin/send-message     simula inbound WhatsApp (texto) — ver docs/whatsapp-dev-local.md
 ├── bin/send-audio       simula inbound WhatsApp (áudio)
 ├── docs/                guias (WhatsApp local, org/conversa, template Cinndi, …)

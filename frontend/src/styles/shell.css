@@ -3601,6 +3601,34 @@ html.modal-scroll-lock body {
   line-height: 1.4;
 }
 
+/* --- Test cohort: rewind actions --- */
+
+.sandbox-actions {
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+
+.sandbox-actions__title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.sandbox-actions__hint {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.sandbox-actions__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 /* --- Playground (immersive chat) --- */
 
 .playground-shell {

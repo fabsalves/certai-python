@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import type { CohortLessonNote, CohortProgress } from "../../lib/cohorts";
+import type {
+  CohortLessonNote,
+  CohortProgress,
+  SandboxRewind,
+} from "../../lib/cohorts";
 import { api } from "../../lib/api";
 import { downloadApiFile } from "../../lib/download";
 import { useApiAction } from "../../lib/useApiAction";
+import { useConfirm } from "../../lib/confirm";
+import { useFeedback } from "../../lib/feedback";
 import { sortedLessons, sortedModules, type Track } from "../../lib/tracks";
 import {
   FileAttachmentBlock,
@@ -25,6 +31,10 @@ interface Props {
   professorName?: string;
   /** Set when a professor is viewing: scopes "done" to their own class. */
   viewerProfessorId?: string;
+  /** A test cohort: its progression can be rewound. */
+  isSandbox?: boolean;
+  /** Only an org admin rewinds -- and only in a test cohort. */
+  canRewind?: boolean;
   onCompleted: () => void;
   /** Bridge to Alunos dossier from lesson distribution. */
   onOpenStudent?: (studentId: string) => void;
@@ -54,10 +64,14 @@ export function CohortProgressPanel({
   canComplete,
   professorName,
   viewerProfessorId,
+  isSandbox = false,
+  canRewind = false,
   onCompleted,
   onOpenStudent,
 }: Props) {
   const runAction = useApiAction();
+  const confirm = useConfirm();
+  const feedback = useFeedback();
   const activeLessonId = selectedLessonId ?? progress.current_lesson_id;
   const selected = activeLessonId ? findLesson(track, activeLessonId) : null;
   const isCurrent = activeLessonId === progress.current_lesson_id;
@@ -100,6 +114,7 @@ export function CohortProgressPanel({
   const [notes, setNotes] = useState<CohortLessonNote[]>([]);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [reingesting, setReingesting] = useState(false);
+  const [rewinding, setRewinding] = useState<"undo" | "reset" | null>(null);
   const [unassigned, setUnassigned] = useState<UnassignedStudentOption[]>([]);
   const [claimModalOpen, setClaimModalOpen] = useState(false);
   const [claiming, setClaiming] = useState(false);
@@ -189,6 +204,43 @@ export function CohortProgressPanel({
       onSuccess: () => loadNotes(),
     });
     setReingesting(false);
+  }
+
+  async function rewind(kind: "undo" | "reset") {
+    const undo = kind === "undo";
+    const ok = await confirm({
+      title: undo ? "Desfazer último encerramento" : "Zerar andamento",
+      message: undo
+        ? "Reabre a última aula encerrada desta turma de teste e apaga o relato, " +
+          "a conversa e as avaliações dela. O cadastro e os custos ficam."
+        : "Apaga todo o andamento desta turma de teste: aulas encerradas, relatos, " +
+          "conversas e avaliações. O cadastro e os custos ficam.",
+      confirmLabel: undo ? "Desfazer" : "Zerar",
+      tone: "danger",
+    });
+    if (!ok) return;
+
+    setRewinding(kind);
+    await runAction({
+      run: () =>
+        api.post<SandboxRewind>(
+          `/cohorts/${cohortId}/sandbox/${undo ? "undo-last-closure" : "reset"}`,
+        ),
+      successMessage: undo ? undefined : "Andamento zerado.",
+      errorMessage: undo
+        ? "Não foi possível desfazer o encerramento."
+        : "Não foi possível zerar o andamento.",
+      onSuccess: ({ data }) => {
+        if (undo) {
+          feedback.success(
+            `Encerramento desfeito: ${data.lesson_title}` +
+              (data.professor_name ? ` (${data.professor_name})` : ""),
+          );
+        }
+        onCompleted();
+      },
+    });
+    setRewinding(null);
   }
 
   async function downloadNoteFile(note: CohortLessonNote, kind: "attachment" | "audio") {
@@ -404,6 +456,34 @@ export function CohortProgressPanel({
           professorName={professorName}
           onCompleted={onCompleted}
         />
+      )}
+
+      {isSandbox && canRewind && (
+        <div className="sandbox-actions">
+          <p className="sandbox-actions__title">Turma de teste</p>
+          <p className="sandbox-actions__hint">
+            Roda o fluxo real e pode ser rebobinada quantas vezes precisar. O
+            cadastro da turma e os custos de IA são preservados.
+          </p>
+          <div className="sandbox-actions__row">
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              disabled={rewinding !== null}
+              onClick={() => void rewind("undo")}
+            >
+              {rewinding === "undo" ? "Desfazendo…" : "Desfazer último encerramento"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              disabled={rewinding !== null}
+              onClick={() => void rewind("reset")}
+            >
+              {rewinding === "reset" ? "Zerando…" : "Zerar andamento"}
+            </button>
+          </div>
+        </div>
       )}
     </section>
   );
