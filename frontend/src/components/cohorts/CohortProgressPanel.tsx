@@ -211,10 +211,12 @@ export function CohortProgressPanel({
     const ok = await confirm({
       title: undo ? "Desfazer último encerramento" : "Zerar andamento",
       message: undo
-        ? "Reabre a última aula encerrada desta turma de teste e apaga o relato, " +
-          "a conversa e as avaliações dela. O cadastro e os custos ficam."
-        : "Apaga todo o andamento desta turma de teste: aulas encerradas, relatos, " +
-          "conversas e avaliações. O cadastro e os custos ficam.",
+        ? "Reabre a última aula encerrada desta turma e apaga o relato, a conversa " +
+          "e as avaliações dela. Os alunos, os professores e os custos continuam " +
+          "como estão."
+        : "Apaga todo o andamento desta turma. Saem as aulas encerradas, os relatos, " +
+          "as conversas e as avaliações. Os alunos, os professores e os custos " +
+          "continuam como estão.",
       confirmLabel: undo ? "Desfazer" : "Zerar",
       tone: "danger",
     });
@@ -462,8 +464,8 @@ export function CohortProgressPanel({
         <div className="sandbox-actions">
           <p className="sandbox-actions__title">Turma de teste</p>
           <p className="sandbox-actions__hint">
-            Roda o fluxo real e pode ser rebobinada quantas vezes precisar. O
-            cadastro da turma e os custos de IA são preservados.
+            O andamento desta turma pode voltar atrás quantas vezes precisar. Os
+            alunos, os professores e os custos de IA continuam como estão.
           </p>
           <div className="sandbox-actions__row">
             <button

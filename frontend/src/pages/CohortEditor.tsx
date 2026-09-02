@@ -604,14 +604,15 @@ export function CohortEditor() {
                             Turma de teste
                           </label>
                           <p className="muted" style={{ fontSize: 13 }}>
-                            Roda o fluxo real, mas o andamento pode ser desfeito ou
-                            zerado quantas vezes precisar. Não pode ser alterado
-                            depois — e uma turma normal nunca poderá ser zerada.
+                            O fluxo é o mesmo de uma turma normal, mas o andamento
+                            pode ser desfeito ou zerado quantas vezes precisar. Só dá
+                            para marcar na criação. Uma turma normal nunca poderá ser
+                            zerada.
                           </p>
                         </div>
                       ) : (
                         cohort?.is_sandbox && (
-                          <div className="field">
+                          <div className="field field--start">
                             <span className="tag tag--brand">Turma de teste</span>
                             <p className="muted" style={{ fontSize: 13 }}>
                               O andamento desta turma pode ser desfeito ou zerado na

@@ -154,6 +154,8 @@ a:hover { text-decoration: underline; }
 /* --- inputs --- */
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field label { font-size: 13px; font-weight: 500; color: var(--text-muted); }
+/* Keeps an inline-flex child (a .tag, say) at its own width inside a .field. */
+.field--start { align-items: flex-start; }
 .field-check {
   display: flex;
   align-items: center;

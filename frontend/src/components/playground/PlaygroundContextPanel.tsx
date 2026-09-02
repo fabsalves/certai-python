@@ -164,7 +164,7 @@ export function PlaygroundContextPanel({
             >
               <p className="muted playground-context__empty-value">
                 A aula desviou do plano. É este escopo que a Lira explora e que a
-                avaliação cobra — o conteúdo planejado abaixo vira referência.
+                avaliação cobra. O conteúdo planejado abaixo vira referência.
               </p>
               {context.taught_scope.map((item, index) => (
                 <article

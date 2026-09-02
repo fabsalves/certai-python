@@ -114,8 +114,8 @@ export function LessonCoverageConfirm({
 
       {failed && (
         <p className="coverage__note">
-          Não foi possível ler o relato para sugerir a cobertura. Segue como aula
-          do dia completa — ajuste se a aula desviou do plano.
+          Não foi possível ler o relato para sugerir a cobertura. Segue como aula do
+          dia completa. Ajuste se a aula desviou do plano.
         </p>
       )}
 
