@@ -3608,6 +3608,7 @@ html.modal-scroll-lock body {
   border-radius: var(--radius-sm);
   background: var(--accent-50);
   padding: 10px 12px;
+  margin-bottom: 16px;
 }
 
 .coverage-pending__title {
@@ -3639,6 +3640,7 @@ html.modal-scroll-lock body {
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius);
   padding: 12px 14px;
+  margin-top: 16px;
 }
 
 .sandbox-actions__title {

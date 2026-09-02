@@ -521,6 +521,12 @@ export function CohortEditor() {
         <div className="track-editor__toolbar-actions">
           {cohort && (
             <>
+              {/* Everyone needs this, professors most of all: they have no
+                  "Dados da turma" tab, so this is their only way to tell a test
+                  cohort from a real one before closing a lesson. */}
+              {cohort.is_sandbox && (
+                <span className="tag tag--brand">Turma de teste</span>
+              )}
               <span className="tag">{cohort.track_title}</span>
               {canManage && (
                 <span className="muted" style={{ fontSize: 13 }}>
