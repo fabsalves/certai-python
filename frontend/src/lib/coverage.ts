@@ -39,6 +39,14 @@ export interface CoverageProposal {
   from_ai: boolean;
 }
 
+/** What closing a lesson answers. */
+export interface LessonCompletion {
+  status: string;
+  ingestion_status: string;
+  /** Segments the professor confirmed that could not be recorded. */
+  coverage_ignored: string[];
+}
+
 export const COVERAGE_TEXT_MAX = 2000;
 
 export function coverageProposePath(cohortId: string): string {

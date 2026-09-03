@@ -37,6 +37,7 @@ from app.schemas import (
     EnrollmentBulkOut,
     EnrollmentOut,
     LessonAssessmentsOut,
+    LessonCompletionOut,
     LessonClassesOut,
     LessonClassStatusOut,
     LessonMicroScoreOut,
@@ -1365,7 +1366,7 @@ async def propose_lesson_coverage(
     )
 
 
-@router.post("/{cohort_id}/complete-lesson")
+@router.post("/{cohort_id}/complete-lesson", response_model=LessonCompletionOut)
 async def complete(
     cohort_id: uuid.UUID,
     user: Annotated[CurrentUser, Depends(require_roles(Role.PROFESSOR))],
@@ -1407,6 +1408,21 @@ async def complete(
 
     segments = _parse_coverage_form(coverage)
 
+    # Checked before the write: what the professor confirmed and this class
+    # cannot record. `persist_coverage` drops it either way -- this is only so
+    # the answer says so, instead of the segment vanishing after the click.
+    ignored = (
+        await coverage_service.unhonoured_segments(
+            db,
+            cohort_id,
+            lesson_id,
+            module_professor_id=module_class.id,
+            segments=segments,
+        )
+        if segments
+        else []
+    )
+
     stored_attachment = await parse_report_attachment(attachment)
     stored_audio = await parse_report_audio(audio)
 
@@ -1425,10 +1441,11 @@ async def complete(
     except ValueError as e:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(e))
 
-    return {
-        "status": "aula encerrada, turma avançada",
-        "ingestion_status": note.ingestion_status,
-    }
+    return LessonCompletionOut(
+        status="aula encerrada, turma avançada",
+        ingestion_status=note.ingestion_status,
+        coverage_ignored=[lesson.title for lesson in ignored],
+    )
 
 
 @router.post("/{cohort_id}/lessons/{lesson_id}/reingest")

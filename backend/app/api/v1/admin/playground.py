@@ -13,6 +13,7 @@ from app.models.user import Role, User
 from app.schemas import (
     AgentResponse,
     CoverageProposalOut,
+    LessonCompletionOut,
     MessageIn,
     MessageOut,
     PlaygroundContextOut,
@@ -312,7 +313,10 @@ async def propose_lesson_coverage_as_professor(
     )
 
 
-@router.post("/cohorts/{cohort_id}/professors/{professor_id}/complete-lesson")
+@router.post(
+    "/cohorts/{cohort_id}/professors/{professor_id}/complete-lesson",
+    response_model=LessonCompletionOut,
+)
 async def complete_lesson_as_professor(
     cohort_id: uuid.UUID,
     professor_id: uuid.UUID,
@@ -347,6 +351,17 @@ async def complete_lesson_as_professor(
         )
 
     segments = _parse_coverage_form(coverage)
+    ignored = (
+        await coverage_service.unhonoured_segments(
+            db,
+            cohort_id,
+            lesson_id,
+            module_professor_id=module_class.id,
+            segments=segments,
+        )
+        if segments
+        else []
+    )
 
     stored_attachment = await parse_report_attachment(attachment)
     stored_audio = await parse_report_audio(audio)
@@ -366,7 +381,8 @@ async def complete_lesson_as_professor(
     except ValueError as e:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(e))
 
-    return {
-        "status": "aula encerrada, turma avançada",
-        "ingestion_status": note.ingestion_status,
-    }
+    return LessonCompletionOut(
+        status="aula encerrada, turma avançada",
+        ingestion_status=note.ingestion_status,
+        coverage_ignored=[lesson.title for lesson in ignored],
+    )

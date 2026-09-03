@@ -498,6 +498,20 @@ class LessonCompletionIn(BaseModel):
     transcript: str = ""  # professor's audio text (or already transcribed)
 
 
+class LessonCompletionOut(BaseModel):
+    """Result of closing a lesson.
+
+    `coverage_ignored` is normally empty. It fills when a segment the professor
+    confirmed could not be recorded -- the candidate window shrank between the
+    proposal and the submit. Reported rather than dropped in silence: losing what
+    a human declared is the failure mode this package exists to remove.
+    """
+
+    status: str
+    ingestion_status: str
+    coverage_ignored: list[str] = []
+
+
 class TranscriptionOut(BaseModel):
     transcript: str
 

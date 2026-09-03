@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import { api } from "../../lib/api";
 import { formatDuration, useAudioRecorder } from "../../hooks/useAudioRecorder";
 import { useApiAction } from "../../lib/useApiAction";
+import { useFeedback } from "../../lib/feedback";
 import {
   FileAttachmentBlock,
   FileChip,
@@ -14,6 +15,7 @@ import {
   type CoverageCandidate,
   type CoverageNotice,
   type CoverageSegment,
+  type LessonCompletion,
   coverageProposePath,
   proposeCoverage,
   toSubmitPayload,
@@ -46,6 +48,7 @@ export function LessonReportCapture({
   proposePath,
 }: Props) {
   const runAction = useApiAction();
+  const feedback = useFeedback();
   const {
     status,
     seconds,
@@ -215,13 +218,23 @@ export function LessonReportCapture({
     }
     await runAction({
       run: () =>
-        api.post(completePath ?? `/cohorts/${cohortId}/complete-lesson`, form, {
-          headers: { "Content-Type": "multipart/form-data" },
-        }),
+        api.post<LessonCompletion>(
+          completePath ?? `/cohorts/${cohortId}/complete-lesson`,
+          form,
+          { headers: { "Content-Type": "multipart/form-data" } },
+        ),
       successMessage:
         "Aula encerrada. Estamos processando o relato. Os convites saem para os alunos quando terminar.",
       errorMessage: "Não foi possível encerrar a aula. Tente novamente.",
-      onSuccess: () => {
+      onSuccess: ({ data }) => {
+        // Normally empty. Fills when a segment the professor confirmed could not
+        // be recorded, and saying so beats losing it quietly.
+        if (data?.coverage_ignored?.length) {
+          feedback.error(
+            `Não foi possível registrar a cobertura de: ${data.coverage_ignored.join(", ")}. ` +
+              "A aula foi encerrada. Informe esse conteúdo no relato da próxima aula.",
+          );
+        }
         clearAudio();
         setTranscript("");
         setAttachment(null);

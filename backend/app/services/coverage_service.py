@@ -522,6 +522,41 @@ def default_segment(anchor_lesson_id: uuid.UUID) -> CoverageSegmentIn:
     )
 
 
+async def unhonoured_segments(
+    db: AsyncSession,
+    cohort_id: uuid.UUID,
+    anchor_lesson_id: uuid.UUID,
+    *,
+    module_professor_id: uuid.UUID,
+    segments: list[CoverageSegmentIn],
+) -> list[Lesson]:
+    """Confirmed segments this class cannot record, so the professor is told.
+
+    `persist_coverage` drops them either way -- that guard stays. The point here
+    is the difference between the two places a segment can be dropped:
+
+      - at proposal time it is a model slip, and staying quiet is right;
+      - at persist time the professor confirmed it, so silence would lose what a
+        human declared. That is the failure mode this package exists to remove.
+
+    Normally empty: the UI only offers lessons from the window the proposal
+    returned. It fills when the window shrank in between -- the module's
+    professor was reassigned, say -- or when a request was crafted by hand.
+    """
+    if not segments:
+        return []
+    window = await candidate_window(
+        db, cohort_id, anchor_lesson_id, module_professor_id=module_professor_id
+    )
+    allowed = {lesson.id for lesson in window}
+    missing = [s.lesson_id for s in segments if s.lesson_id not in allowed]
+    if not missing:
+        return []
+    return list(
+        (await db.scalars(select(Lesson).where(Lesson.id.in_(missing)))).all()
+    )
+
+
 async def persist_coverage(
     db: AsyncSession,
     *,

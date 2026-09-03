@@ -591,6 +591,39 @@ async def run(with_ai: bool) -> int:
             "âncora sempre presente, mesmo com entrada inválida",
         )
 
+        # Dropping is right; dropping in silence is not. What the professor
+        # confirmed and the class cannot record has to come back in the answer.
+        out_of_window = CoverageSegmentIn(
+            lesson_id=plain.id,
+            kind="carryover",
+            extent="full",
+            covered="fora da janela",
+            source="professor",
+        )
+        unhonoured = await coverage_service.unhonoured_segments(
+            db,
+            cohort.id,
+            target.id,
+            module_professor_id=target_class.id,
+            segments=[out_of_window],
+        )
+        report.check(
+            [item.id for item in unhonoured] == [plain.id],
+            "segmento confirmado e não registrável é reportado, não só descartado",
+            f"{[item.title for item in unhonoured]}",
+        )
+        honoured = await coverage_service.unhonoured_segments(
+            db,
+            cohort.id,
+            target.id,
+            module_professor_id=target_class.id,
+            segments=[coverage_service.default_segment(target.id)],
+        )
+        report.check(
+            honoured == [],
+            "cobertura dentro da janela não gera aviso",
+        )
+
         # ---------------------------------------------------------------- 7
         if with_ai:
             section("7 · Proposta pela IA (requer OPENAI_API_KEY)")

@@ -398,6 +398,24 @@ pela consolidação.
 
 ---
 
+### Descartar está certo; descartar em silêncio não
+
+Um segmento pode ser descartado em dois lugares, e eles não são equivalentes:
+
+- **na proposta**, quando o modelo aponta uma aula fora da janela. É slip do modelo, e o silêncio
+  está certo — avisar "a IA citou uma aula inexistente" é ruído;
+- **na persistência**, quando o professor **confirmou** um segmento que a turma não pode
+  registrar. Aí o silêncio perderia o que um humano declarou, que é exatamente a falha que este
+  pacote existe para tirar.
+
+Acontece quando a janela encolhe entre a proposta e o submit — o professor do módulo foi trocado,
+por exemplo. A guarda de `persist_coverage` continua descartando; o que mudou é que
+`unhonoured_segments` devolve o que não foi honrado, o encerramento responde com
+`coverage_ignored` e a tela avisa. A aula encerra de qualquer forma: bloquear por uma corrida
+rara seria pior que encerrar e contar.
+
+---
+
 ## Trade-offs aceitos
 
 1. **Avaliação da aula anterior num cenário composta.** `close_by_advance` enfileira o assessment
@@ -427,7 +445,7 @@ a Fase 7 os verifica como regressão.
 
 ## Resultado
 
-**`bin/verify-dinamismo` — 34/34 verificações; com `--with-ai`, 38/38.**
+**`bin/verify-dinamismo` — 36/36 verificações; com `--with-ai`, 40/40.**
 
 ```
 1 · Caminho feliz (regressão)      4/4   cobertura default, bundle idêntico ao pré-mudança
