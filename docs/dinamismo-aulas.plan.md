@@ -427,7 +427,7 @@ a Fase 7 os verifica como regressão.
 
 ## Resultado
 
-**`bin/verify-dinamismo` — 34/34 verificações; com `--with-ai`, 37/37.**
+**`bin/verify-dinamismo` — 34/34 verificações; com `--with-ai`, 38/38.**
 
 ```
 1 · Caminho feliz (regressão)      4/4   cobertura default, bundle idêntico ao pré-mudança
@@ -440,7 +440,8 @@ a Fase 7 os verifica como regressão.
 5b · Fronteira de módulo           6/6   mesmo professor registra sob a turma dona;
                                          outro professor é avisado, não descartado
 6 · Guardas                        2/2   segmento fora da janela descartado, âncora garantida
-7 · Proposta pela IA               3/3   segmentação derivada do relato, dentro da janela
+7 · Proposta pela IA               4/4   segmentação derivada do relato, dentro da
+                                         janela, e consolidação sem vazamento
 ```
 
 Também exercitado à mão sobre a API: `POST /propose-coverage` (a IA detectou aula incompleta a
