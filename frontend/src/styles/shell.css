@@ -1093,6 +1093,54 @@ html.modal-scroll-lock body {
   border: 0;
 }
 
+/* --- Processando: bolinhas escalonadas --- */
+
+/* No indicator like this existed: the closest were the audio waveform (wrong
+   language for anything that is not audio) and the single pulsing dot of the
+   recording strip. `currentColor` lets each caller set the tone. */
+.processing-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.processing-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: processing-dot-bounce 1s ease-in-out infinite;
+}
+
+.processing-dots span:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.processing-dots span:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+@keyframes processing-dot-bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0) scale(0.8);
+    opacity: 0.3;
+  }
+  30% {
+    transform: translateY(-5px) scale(1);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .processing-dots span {
+    animation: none;
+    opacity: 0.65;
+    transform: none;
+  }
+}
+
 .skeleton {
   display: block;
   flex-shrink: 0;
@@ -2073,6 +2121,13 @@ html.modal-scroll-lock body {
   display: block;
   max-width: 100%;
   min-width: 0;
+}
+
+.ingestion-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 /* --- Divisão de alunos pendente --- */
@@ -3485,6 +3540,55 @@ html.modal-scroll-lock body {
   font-weight: 600;
   color: var(--text-muted);
 }
+
+/* Status pill, same shape the voice screen uses for connecting/preparing: it
+   reads as "something is happening" instead of as a caption. */
+.coverage__reading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 4px 10px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--brand);
+  white-space: nowrap;
+}
+
+/* Where the segments will land.
+
+   The shared .skeleton is built on --surface-sunken, which is exactly this
+   card's own background: same colour on same colour, invisible. So the bars are
+   re-based here on the border tokens, always a step away from the card, with the
+   sweep going toward the lighter of the two in each theme. */
+.coverage__loading {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.coverage__loading .skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--border-strong) 0%,
+    var(--border) 50%,
+    var(--border-strong) 100%
+  );
+  background-size: 200% 100%;
+}
+
+:root[data-theme="dark"] .coverage__loading .skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--border) 0%,
+    var(--border-strong) 50%,
+    var(--border) 100%
+  );
+  background-size: 200% 100%;
+}
+
 
 .coverage__plain,
 .coverage__note {

@@ -8,6 +8,7 @@ import { api } from "../../lib/api";
 import { downloadApiFile } from "../../lib/download";
 import { useApiAction } from "../../lib/useApiAction";
 import { useConfirm } from "../../lib/confirm";
+import { ProcessingDots } from "../ui/ProcessingDots";
 import { useFeedback } from "../../lib/feedback";
 import { sortedLessons, sortedModules, type Track } from "../../lib/tracks";
 import {
@@ -400,9 +401,12 @@ export function CohortProgressPanel({
               className={note.ingestion_status === "failed" ? "form-error" : "muted"}
               style={{ fontSize: 14 }}
             >
-              <p style={{ margin: 0 }}>
+              <p className="ingestion-status" style={{ margin: 0 }}>
                 {showProfessorNames && `${note.professor_name}: `}
                 {NOTE_INGESTION_LABELS[note.ingestion_status] ?? note.ingestion_status}
+                {/* Only while the panel is actually polling for it. */}
+                {(note.ingestion_status === "pending" ||
+                  note.ingestion_status === "processing") && <ProcessingDots />}
               </p>
               {note.ingestion_status === "failed" && canComplete && (
                 <button

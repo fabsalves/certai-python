@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { ProcessingDots } from "../ui/ProcessingDots";
+import { Skeleton, SkeletonStatus } from "../ui/Skeleton";
 import {
   COVERAGE_TEXT_MAX,
   type CoverageCandidate,
@@ -90,13 +92,24 @@ export function LessonCoverageConfirm({
   );
 
   if (loading) {
+    // Two of the app's own patterns: the status pill from the voice screen, and
+    // skeleton lines where the segments will land. The pill says something is
+    // happening; the skeletons say where the answer will appear.
     return (
-      <div className="coverage" aria-live="polite">
+      <SkeletonStatus className="coverage" label="Lendo o relato da aula">
         <p className="coverage__head">
           <span className="coverage__title">Cobertura desta aula</span>
-          <span className="muted">lendo o relato…</span>
+          <span className="coverage__reading">
+            <ProcessingDots />
+            lendo o relato
+          </span>
         </p>
-      </div>
+        <div className="coverage__loading">
+          <Skeleton variant="text" width="42%" />
+          <Skeleton variant="text" width="88%" />
+          <Skeleton variant="text" width="64%" />
+        </div>
+      </SkeletonStatus>
     );
   }
 
