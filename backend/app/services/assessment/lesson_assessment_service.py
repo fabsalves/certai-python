@@ -14,6 +14,7 @@ from app.services.assessment.evaluator import (
     format_micro_scores,
     run_evaluator_and_persist,
 )
+from app.services import coverage_service
 from app.services.cohort import ModuleClassService
 from app.services.conversation_service import list_lesson_messages
 
@@ -26,6 +27,34 @@ def _format_conversation(messages: list) -> str:
         author = msg.author.value if hasattr(msg.author, "value") else str(msg.author)
         lines.append(f"[{author}] {msg.content}")
     return "\n".join(lines)
+
+
+def _format_taught_scope(scope: list[dict]) -> str:
+    """What the student actually received in this session -- the scope to judge.
+
+    Empty means the session went as planned, and the lesson material below is
+    the whole scope (identical to how this prompt read before coverage existed).
+    """
+    if not scope:
+        return "(a sessão seguiu o conteúdo planejado da aula)"
+
+    origin_label = {
+        "planned": "conteúdo desta aula",
+        "carryover": "conteúdo pendente da aula anterior, fechado nesta sessão",
+        "advance": "conteúdo da aula seguinte, dado adiantado nesta sessão",
+    }
+    parts: list[str] = []
+    for item in scope:
+        origin = origin_label.get(item.get("origin", ""), "conteúdo desta aula")
+        block = (
+            f"### {item.get('lesson', '(sem título)')} — {origin}\n"
+            f"ministrado ao aluno: {(item.get('covered') or '').strip() or '(sem detalhe)'}"
+        )
+        pending = (item.get("pending") or "").strip()
+        if pending:
+            block += f"\nNÃO ministrado ao aluno: {pending}"
+        parts.append(block)
+    return "\n\n".join(parts)
 
 
 def _format_cohort_note(note: CohortLessonNote | None) -> str:
@@ -44,6 +73,8 @@ def _lesson_closure_block(
     *,
     message_count: int,
     score_count: int,
+    pending: str = "",
+    carryover: dict | None = None,
 ) -> str:
     if progress is None:
         status_label = "desconhecido (sem progresso registrado)"
@@ -62,12 +93,26 @@ def _lesson_closure_block(
         status_label = progress.status.value
         how = "Julgue apenas com a evidência listada abaixo."
 
-    return (
-        f"Status do progresso do aluno: {status_label}\n"
-        f"Mensagens na conversa: {message_count}\n"
-        f"Micro-scores registrados: {score_count}\n"
-        f"{how}"
-    )
+    lines = [
+        f"Status do progresso do aluno: {status_label}",
+        f"Mensagens na conversa: {message_count}",
+        f"Micro-scores registrados: {score_count}",
+        how,
+    ]
+    if pending.strip():
+        lines.append(
+            f"Parte do conteúdo planejado NÃO foi ministrada: {pending.strip()}. "
+            "Isso é desvio de operação do plano, não lacuna deste aluno — ele não "
+            "teve como demonstrar o que não recebeu. Não pese isso no nível dele."
+        )
+    if carryover:
+        lines.append(
+            "O conteúdo que faltava nesta aula foi ministrado depois, na sessão da "
+            f"aula \"{carryover.get('delivered_in', '')}\". A evidência dele é "
+            "colhida na conversa daquela aula, não aqui — reporte isso em gaps em "
+            "vez de tratar como ausência de compreensão."
+        )
+    return "\n".join(lines)
 
 
 def _build_user_prompt(
@@ -75,6 +120,7 @@ def _build_user_prompt(
     lesson_title: str,
     lesson_content: str,
     closure_block: str,
+    taught_scope_block: str,
     note_block: str,
     micro_scores_block: str,
     conversation_block: str,
@@ -83,7 +129,10 @@ def _build_user_prompt(
         f"# Escopo: aula\n"
         f"# Aula: {lesson_title}\n\n"
         f"## Como esta aula foi encerrada para o aluno\n{closure_block}\n\n"
-        f"## Material da aula\n{lesson_content or '(sem conteúdo cadastrado)'}\n\n"
+        f"## Escopo realmente ministrado — é ESTE o escopo a julgar\n"
+        f"{taught_scope_block}\n\n"
+        f"## Material da aula (referência do plano; não é o escopo de cobrança)\n"
+        f"{lesson_content or '(sem conteúdo cadastrado)'}\n\n"
         f"## Escopo da turma (relato do professor)\n{note_block}\n\n"
         f"## Micro-scores do aluno nesta aula\n{micro_scores_block}\n\n"
         f"## Conversa do aluno nesta aula\n{conversation_block}"
@@ -144,6 +193,40 @@ class LessonAssessmentService:
         score_list = list(scores)
         message_list = list(messages)
 
+        # What the student's own class actually received -- planned content is
+        # only a reference from here on. Empty for a lesson that went as planned.
+        taught_scope: list[dict] = []
+        pending = ""
+        carryover: dict | None = None
+        if module_class is not None:
+            taught_scope = await coverage_service.session_scope(
+                db,
+                cohort_id=cohort_id,
+                module_professor_id=module_class.id,
+                anchor_lesson_id=lesson_id,
+            )
+            pendings = await coverage_service.current_pendings(
+                db,
+                cohort_id=cohort_id,
+                module_professor_id=module_class.id,
+                lesson_ids=[lesson_id],
+            )
+            pending = pendings.get(lesson_id, "")
+            if not pending and await coverage_service.own_pendency(
+                db,
+                cohort_id=cohort_id,
+                module_professor_id=module_class.id,
+                lesson_id=lesson_id,
+            ):
+                # Something was missing and has since been delivered in a later
+                # session -- the evidence for it lives in that conversation.
+                carryover = await coverage_service.later_carryover(
+                    db,
+                    cohort_id=cohort_id,
+                    module_professor_id=module_class.id,
+                    lesson_id=lesson_id,
+                )
+
         user_prompt = _build_user_prompt(
             lesson_title=lesson.title,
             lesson_content=lesson.content,
@@ -151,7 +234,10 @@ class LessonAssessmentService:
                 progress,
                 message_count=len(message_list),
                 score_count=len(score_list),
+                pending=pending,
+                carryover=carryover,
             ),
+            taught_scope_block=_format_taught_scope(taught_scope),
             note_block=_format_cohort_note(note),
             micro_scores_block=format_micro_scores(
                 score_list,

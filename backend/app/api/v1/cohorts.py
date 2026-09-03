@@ -1,8 +1,10 @@
+import json
 import uuid
 from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from pydantic import ValidationError
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -28,17 +30,21 @@ from app.schemas import (
     CohortTrackLevelOut,
     CohortTrackLevelsOut,
     CohortUpdate,
+    CoverageProposalOut,
+    CoverageSegmentIn,
     EnrollmentCreate,
     EnrollmentBulkCreate,
     EnrollmentBulkOut,
     EnrollmentOut,
     LessonAssessmentsOut,
+    LessonCompletionOut,
     LessonClassesOut,
     LessonClassStatusOut,
     LessonMicroScoreOut,
     LessonMicroScoresOut,
     ModuleProfessorIn,
     ModuleProfessorOut,
+    SandboxRewindOut,
     PendingAssessmentStudentOut,
     ClaimClassStudentIn,
     UnassignedStudentOut,
@@ -53,7 +59,13 @@ from app.services.assessment.read_service import (
     AssessmentReadRow,
     StudentAssessmentReadService,
 )
-from app.services.cohort import ModuleClassService
+from app.services import coverage_service
+from app.services.cohort import (
+    ModuleClassService,
+    NothingToUndoError,
+    SandboxOnlyError,
+    SandboxService,
+)
 from app.services.cohort.mid_join_service import MidJoinService
 from app.services.lesson_completion_service import complete_lesson
 from app.services.storage.download import file_response
@@ -70,6 +82,11 @@ from app.services.upload_validation import (
 router = APIRouter(prefix="/cohorts", tags=["cohorts"])
 
 can_manage = require_roles(Role.ORG_ADMIN)
+
+SANDBOX_ONLY_MESSAGE = (
+    "Esta ação só existe em turma de teste. A marca é definida na criação da "
+    "turma e não pode ser alterada."
+)
 can_view = require_roles(Role.ORG_ADMIN, Role.PROFESSOR, Role.SUPERADMIN)
 
 
@@ -397,6 +414,7 @@ async def _cohort_detail(db: AsyncSession, cohort: Cohort) -> CohortDetailOut:
         track_title=track_title or "",
         enrollment_count=enrollment_count or 0,
         module_professors=await _load_module_professors(db, cohort.id),
+        is_sandbox=cohort.is_sandbox,
     )
 
 
@@ -441,6 +459,8 @@ async def _lesson_closings(
         for lesson_id, module_professor_id, created_at in progress_rows
     }
 
+    coverage = await coverage_service.standing_coverage_for_cohort(db, cohort.id)
+
     return {
         lesson.id: [
             LessonClassStatusOut(
@@ -449,6 +469,7 @@ async def _lesson_closings(
                 professor_name=professor_name,
                 closed=(lesson.id, module_class.id) in closed_at,
                 closed_at=closed_at.get((lesson.id, module_class.id)),
+                **coverage.get((lesson.id, module_class.id), {}),
             )
             for module_class, professor_name in classes_by_module.get(
                 lesson.module_id, []
@@ -497,6 +518,7 @@ async def list_cohorts(
                 track_title=track_title,
                 enrollment_count=count or 0,
                 module_professors=await _load_module_professors(db, cohort.id),
+                is_sandbox=cohort.is_sandbox,
             )
         )
     return result
@@ -527,7 +549,12 @@ async def create_cohort(
 
     await _validate_module_professors(db, None, body.track_id, body.module_professors)
 
-    cohort = Cohort(name=body.name, track_id=body.track_id, organization_id=org_id)
+    cohort = Cohort(
+        name=body.name,
+        track_id=body.track_id,
+        organization_id=org_id,
+        is_sandbox=body.is_sandbox,
+    )
     db.add(cohort)
     await db.flush()
     await _replace_module_professors(db, cohort.id, body.module_professors)
@@ -1241,7 +1268,105 @@ async def transcribe_lesson_report(
     return TranscriptionOut(transcript=text)
 
 
-@router.post("/{cohort_id}/complete-lesson")
+# The candidate window spans at most 4 lessons; more than that is not a
+# deviation to record.
+COVERAGE_SEGMENTS_MAX = 8
+
+
+@router.post(
+    "/{cohort_id}/sandbox/undo-last-closure",
+    response_model=SandboxRewindOut,
+    dependencies=[Depends(can_manage)],
+)
+async def undo_last_closure(
+    cohort_id: uuid.UUID,
+    user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Rewinds the most recent lesson closure of a test cohort.
+
+    The tester's loop: a bug shows up, gets fixed and deployed, and only that
+    step is redone. Refuses any cohort that is not a test cohort -- there is no
+    override (see `Cohort.is_sandbox`)."""
+    cohort = await _get_cohort_or_404(db, cohort_id, user)
+    try:
+        return await SandboxService.undo_last_closure(db, cohort)
+    except SandboxOnlyError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, SANDBOX_ONLY_MESSAGE)
+    except NothingToUndoError:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "Esta turma não tem aula encerrada para desfazer"
+        )
+
+
+@router.post(
+    "/{cohort_id}/sandbox/reset",
+    response_model=SandboxRewindOut,
+    dependencies=[Depends(can_manage)],
+)
+async def reset_sandbox_progress(
+    cohort_id: uuid.UUID,
+    user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Clears a test cohort's whole progression, keeping its setup."""
+    cohort = await _get_cohort_or_404(db, cohort_id, user)
+    try:
+        return await SandboxService.reset_progress(db, cohort)
+    except SandboxOnlyError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, SANDBOX_ONLY_MESSAGE)
+
+
+def _parse_coverage_form(raw: str) -> list[CoverageSegmentIn] | None:
+    """Parse the confirmed coverage sent as a JSON form field.
+
+    Multipart carries the report's files, so the coverage rides along as JSON
+    text. Malformed input is rejected rather than silently dropped: a professor
+    who did segment the session must not have that silently become "full".
+    """
+    if not raw.strip():
+        return None
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cobertura da aula inválida")
+    if not isinstance(payload, list):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cobertura da aula inválida")
+    if len(payload) > COVERAGE_SEGMENTS_MAX:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cobertura da aula inválida")
+    try:
+        return [CoverageSegmentIn.model_validate(item) for item in payload]
+    except ValidationError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cobertura da aula inválida")
+
+
+@router.post("/{cohort_id}/propose-coverage", response_model=CoverageProposalOut)
+async def propose_lesson_coverage(
+    cohort_id: uuid.UUID,
+    user: Annotated[CurrentUser, Depends(require_roles(Role.PROFESSOR))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    lesson_id: Annotated[uuid.UUID, Form(description="Aula que está sendo encerrada")],
+    transcript: Annotated[str, Form()] = "",
+):
+    """A IA lê o relato e propõe o que foi realmente ministrado, aula por aula.
+
+    Só propõe -- nada é persistido aqui. O professor confirma ou ajusta, e a
+    cobertura confirmada acompanha o encerramento. Mantém a chamada de IA fora do
+    `complete-lesson`, que segue sem LLM na request.
+    """
+    cohort = await _get_cohort_or_404(db, cohort_id, user)
+    module_class = await _lesson_class_of_professor(db, user, cohort, lesson_id)
+
+    return await coverage_service.propose_coverage(
+        db,
+        cohort_id=cohort_id,
+        module_professor_id=module_class.id,
+        anchor_lesson_id=lesson_id,
+        transcript=transcript,
+    )
+
+
+@router.post("/{cohort_id}/complete-lesson", response_model=LessonCompletionOut)
 async def complete(
     cohort_id: uuid.UUID,
     user: Annotated[CurrentUser, Depends(require_roles(Role.PROFESSOR))],
@@ -1251,10 +1376,15 @@ async def complete(
     attachment: Annotated[UploadFile | None, File()] = None,
     audio: Annotated[UploadFile | None, File()] = None,
     audio_source: Annotated[str, Form()] = "",
+    coverage: Annotated[str, Form(description="Cobertura confirmada (JSON)")] = "",
 ):
     """The professor signals their own class studied the lesson. Advances that
     class and unlocks its context. The AI ingestion (and only then the WhatsApp
-    dispatch) runs asynchronously after this request commits."""
+    dispatch) runs asynchronously after this request commits.
+
+    `coverage` is the confirmed shape of what the session actually covered (see
+    `/propose-coverage`). Omitting it keeps the previous behaviour: the anchor
+    lesson, fully covered."""
     cohort = await _get_cohort_or_404(db, cohort_id, user)
     module_class = await _lesson_class_of_professor(db, user, cohort, lesson_id)
 
@@ -1276,6 +1406,23 @@ async def complete(
             "Só é possível encerrar a aula atual da sua turma",
         )
 
+    segments = _parse_coverage_form(coverage)
+
+    # Checked before the write: what the professor confirmed and this class
+    # cannot record. `persist_coverage` drops it either way -- this is only so
+    # the answer says so, instead of the segment vanishing after the click.
+    ignored = (
+        await coverage_service.unhonoured_segments(
+            db,
+            cohort_id,
+            lesson_id,
+            module_professor_id=module_class.id,
+            segments=segments,
+        )
+        if segments
+        else []
+    )
+
     stored_attachment = await parse_report_attachment(attachment)
     stored_audio = await parse_report_audio(audio)
 
@@ -1289,14 +1436,16 @@ async def complete(
             attachment=stored_attachment,
             audio=stored_audio,
             audio_source=audio_source or None,
+            coverage=segments,
         )
     except ValueError as e:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(e))
 
-    return {
-        "status": "aula encerrada, turma avançada",
-        "ingestion_status": note.ingestion_status,
-    }
+    return LessonCompletionOut(
+        status="aula encerrada, turma avançada",
+        ingestion_status=note.ingestion_status,
+        coverage_ignored=[lesson.title for lesson in ignored],
+    )
 
 
 @router.post("/{cohort_id}/lessons/{lesson_id}/reingest")

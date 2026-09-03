@@ -19,6 +19,16 @@ class Cohort(Base):
     track_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tracks.id", ondelete="RESTRICT"), index=True
     )
+    # A test cohort: its progression can be rewound (see SandboxService), so the
+    # team can run the real cycle in production over and over.
+    #
+    # Set at creation and never changed -- not by a validation someone could work
+    # around, but because the field does not exist in `CohortUpdate`. There is no
+    # contract through which to flip it, so a real cohort created without the mark
+    # can never become rewindable. Restriction as structure.
+    is_sandbox: Mapped[bool] = mapped_column(
+        default=False, server_default="false", nullable=False
+    )
 
     enrollments: Mapped[list["Enrollment"]] = relationship(
         back_populates="cohort", cascade="all, delete-orphan"

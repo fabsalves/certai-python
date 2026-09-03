@@ -29,6 +29,7 @@ import {
   assignmentsFromCohort,
   assignmentsPayload,
   pathProgressForViewer,
+  pendingDivisions,
   professorsForModule,
   suggestSplit,
   uniqueProfessorNames,
@@ -94,6 +95,7 @@ export function CohortEditor() {
   const [loading, setLoading] = useState(!isNew);
   const [name, setName] = useState("");
   const [trackId, setTrackId] = useState("");
+  const [isSandbox, setIsSandbox] = useState(false);
   const [moduleAssignments, setModuleAssignments] = useState<ModuleAssignments>({});
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -121,6 +123,14 @@ export function CohortEditor() {
 
   const trackTitle = cohort?.track_title ?? selectedTrack?.title ?? "";
   const canOpenProfessorsTab = Boolean(!isNew || (name.trim() && trackId));
+  // Same helper the Alunos tab uses, so the marker and the warning agree.
+  const divisionPending = useMemo(() => {
+    if (!canManage || !cohort || !track) return [];
+    const moduleOrder = sortedModules(track)
+      .filter((mod) => mod.is_active)
+      .map((mod) => ({ id: mod.id, title: mod.title, position: mod.position }));
+    return pendingDivisions(moduleAssignments, enrollments, moduleOrder);
+  }, [canManage, cohort, track, moduleAssignments, enrollments]);
 
   const reloadProgress = useCallback(async (id: string) => {
     const { data } = await api.get<CohortProgress>(`/cohorts/${id}/progress`);
@@ -238,21 +248,21 @@ export function CohortEditor() {
   }, [isNew, selectedTrack, professors]);
 
   useEffect(() => {
-    const nextTab = (location.state as { tab?: EditorTab } | null)?.tab;
-    if (
-      nextTab === "meta" ||
-      nextTab === "professors" ||
-      nextTab === "students" ||
-      nextTab === "progress"
-    ) {
-      setTab(nextTab);
-      return;
-    }
-    if (isProfessor) {
-      setTab("progress");
-      return;
-    }
-    setTab("meta");
+    // A professor has no "Dados da turma" or "Professores". The Turmas list
+    // always navigates with tab "meta", so an unhonoured request has to fall
+    // back here -- otherwise `tab` holds a tab that renders nothing while the
+    // bar highlights another one.
+    const allowed: EditorTab[] = isProfessor
+      ? ["students", "progress"]
+      : ["meta", "professors", "students", "progress"];
+    const requested = (location.state as { tab?: EditorTab } | null)?.tab;
+    setTab(
+      requested && allowed.includes(requested)
+        ? requested
+        : isProfessor
+          ? "progress"
+          : "meta",
+    );
   }, [cohortId, isNew, isProfessor, location.state, location.key]);
 
   const metaDirty = cohort ? name !== cohort.name : name.trim().length > 0 || trackId.length > 0;
@@ -433,7 +443,12 @@ export function CohortEditor() {
     if (isNew) {
       await runAction({
         run: () =>
-          api.post<Cohort>("/cohorts", { name: nextName, track_id: trackId, module_professors }),
+          api.post<Cohort>("/cohorts", {
+            name: nextName,
+            track_id: trackId,
+            module_professors,
+            is_sandbox: isSandbox,
+          }),
         successMessage: "Turma criada.",
         errorMessage: "Não foi possível criar a turma.",
         onSuccess: ({ data }) => {
@@ -506,6 +521,12 @@ export function CohortEditor() {
         <div className="track-editor__toolbar-actions">
           {cohort && (
             <>
+              {/* Everyone needs this, professors most of all: they have no
+                  "Dados da turma" tab, so this is their only way to tell a test
+                  cohort from a real one before closing a lesson. */}
+              {cohort.is_sandbox && (
+                <span className="tag tag--brand">Turma de teste</span>
+              )}
               <span className="tag">{cohort.track_title}</span>
               {canManage && (
                 <span className="muted" style={{ fontSize: 13 }}>
@@ -539,6 +560,8 @@ export function CohortEditor() {
                     label: "Alunos",
                     disabled: !cohort,
                     count: cohort ? enrollments.length : undefined,
+                    alert: divisionPending.length > 0,
+                    alertLabel: "Há alunos sem professor",
                   },
                   {
                     id: "progress",
@@ -586,6 +609,35 @@ export function CohortEditor() {
                           A trilha não pode ser alterada após a criação.
                         </p>
                       )}
+                      {isNew ? (
+                        <div className="field">
+                          <label className="field-check" htmlFor="cohort-sandbox">
+                            <input
+                              id="cohort-sandbox"
+                              type="checkbox"
+                              checked={isSandbox}
+                              onChange={(e) => setIsSandbox(e.target.checked)}
+                            />
+                            Turma de teste
+                          </label>
+                          <p className="muted" style={{ fontSize: 13 }}>
+                            O fluxo é o mesmo de uma turma normal, mas o andamento
+                            pode ser desfeito ou zerado quantas vezes precisar. Só dá
+                            para marcar na criação. Uma turma normal nunca poderá ser
+                            zerada.
+                          </p>
+                        </div>
+                      ) : (
+                        cohort?.is_sandbox && (
+                          <div className="field field--start">
+                            <span className="tag tag--brand">Turma de teste</span>
+                            <p className="muted" style={{ fontSize: 13 }}>
+                              O andamento desta turma pode ser desfeito ou zerado na
+                              aba Andamento. A marca não pode ser alterada.
+                            </p>
+                          </div>
+                        )
+                      )}
                     </div>
 
                     {(isNew || metaDirty) && (
@@ -632,6 +684,9 @@ export function CohortEditor() {
                       focusStudentId={focusStudentId}
                       onFocusStudentHandled={() => setFocusStudentId(null)}
                       onChanged={reloadCohort}
+                      assignments={moduleAssignments}
+                      professors={professors}
+                      onApplyDivision={applyDivision}
                     />
                   )}
                 </EditorTabPanel>
@@ -646,6 +701,8 @@ export function CohortEditor() {
                       canComplete={canCompleteLesson}
                       professorName={ownClass?.professor_name}
                       viewerProfessorId={isProfessor ? user?.id : undefined}
+                      isSandbox={cohort.is_sandbox}
+                      canRewind={canManage}
                       onCompleted={onProgressChanged}
                       onOpenStudent={openStudentFromAndamento}
                     />
@@ -660,6 +717,8 @@ export function CohortEditor() {
                     label: "Alunos",
                     disabled: !cohort,
                     count: cohort ? enrollments.length : undefined,
+                    alert: divisionPending.length > 0,
+                    alertLabel: "Há alunos sem professor",
                   },
                   {
                     id: "progress",
@@ -685,6 +744,9 @@ export function CohortEditor() {
                       focusStudentId={focusStudentId}
                       onFocusStudentHandled={() => setFocusStudentId(null)}
                       onChanged={reloadCohort}
+                      assignments={moduleAssignments}
+                      professors={professors}
+                      onApplyDivision={applyDivision}
                     />
                   )}
                 </EditorTabPanel>
@@ -703,6 +765,8 @@ export function CohortEditor() {
                       canComplete={canCompleteLesson}
                       professorName={ownClass?.professor_name}
                       viewerProfessorId={isProfessor ? user?.id : undefined}
+                      isSandbox={cohort.is_sandbox}
+                      canRewind={canManage}
                       onCompleted={onProgressChanged}
                       onOpenStudent={openStudentFromAndamento}
                     />

@@ -12,6 +12,8 @@ from app.models.track import Lesson
 from app.models.user import Role, User
 from app.schemas import (
     AgentResponse,
+    CoverageProposalOut,
+    LessonCompletionOut,
     MessageIn,
     MessageOut,
     PlaygroundContextOut,
@@ -22,6 +24,7 @@ from app.schemas import (
     PlaygroundTrackMaterialOut,
     TranscriptionOut,
 )
+from app.services import coverage_service
 from app.services.cohort import ModuleClassService
 from app.services.playground_context_service import build_playground_context
 from app.services.playground_scores_service import build_playground_scores
@@ -29,6 +32,7 @@ from app.services.track_structure import ordered_active_lessons
 from app.services.conversation_service import list_lesson_messages, student_lesson_message
 from app.services.lesson_completion_service import complete_lesson
 from app.services.student_progress_service import LessonNotInteractiveError
+from app.api.v1.cohorts import _parse_coverage_form
 from app.services.transcription_service import transcribe_audio
 from app.services.upload_validation import (
     AUDIO_MAX_BYTES,
@@ -284,7 +288,35 @@ async def transcribe_lesson_report(
     return TranscriptionOut(transcript=text)
 
 
-@router.post("/cohorts/{cohort_id}/professors/{professor_id}/complete-lesson")
+@router.post(
+    "/cohorts/{cohort_id}/professors/{professor_id}/propose-coverage",
+    response_model=CoverageProposalOut,
+)
+async def propose_lesson_coverage_as_professor(
+    cohort_id: uuid.UUID,
+    professor_id: uuid.UUID,
+    user: Annotated[User, Depends(admin_only)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    lesson_id: Annotated[uuid.UUID, Form(description="Aula que está sendo encerrada")],
+    transcript: Annotated[str, Form()] = "",
+):
+    """Propõe a cobertura real da sessão como professor do módulo — somente admin."""
+    await _get_cohort_or_404(db, cohort_id, user)
+    module_class = await _professor_class(db, cohort_id, professor_id, lesson_id)
+
+    return await coverage_service.propose_coverage(
+        db,
+        cohort_id=cohort_id,
+        module_professor_id=module_class.id,
+        anchor_lesson_id=lesson_id,
+        transcript=transcript,
+    )
+
+
+@router.post(
+    "/cohorts/{cohort_id}/professors/{professor_id}/complete-lesson",
+    response_model=LessonCompletionOut,
+)
 async def complete_lesson_as_professor(
     cohort_id: uuid.UUID,
     professor_id: uuid.UUID,
@@ -295,6 +327,7 @@ async def complete_lesson_as_professor(
     attachment: Annotated[UploadFile | None, File()] = None,
     audio: Annotated[UploadFile | None, File()] = None,
     audio_source: Annotated[str, Form()] = "",
+    coverage: Annotated[str, Form(description="Cobertura confirmada (JSON)")] = "",
 ):
     """Encerra aula como professor do módulo — somente admin."""
     cohort = await _get_cohort_or_404(db, cohort_id, user)
@@ -317,6 +350,19 @@ async def complete_lesson_as_professor(
             "Só é possível encerrar a aula atual da turma deste professor",
         )
 
+    segments = _parse_coverage_form(coverage)
+    ignored = (
+        await coverage_service.unhonoured_segments(
+            db,
+            cohort_id,
+            lesson_id,
+            module_professor_id=module_class.id,
+            segments=segments,
+        )
+        if segments
+        else []
+    )
+
     stored_attachment = await parse_report_attachment(attachment)
     stored_audio = await parse_report_audio(audio)
 
@@ -330,11 +376,13 @@ async def complete_lesson_as_professor(
             attachment=stored_attachment,
             audio=stored_audio,
             audio_source=audio_source or None,
+            coverage=segments,
         )
     except ValueError as e:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(e))
 
-    return {
-        "status": "aula encerrada, turma avançada",
-        "ingestion_status": note.ingestion_status,
-    }
+    return LessonCompletionOut(
+        status="aula encerrada, turma avançada",
+        ingestion_status=note.ingestion_status,
+        coverage_ignored=[lesson.title for lesson in ignored],
+    )

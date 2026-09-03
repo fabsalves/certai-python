@@ -17,6 +17,15 @@ export interface Cohort {
   track_title: string;
   enrollment_count: number;
   module_professors: ModuleProfessor[];
+  /** A test cohort, whose progression can be rewound. Set at creation only. */
+  is_sandbox: boolean;
+}
+
+export interface SandboxRewind {
+  action: "undo_last_closure" | "reset_progress";
+  lesson_title: string;
+  professor_name: string;
+  removed: Record<string, number>;
 }
 
 export interface Enrollment {
@@ -34,6 +43,12 @@ export interface LessonClassStatus {
   professor_name: string;
   closed: boolean;
   closed_at: string | null;
+  /** What this class actually taught of the lesson. */
+  covered: string;
+  /** What is still owed. Non-empty = part of the plan was not taught. */
+  pending: string;
+  /** "" when the session reported nothing beyond the plan. */
+  extent: "" | "full" | "partial";
 }
 
 export interface LessonClasses {
@@ -462,6 +477,36 @@ export function unassignedStudentIds(
   if (classes.length <= 1) return [];
   const assigned = new Set(classes.flatMap((item) => item.studentIds));
   return enrolledIds.filter((id) => !assigned.has(id));
+}
+
+export interface PendingDivision {
+  moduleId: string;
+  moduleTitle: string;
+  studentIds: string[];
+}
+
+/** Modules whose students still have no professor.
+ *
+ * The single source of truth for "there is a division pending": the tab
+ * indicator and the warning inside Alunos both read this, so they can never
+ * disagree. Leans on `unassignedStudentIds`, which already returns nothing for a
+ * module with a single professor -- there, the whole cohort is that professor's
+ * class and nothing needs assigning.
+ */
+export function pendingDivisions(
+  assignments: ModuleAssignments,
+  enrollments: Enrollment[],
+  moduleOrder: { id: string; title: string; position: number }[],
+): PendingDivision[] {
+  const enrolledIds = enrollments.map((item) => item.student_id);
+  return [...moduleOrder]
+    .sort((a, b) => a.position - b.position)
+    .map((mod) => ({
+      moduleId: mod.id,
+      moduleTitle: mod.title,
+      studentIds: unassignedStudentIds(assignments[mod.id] ?? [], enrolledIds),
+    }))
+    .filter((item) => item.studentIds.length > 0);
 }
 
 /** Split suggested when a module gains a second professor: reuse the previous

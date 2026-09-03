@@ -221,11 +221,15 @@ class CohortCreate(BaseModel):
     name: NameStr
     track_id: uuid.UUID
     module_professors: list[ModuleProfessorIn]
+    # A test cohort, whose progression the admin can rewind. Only settable here:
+    # CohortUpdate has no such field, which is what makes the mark immutable.
+    is_sandbox: bool = False
 
 
 class CohortUpdate(BaseModel):
     name: OptionalNameStr = None
     module_professors: list[ModuleProfessorIn] | None = None
+    # `is_sandbox` is deliberately absent -- see Cohort.is_sandbox.
 
 
 class CohortOut(BaseModel):
@@ -233,6 +237,7 @@ class CohortOut(BaseModel):
     id: uuid.UUID
     name: str
     track_id: uuid.UUID
+    is_sandbox: bool = False
 
 
 class CohortListOut(CohortOut):
@@ -286,6 +291,11 @@ class LessonClassStatusOut(BaseModel):
     professor_name: str
     closed: bool
     closed_at: datetime | None = None
+    # Standing coverage of this lesson for this class. `pending` non-empty means
+    # part of the planned content was not taught -- delta as operational data.
+    covered: str = ""
+    pending: str = ""
+    extent: str = ""  # "" when nothing was reported | full | partial
 
 
 class LessonClassesOut(BaseModel):
@@ -393,10 +403,113 @@ class CohortTrackLevelsOut(BaseModel):
     students: list[CohortTrackLevelOut] = []
 
 
+class SandboxRewindOut(BaseModel):
+    """What a rewind removed, so the UI can report it back."""
+
+    action: Literal["undo_last_closure", "reset_progress"]
+    lesson_title: str = ""      # undo only: the closure that was undone
+    professor_name: str = ""    # undo only
+    removed: dict[str, int] = {}
+
+
+# --- Lesson coverage (planned vs. taught) ---
+CoverageKindLiteral = Literal["planned", "carryover", "advance"]
+CoverageExtentLiteral = Literal["full", "partial"]
+
+# Coverage prose is written by the LLM or edited by the professor; cap it so a
+# runaway generation or a pasted document cannot bloat the context bundle.
+COVERAGE_TEXT_MAX = 2000
+
+
+class CoverageSegmentIn(BaseModel):
+    """One lesson touched by a teaching session, as confirmed by the professor."""
+
+    lesson_id: uuid.UUID
+    kind: CoverageKindLiteral
+    extent: CoverageExtentLiteral
+    covered: str = Field(default="", max_length=COVERAGE_TEXT_MAX)
+    pending: str = Field(default="", max_length=COVERAGE_TEXT_MAX)
+    source: Literal["ai", "professor"] = "ai"
+
+    @model_validator(mode="after")
+    def _pending_requires_partial(self):
+        """A fully covered lesson owes nothing -- keep the two fields coherent."""
+        if self.extent == "full" and self.pending.strip():
+            self.pending = ""
+        return self
+
+
+class CoverageSegmentOut(CoverageSegmentIn):
+    lesson_title: str = ""
+
+
+class CoverageCandidateOut(BaseModel):
+    """A lesson the session may legitimately have touched."""
+
+    lesson_id: uuid.UUID
+    lesson_title: str = ""
+    is_anchor: bool = False
+    # What this lesson already owed before this session.
+    standing_pending: str = ""
+
+
+class CoverageNoticeOut(BaseModel):
+    """Content the report describes that this class cannot record.
+
+    A professor does finish their last lesson and carry on into the next module.
+    When that module is another professor's, the content was taught but there is
+    no honest place to record it here -- so it is surfaced instead of dropped.
+    """
+
+    lesson_title: str = ""
+    professor_name: str = ""
+    covered: str = Field(default="", max_length=COVERAGE_TEXT_MAX)
+
+
+class CoverageProposalOut(BaseModel):
+    """What the AI derived from the report, for the professor to confirm."""
+
+    anchor_lesson_id: uuid.UUID
+    segments: list[CoverageSegmentOut] = []
+    # The window the professor may add a lesson from, when the AI missed one.
+    candidates: list[CoverageCandidateOut] = []
+    # Described in the report, taught for real, and not recordable by this class.
+    unrecordable: list[CoverageNoticeOut] = []
+    # False when the AI call failed: the client falls back to the anchor-only
+    # default and the professor can still close the lesson.
+    from_ai: bool = True
+
+
+class LessonCoverageOut(BaseModel):
+    """Standing coverage of a lesson for one teaching class (read)."""
+
+    lesson_id: uuid.UUID
+    kind: CoverageKindLiteral
+    extent: CoverageExtentLiteral
+    covered: str = ""
+    pending: str = ""
+    source: str = "ai"
+    created_at: datetime
+
+
 # --- Lesson completion ---
 class LessonCompletionIn(BaseModel):
     lesson_id: uuid.UUID
     transcript: str = ""  # professor's audio text (or already transcribed)
+
+
+class LessonCompletionOut(BaseModel):
+    """Result of closing a lesson.
+
+    `coverage_ignored` is normally empty. It fills when a segment the professor
+    confirmed could not be recorded -- the candidate window shrank between the
+    proposal and the submit. Reported rather than dropped in silence: losing what
+    a human declared is the failure mode this package exists to remove.
+    """
+
+    status: str
+    ingestion_status: str
+    coverage_ignored: list[str] = []
 
 
 class TranscriptionOut(BaseModel):
@@ -455,6 +568,8 @@ class PlaygroundContextOut(BaseModel):
     current_position: dict | None = None
     track_map: list[dict]
     unlocked_content: list[dict]
+    # Only when the session diverged from the plan; empty on the happy path.
+    taught_scope: list[dict] = []
     cohort_notes_in_bundle: list[dict]
     track_guide_in_bundle: str = ""
     system_blocks: str

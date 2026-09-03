@@ -17,6 +17,7 @@ import {
   nextLessonIdForProfessor,
   pathProgressForStudent,
 } from "../lib/cohorts";
+import { playgroundCoverageProposePath } from "../lib/coverage";
 import {
   playgroundCompletePath,
   playgroundTranscribePath,
@@ -381,6 +382,7 @@ export function Playground() {
                       professorName={selectedProfessor?.professor_name}
                       transcribePath={playgroundTranscribePath(cohortId, professorId)}
                       completePath={playgroundCompletePath(cohortId, professorId)}
+                      proposePath={playgroundCoverageProposePath(cohortId, professorId)}
                       onCompleted={() => refreshProgress(cohortId)}
                     />
                   ) : professorClosedSelected ? (

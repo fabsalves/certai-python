@@ -118,6 +118,7 @@ async def build_playground_context(
         "current_position": bundle.current_position,
         "track_map": bundle.track_map,
         "unlocked_content": bundle.unlocked_content,
+        "taught_scope": bundle.taught_scope,
         "cohort_notes_in_bundle": bundle.cohort_notes,
         "track_guide_in_bundle": track_guide_in_bundle,
         "system_blocks": bundle.to_system_blocks(),

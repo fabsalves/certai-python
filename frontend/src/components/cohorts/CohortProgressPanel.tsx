@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import type { CohortLessonNote, CohortProgress } from "../../lib/cohorts";
+import type {
+  CohortLessonNote,
+  CohortProgress,
+  SandboxRewind,
+} from "../../lib/cohorts";
 import { api } from "../../lib/api";
 import { downloadApiFile } from "../../lib/download";
 import { useApiAction } from "../../lib/useApiAction";
+import { useConfirm } from "../../lib/confirm";
+import { useFeedback } from "../../lib/feedback";
 import { sortedLessons, sortedModules, type Track } from "../../lib/tracks";
 import {
   FileAttachmentBlock,
@@ -25,6 +31,10 @@ interface Props {
   professorName?: string;
   /** Set when a professor is viewing: scopes "done" to their own class. */
   viewerProfessorId?: string;
+  /** A test cohort: its progression can be rewound. */
+  isSandbox?: boolean;
+  /** Only an org admin rewinds -- and only in a test cohort. */
+  canRewind?: boolean;
   onCompleted: () => void;
   /** Bridge to Alunos dossier from lesson distribution. */
   onOpenStudent?: (studentId: string) => void;
@@ -54,10 +64,14 @@ export function CohortProgressPanel({
   canComplete,
   professorName,
   viewerProfessorId,
+  isSandbox = false,
+  canRewind = false,
   onCompleted,
   onOpenStudent,
 }: Props) {
   const runAction = useApiAction();
+  const confirm = useConfirm();
+  const feedback = useFeedback();
   const activeLessonId = selectedLessonId ?? progress.current_lesson_id;
   const selected = activeLessonId ? findLesson(track, activeLessonId) : null;
   const isCurrent = activeLessonId === progress.current_lesson_id;
@@ -89,9 +103,18 @@ export function CohortProgressPanel({
     ? progress.current_lesson_id === null && ownClosedCount > 0
     : progress.current_lesson_id === null && progress.completed_lesson_ids.length > 0;
 
+  // Content of this lesson that was closed without being taught. Operational
+  // data the professor needs to see -- a professor sees their own class only.
+  const pendingClasses = (
+    viewerProfessorId
+      ? classStatuses.filter((item) => item.professor_id === viewerProfessorId)
+      : classStatuses
+  ).filter((item) => item.closed && item.pending.trim());
+
   const [notes, setNotes] = useState<CohortLessonNote[]>([]);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [reingesting, setReingesting] = useState(false);
+  const [rewinding, setRewinding] = useState<"undo" | "reset" | null>(null);
   const [unassigned, setUnassigned] = useState<UnassignedStudentOption[]>([]);
   const [claimModalOpen, setClaimModalOpen] = useState(false);
   const [claiming, setClaiming] = useState(false);
@@ -181,6 +204,45 @@ export function CohortProgressPanel({
       onSuccess: () => loadNotes(),
     });
     setReingesting(false);
+  }
+
+  async function rewind(kind: "undo" | "reset") {
+    const undo = kind === "undo";
+    const ok = await confirm({
+      title: undo ? "Desfazer último encerramento" : "Zerar andamento",
+      message: undo
+        ? "Reabre a última aula encerrada desta turma e apaga o relato, a conversa " +
+          "e as avaliações dela. Os alunos, os professores e os custos continuam " +
+          "como estão."
+        : "Apaga todo o andamento desta turma. Saem as aulas encerradas, os relatos, " +
+          "as conversas e as avaliações. Os alunos, os professores e os custos " +
+          "continuam como estão.",
+      confirmLabel: undo ? "Desfazer" : "Zerar",
+      tone: "danger",
+    });
+    if (!ok) return;
+
+    setRewinding(kind);
+    await runAction({
+      run: () =>
+        api.post<SandboxRewind>(
+          `/cohorts/${cohortId}/sandbox/${undo ? "undo-last-closure" : "reset"}`,
+        ),
+      successMessage: undo ? undefined : "Andamento zerado.",
+      errorMessage: undo
+        ? "Não foi possível desfazer o encerramento."
+        : "Não foi possível zerar o andamento.",
+      onSuccess: ({ data }) => {
+        if (undo) {
+          feedback.success(
+            `Encerramento desfeito: ${data.lesson_title}` +
+              (data.professor_name ? ` (${data.professor_name})` : ""),
+          );
+        }
+        onCompleted();
+      },
+    });
+    setRewinding(null);
   }
 
   async function downloadNoteFile(note: CohortLessonNote, kind: "attachment" | "audio") {
@@ -303,6 +365,26 @@ export function CohortProgressPanel({
         onConfirm={claimStudents}
       />
 
+      {pendingClasses.length > 0 && (
+        <div className="coverage-pending">
+          <p className="coverage-pending__title">
+            Conteúdo desta aula que ficou pendente
+          </p>
+          {pendingClasses.map((item) => (
+            <p key={item.module_professor_id} className="coverage-pending__item">
+              {showProfessorNames && (
+                <span className="coverage-pending__who">{item.professor_name}: </span>
+              )}
+              {item.pending}
+            </p>
+          ))}
+          <p className="coverage-pending__hint">
+            A Lira não cobra isso dos alunos. Informe no relato quando fechar em
+            uma aula seguinte.
+          </p>
+        </div>
+      )}
+
       {activeLessonId && (
         <LessonAssessmentDistribution
           cohortId={cohortId}
@@ -376,6 +458,34 @@ export function CohortProgressPanel({
           professorName={professorName}
           onCompleted={onCompleted}
         />
+      )}
+
+      {isSandbox && canRewind && (
+        <div className="sandbox-actions">
+          <p className="sandbox-actions__title">Turma de teste</p>
+          <p className="sandbox-actions__hint">
+            O andamento desta turma pode voltar atrás quantas vezes precisar. Os
+            alunos, os professores e os custos de IA continuam como estão.
+          </p>
+          <div className="sandbox-actions__row">
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              disabled={rewinding !== null}
+              onClick={() => void rewind("undo")}
+            >
+              {rewinding === "undo" ? "Desfazendo…" : "Desfazer último encerramento"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              disabled={rewinding !== null}
+              onClick={() => void rewind("reset")}
+            >
+              {rewinding === "reset" ? "Zerando…" : "Zerar andamento"}
+            </button>
+          </div>
+        </div>
       )}
     </section>
   );

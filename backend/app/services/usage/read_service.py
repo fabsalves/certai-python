@@ -53,6 +53,7 @@ OPERATION_LABELS: dict[str, str] = {
     "humanizer": "Humanizador",
     "evaluator": "Avaliador",
     "ingestion": "Ingestão de material",
+    "coverage": "Cobertura da aula",
     "summarizer": "Resumo de histórico",
     "transcription": "Transcrição do professor",
 }

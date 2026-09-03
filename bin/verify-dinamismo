@@ -1,0 +1,21 @@
+#!/usr/bin/env sh
+# Verifica o pacote de dinamismo de aulas ponta a ponta sobre o seed:
+# caminho feliz (regressão) + aula incompleta, adiantada e composta.
+#
+# Usage:
+#   bin/db-reset && bin/verify-dinamismo
+#   bin/verify-dinamismo --with-ai   # também exercita a proposta pela IA
+#
+# Encerra aulas de verdade (avança a turma) — rode sobre um banco recém-semeado.
+set -eu
+
+ROOT="$(CDPATH= cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT/backend"
+
+if [ ! -d .venv ]; then
+  printf 'Crie o venv primeiro: cd backend && python3.11 -m venv .venv && pip install -r requirements.txt\n' >&2
+  exit 1
+fi
+
+. .venv/bin/activate
+exec python -m app.verify_dinamismo "$@"

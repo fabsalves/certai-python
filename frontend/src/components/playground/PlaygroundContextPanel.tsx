@@ -1,4 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { extentLabel, originLabel } from "../../lib/coverage";
 import { fetchPlaygroundContext, type PlaygroundContext } from "../../lib/playground";
 import { PlaygroundPanelSkeleton } from "./PlaygroundPanelSkeleton";
 
@@ -155,6 +156,35 @@ export function PlaygroundContextPanel({
               <p className="muted playground-context__empty-value">Sem posição definida</p>
             )}
           </ContextSection>
+
+          {context.taught_scope.length > 0 && (
+            <ContextSection
+              title="Escopo realmente ministrado"
+              badge={String(context.taught_scope.length)}
+            >
+              <p className="muted playground-context__empty-value">
+                A aula desviou do plano. É este escopo que a Lira explora e que a
+                avaliação cobra. O conteúdo planejado abaixo vira referência.
+              </p>
+              {context.taught_scope.map((item, index) => (
+                <article
+                  key={`taught-${item.lesson}-${index}`}
+                  className="playground-context__note"
+                >
+                  <div className="playground-context__note-head">
+                    <strong>{item.lesson}</strong>
+                    <span className="playground-context__status is-active">
+                      {originLabel(item.origin)} · {extentLabel(item.extent)}
+                    </span>
+                  </div>
+                  <TextBlock label="Ministrado ao aluno" value={item.covered} />
+                  {item.pending.trim() && (
+                    <TextBlock label="NÃO ministrado" value={item.pending} />
+                  )}
+                </article>
+              ))}
+            </ContextSection>
+          )}
 
           <ContextSection
             title="Conteúdo desbloqueado"

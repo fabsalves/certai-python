@@ -17,8 +17,12 @@ import {
 import {
   buildStudentSections,
   defaultOpenSectionKeys,
+  pendingDivisions,
   type Cohort,
   type Enrollment,
+  type ModuleAssignments,
+  type ModuleClassDraft,
+  type ProfessorOption,
   type StudentClassSection,
 } from "../../lib/cohorts";
 import { sortedModules, type Track } from "../../lib/tracks";
@@ -32,6 +36,7 @@ import {
 } from "./AssessmentLevelBadge";
 import { CohortStudentsSkeleton } from "./CohortStudentsSkeleton";
 import { StudentAssessmentsPanel } from "./StudentAssessmentsPanel";
+import { ModuleClassDivisionModal } from "./ModuleClassDivisionModal";
 import { StudentEnrollModal } from "./StudentEnrollModal";
 
 interface Props {
@@ -43,6 +48,14 @@ interface Props {
   focusStudentId?: string | null;
   onFocusStudentHandled?: () => void;
   onChanged: () => void;
+  /** Current division per module, and the professors it can draw from. Present
+   *  only for whoever may edit it, which is who sees the pending warning. */
+  assignments?: ModuleAssignments;
+  professors?: ProfessorOption[];
+  onApplyDivision?: (
+    moduleId: string,
+    classes: ModuleClassDraft[],
+  ) => Promise<boolean>;
 }
 
 type SortMode = "name" | "level";
@@ -169,6 +182,9 @@ export function CohortEnrollments({
   focusStudentId = null,
   onFocusStudentHandled,
   onChanged,
+  assignments,
+  professors,
+  onApplyDivision,
 }: Props) {
   const { user } = useAuth();
   const confirm = useConfirm();
@@ -249,25 +265,38 @@ export function CohortEnrollments({
     [enrollments],
   );
 
+  const moduleOrder = useMemo(
+    () =>
+      sortedModules(track)
+        .filter((mod) => mod.is_active)
+        .map((mod) => ({ id: mod.id, title: mod.title, position: mod.position })),
+    [track],
+  );
+
+  // Only for whoever can fix it. A professor sees the roster, not the warning.
+  const pending = useMemo(
+    () =>
+      canManageEnrollments && assignments
+        ? pendingDivisions(assignments, enrollments, moduleOrder)
+        : [],
+    [canManageEnrollments, assignments, enrollments, moduleOrder],
+  );
+  const [divisionModuleId, setDivisionModuleId] = useState<string | null>(null);
+  const divisionModule = pending.find((item) => item.moduleId === divisionModuleId);
+
   const sections = useMemo(
     () =>
       buildStudentSections({
         moduleProfessors: cohort.module_professors,
         enrollments,
-        moduleOrder: sortedModules(track)
-          .filter((mod) => mod.is_active)
-          .map((mod) => ({
-            id: mod.id,
-            title: mod.title,
-            position: mod.position,
-          })),
+        moduleOrder,
         viewerProfessorId: viewerProfessorId ?? null,
         includeUnassigned: canManageEnrollments,
       }),
     [
       cohort.module_professors,
       enrollments,
-      track,
+      moduleOrder,
       viewerProfessorId,
       canManageEnrollments,
     ],
@@ -459,6 +488,31 @@ export function CohortEnrollments({
         )}
       </div>
 
+      {pending.length > 0 && (
+        <div className="pending-division">
+          {pending.map((item) => (
+            <div key={item.moduleId} className="pending-division__row">
+              <p className="pending-division__text">
+                <strong>
+                  {item.studentIds.length} aluno
+                  {item.studentIds.length > 1 ? "s" : ""}
+                </strong>{" "}
+                ainda sem professor em <strong>{item.moduleTitle}</strong>. Esse
+                módulo tem mais de um professor, então é preciso dizer quem estuda
+                com quem. Sem isso o professor não consegue encerrar aula.
+              </p>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setDivisionModuleId(item.moduleId)}
+              >
+                Dividir alunos
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {enrollments.length === 0 ? (
         <div className="empty-state cohort-students__empty">
           <p>Nenhum aluno matriculado ainda.</p>
@@ -563,7 +617,13 @@ export function CohortEnrollments({
                               <span className="cohort-students__section-module">
                                 {section.moduleTitle}
                               </span>
-                              <span className="cohort-students__section-title">
+                              <span
+                                className={`cohort-students__section-title${
+                                  section.isUnassigned
+                                    ? " cohort-students__section-title--pending"
+                                    : ""
+                                }`}
+                              >
                                 {sectionTitle(section)}
                               </span>
                             </span>
@@ -714,6 +774,29 @@ export function CohortEnrollments({
           onEnrolled={() => {
             load();
             onChanged();
+          }}
+        />
+      )}
+
+      {divisionModule && assignments && professors && onApplyDivision && (
+        <ModuleClassDivisionModal
+          open
+          moduleTitle={divisionModule.moduleTitle}
+          classes={assignments[divisionModule.moduleId] ?? []}
+          enrollments={enrollments}
+          professors={professors}
+          previousClasses={[]}
+          persist
+          onClose={() => setDivisionModuleId(null)}
+          onApply={async (next) => {
+            // Same path the Professores tab uses, so every server-side rule
+            // (only enrolled students, one class per module, a class that has
+            // already taught cannot be dropped) applies unchanged.
+            const ok = await onApplyDivision(divisionModule.moduleId, next);
+            if (ok) {
+              setDivisionModuleId(null);
+              onChanged();
+            }
           }}
         />
       )}
