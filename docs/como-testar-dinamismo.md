@@ -15,7 +15,7 @@ commit).
 ```bash
 bin/db-reset && bin/verify-dinamismo
 ```
-**36/36** — os três cenários do doc de produto, caminho feliz e fronteira de módulo. Com `--with-ai`: 40/40, e a IA lê
+**38/38** — os três cenários do doc de produto, caminho feliz e fronteira de módulo. Com `--with-ai`: 41/41, e a IA lê
 um relato de verdade.
 
 ```bash
@@ -23,7 +23,9 @@ bin/db-reset && bin/verify-sandbox
 ```
 **24/24** — guardas, desfazer, pendência voltando, zerar preservando cadastro.
 
-Falha em qualquer um → exit 1 e resumo em vermelho.
+Falha em qualquer um → exit 1 e resumo em vermelho. As duas baterias são
+determinísticas: mesma entrada, mesmo resultado. Nenhuma asserção depende de o
+modelo responder de um jeito específico, então vermelho é regressão, nunca sorteio.
 
 > Este projeto não tem caminho "banco vazio → migrations". A cadeia começa em `002`, que já
 > altera tabelas, então um banco novo nasce do `create_all` dos models e é stampado em head

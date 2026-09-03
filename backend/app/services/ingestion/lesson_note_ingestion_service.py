@@ -61,6 +61,19 @@ async def ingest_lesson_note(db: AsyncSession, note_id: uuid.UUID) -> CohortLess
         scope=UsageScope(cohort_id=note.cohort_id, lesson_id=note.lesson_id),
     )
 
+    # The prompt asks; this enforces. See coverage_service.enforce_boundary.
+    blocked = await coverage_service.unrecordable_neighbours(
+        db,
+        note.cohort_id,
+        note.lesson_id,
+        module_professor_id=note.module_professor_id,
+    )
+    consolidated = coverage_service.enforce_boundary(
+        consolidated,
+        [lesson.title for lesson, _ in blocked],
+        await coverage_service.covered_text_for_note(db, note.id),
+    )
+
     note.attachment_extracted_text = attachment_text
     note.summary = coerce_llm_text_field(consolidated.get("summary", ""))
     note.unclear_points = coerce_llm_text_field(consolidated.get("unclear_points", ""))

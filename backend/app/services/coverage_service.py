@@ -839,6 +839,60 @@ async def propose_coverage(
     )
 
 
+async def covered_text_for_note(db: AsyncSession, note_id: uuid.UUID) -> str:
+    """What this session's coverage declares as taught, as plain text.
+
+    The safe fallback for a summary that broke the boundary: it cannot be out of
+    bounds, because it is the bound.
+    """
+    rows = (
+        await db.execute(
+            select(LessonCoverage, Lesson.title)
+            .join(Lesson, LessonCoverage.lesson_id == Lesson.id)
+            .where(LessonCoverage.note_id == note_id)
+            .order_by(LessonCoverage.created_at)
+        )
+    ).all()
+    parts = [
+        f"{title}: {row.covered.strip()}"
+        for row, title in rows
+        if row.covered.strip()
+    ]
+    return " ".join(parts)
+
+
+def enforce_boundary(
+    consolidated: dict[str, str], off_limits: list[str], covered: str
+) -> dict[str, str]:
+    """Keep an off-limits lesson out of the note, whatever the model wrote.
+
+    The boundary is named in the prompt and the model mostly honours it, but
+    mostly is not a guarantee: summarising the report is its main job, and the
+    report does mention the lesson the professor advanced into. Roughly one in ten
+    answers slips a passing reference through.
+
+    So the boundary stops being a request. A field naming an off-limits lesson is
+    replaced by what the coverage itself declares -- text that cannot be out of
+    bounds, because it *is* the bound. Comparing against a lesson title we own is
+    verification of a declared constraint, not inference from prose.
+    """
+    if not off_limits:
+        return consolidated
+
+    def mentions(value: str) -> bool:
+        low = value.casefold()
+        return any(title.casefold() in low for title in off_limits if title.strip())
+
+    out = dict(consolidated)
+    for field in ("summary", "unclear_points", "knowledge_base"):
+        if mentions(out.get(field, "")):
+            # Summary carries the lesson's description, so it falls back to the
+            # coverage. The other two have nothing safe to fall back to.
+            out[field] = covered.strip() if field == "summary" else ""
+            logger.warning("consolidation mentioned an off-limits lesson in %s", field)
+    return out
+
+
 async def coverage_block_for_note(db: AsyncSession, note_id: uuid.UUID) -> str:
     """The session's coverage as pt-BR text, for the consolidation prompt.
 

@@ -624,6 +624,32 @@ async def run(with_ai: bool) -> int:
             "cobertura dentro da janela não gera aviso",
         )
 
+        # A prompt asking the model to stay inside the coverage holds most of the
+        # time, not always -- roughly one answer in ten slips a passing mention
+        # of the off-limits lesson through, and that mention would reach the
+        # student. So the boundary is enforced after the fact, and this asserts
+        # the enforcement, which is deterministic. The model's obedience is not
+        # asserted anywhere: a probabilistic check has no place in a pass/fail
+        # battery, and a keyword detector gives false positives besides.
+        violating = {
+            "summary": "O professor adiantou a Revisão em pares da próxima aula.",
+            "unclear_points": "Dúvidas sobre revisão em pares.",
+            "knowledge_base": "base legítima, dentro do escopo",
+        }
+        guarded = coverage_service.enforce_boundary(
+            violating, ["Revisão em pares"], "Primeiro rascunho: fechou o rascunho"
+        )
+        report.check(
+            "pares" not in " ".join(guarded.values()).lower(),
+            "aula fora do alcance é removida da nota, mesmo se o modelo escrever",
+            f"summary={guarded['summary'][:50]!r}",
+        )
+        report.check(
+            guarded["knowledge_base"] == violating["knowledge_base"]
+            and coverage_service.enforce_boundary(violating, [], "x") == violating,
+            "campo sem violação fica intacto, e sem aula proibida nada muda",
+        )
+
         # ---------------------------------------------------------------- 7
         if with_ai:
             section("7 · Proposta pela IA (requer OPENAI_API_KEY)")
@@ -639,43 +665,6 @@ async def run(with_ai: bool) -> int:
             )
             report.check(proposal.from_ai, "a IA respondeu")
 
-            # A general rule ("stay inside the coverage") did not hold: summarising
-            # the report is the model's main job, so it wrote down the advance the
-            # professor mentioned. Naming the off-limits lesson does hold. Three
-            # rounds, because one clean answer proves nothing about a prompt.
-            from app.services.lesson_completion_service import consolidate_notes
-
-            boundary = (
-                "### Aula do dia\nsituação: coberta por completo\n"
-                "ministrado: (sem detalhe)\n\n"
-                "### Aulas que NÃO fazem parte desta sessão\n"
-                '"Revisão em pares"\n'
-                "São de outro professor. Mesmo que o relato as mencione, não "
-                "escreva nada sobre elas em nenhum dos três campos, nem de "
-                "passagem: estes alunos não as receberam."
-            )
-            leaked = 0
-            for _ in range(3):
-                out = await consolidate_notes(
-                    "Fechei o rascunho e ainda adiantei a revisão em pares da "
-                    "próxima aula.",
-                    coverage_block=boundary,
-                )
-                if "pares" in " ".join(out.values()).lower():
-                    leaked += 1
-            report.check(
-                leaked == 0,
-                "consolidação não menciona a aula fora do alcance",
-                f"{leaked} de 3 rodadas vazaram",
-            )
-            for segment in proposal.segments:
-                print(
-                    f"    {DIM}{segment.lesson_title} · {segment.kind} · "
-                    f"{segment.extent}{OFF}"
-                )
-                print(f"      coberto: {segment.covered or '(vazio)'}")
-                if segment.pending:
-                    print(f"      pendente: {segment.pending}")
             report.check(
                 any(item.lesson_id == first[2].id for item in proposal.segments),
                 "âncora presente na proposta",

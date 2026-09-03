@@ -388,8 +388,19 @@ dela — então ela escrevia o adiantamento no `summary`, que vai para o bundle 
 vazamento que o pacote fechou voltava por essa porta.
 
 Escrever no prompt que a cobertura é fronteira exaustiva **não segurou**: três rodadas, três
-vazamentos. O que segurou foi nomear a aula: `coverage_block_for_note` passou a listar as aulas
-fora do alcance uma por uma, e aí três rodadas limpas.
+vazamentos. Nomear a aula ajudou muito: `coverage_block_for_note` passou a listar as aulas fora do
+alcance uma por uma, e a taxa caiu para cerca de uma em dez. Mas *cerca de* não é garantia, e
+foi a bateria falhando 1 de 3 rodadas que deixou isso claro.
+
+Então a fronteira deixou de ser pedido e virou imposição: `enforce_boundary` compara os três
+campos contra o título da aula proibida — string que nós controlamos, não inferência de prosa — e
+troca o campo que viola pelo texto da própria cobertura, que não pode estar fora do escopo porque
+**é** o escopo.
+
+Isso também consertou um erro meu de método: eu havia posto uma verificação probabilística
+numa bateria de passa/falha, exatamente o que eu disse que não faria para o teste da Lira. A
+asserção agora exercita a imposição, que é determinística. A obediência do modelo não é asserida
+em lugar nenhum.
 
 É a mesma lição do resto do projeto. Regra textual genérica perde para a tarefa principal do
 modelo; dado específico ganha. Vale registrar que só apareceu no teste manual, porque exige a
@@ -445,7 +456,7 @@ a Fase 7 os verifica como regressão.
 
 ## Resultado
 
-**`bin/verify-dinamismo` — 36/36 verificações; com `--with-ai`, 40/40.**
+**`bin/verify-dinamismo` — 38/38 verificações; com `--with-ai`, 41/41.**
 
 ```
 1 · Caminho feliz (regressão)      4/4   cobertura default, bundle idêntico ao pré-mudança
