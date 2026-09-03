@@ -605,6 +605,36 @@ async def run(with_ai: bool) -> int:
                 ),
             )
             report.check(proposal.from_ai, "a IA respondeu")
+
+            # A general rule ("stay inside the coverage") did not hold: summarising
+            # the report is the model's main job, so it wrote down the advance the
+            # professor mentioned. Naming the off-limits lesson does hold. Three
+            # rounds, because one clean answer proves nothing about a prompt.
+            from app.services.lesson_completion_service import consolidate_notes
+
+            boundary = (
+                "### Aula do dia\nsituação: coberta por completo\n"
+                "ministrado: (sem detalhe)\n\n"
+                "### Aulas que NÃO fazem parte desta sessão\n"
+                '"Revisão em pares"\n'
+                "São de outro professor. Mesmo que o relato as mencione, não "
+                "escreva nada sobre elas em nenhum dos três campos, nem de "
+                "passagem: estes alunos não as receberam."
+            )
+            leaked = 0
+            for _ in range(3):
+                out = await consolidate_notes(
+                    "Fechei o rascunho e ainda adiantei a revisão em pares da "
+                    "próxima aula.",
+                    coverage_block=boundary,
+                )
+                if "pares" in " ".join(out.values()).lower():
+                    leaked += 1
+            report.check(
+                leaked == 0,
+                "consolidação não menciona a aula fora do alcance",
+                f"{leaked} de 3 rodadas vazaram",
+            )
             for segment in proposal.segments:
                 print(
                     f"    {DIM}{segment.lesson_title} · {segment.kind} · "

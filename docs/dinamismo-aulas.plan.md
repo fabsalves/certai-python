@@ -380,6 +380,24 @@ aberta para carryover.
 
 ---
 
+### A fronteira da consolidação tinha de virar dado, não regra
+
+Com um adiantamento **não registrável**, o relato menciona a aula do outro professor e a
+cobertura não a declara. A consolidação lê o relato, e resumir o relato é a tarefa principal
+dela — então ela escrevia o adiantamento no `summary`, que vai para o bundle do aluno. O
+vazamento que o pacote fechou voltava por essa porta.
+
+Escrever no prompt que a cobertura é fronteira exaustiva **não segurou**: três rodadas, três
+vazamentos. O que segurou foi nomear a aula: `coverage_block_for_note` passou a listar as aulas
+fora do alcance uma por uma, e aí três rodadas limpas.
+
+É a mesma lição do resto do projeto. Regra textual genérica perde para a tarefa principal do
+modelo; dado específico ganha. Vale registrar que só apareceu no teste manual, porque exige a
+combinação de adiantamento com professor diferente — a bateria injetava cobertura sem passar
+pela consolidação.
+
+---
+
 ## Trade-offs aceitos
 
 1. **Avaliação da aula anterior num cenário composta.** `close_by_advance` enfileira o assessment

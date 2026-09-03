@@ -805,7 +805,15 @@ async def propose_coverage(
 
 
 async def coverage_block_for_note(db: AsyncSession, note_id: uuid.UUID) -> str:
-    """The session's coverage as pt-BR text, for the consolidation prompt."""
+    """The session's coverage as pt-BR text, for the consolidation prompt.
+
+    Ends with the neighbouring lessons this class cannot report on, named one by
+    one. A general rule ("stay inside the coverage") does not hold: the report
+    mentions the lesson the professor advanced into, and summarising the report is
+    the model's primary job, so it writes it down. Naming the lesson turns the
+    restriction into data -- the same reason the future never enters the student's
+    bundle as a rule, only as an absence.
+    """
     rows = (
         await db.execute(
             select(LessonCoverage, Lesson.title)
@@ -837,4 +845,22 @@ async def coverage_block_for_note(db: AsyncSession, note_id: uuid.UUID) -> str:
         if row.pending.strip():
             block += f"\nnão ministrado: {row.pending.strip()}"
         parts.append(block)
+
+    note = await db.get(CohortLessonNote, note_id)
+    if note is not None:
+        blocked = await unrecordable_neighbours(
+            db,
+            note.cohort_id,
+            note.lesson_id,
+            module_professor_id=note.module_professor_id,
+        )
+        if blocked:
+            names = ", ".join(f'"{lesson.title}"' for lesson, _ in blocked)
+            parts.append(
+                "### Aulas que NÃO fazem parte desta sessão\n"
+                f"{names}\n"
+                "São de outro professor. Mesmo que o relato as mencione, não "
+                "escreva nada sobre elas em nenhum dos três campos, nem de "
+                "passagem: estes alunos não as receberam."
+            )
     return "\n\n".join(parts)
