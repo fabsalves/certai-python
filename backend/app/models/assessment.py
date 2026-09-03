@@ -1,7 +1,7 @@
 import enum
 import uuid
 
-from sqlalchemy import Enum, ForeignKey, String, Text
+from sqlalchemy import Enum, ForeignKey, Index, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -149,6 +149,21 @@ class LessonCoverage(Base):
     """
 
     __tablename__ = "lesson_coverage"
+    __table_args__ = (
+        # Standing coverage of a lesson for one class = its most recent row. This
+        # serves that lookup, on the hot path of both context and assessment.
+        #
+        # Declared here and not only in the migration: `bin/db-reset` bootstraps
+        # from the models with create_all, so an index that lives only in a
+        # migration leaves dev running on a different schema than production.
+        Index(
+            "ix_lesson_coverage_standing",
+            "cohort_id",
+            "module_professor_id",
+            "lesson_id",
+            text("created_at DESC"),
+        ),
+    )
 
     note_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

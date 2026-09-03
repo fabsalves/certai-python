@@ -25,6 +25,11 @@ bin/db-reset && bin/verify-sandbox
 
 Falha em qualquer um → exit 1 e resumo em vermelho.
 
+> Este projeto não tem caminho "banco vazio → migrations". A cadeia começa em `002`, que já
+> altera tabelas, então um banco novo nasce do `create_all` dos models e é stampado em head
+> (ver `seed.ensure_schema`). Consequência prática: **índice ou constraint que exista só na
+> migration nunca é criado em dev nem num deploy novo.** Declare sempre no model também.
+
 > `verify-dinamismo` **exige** o `db-reset` antes: ele encerra aulas de verdade, então duas
 > rodadas seguidas falham porque as aulas já estão fechadas. Não é instabilidade.
 > `verify-sandbox` **não** precisa — cria e remove as próprias turmas.
