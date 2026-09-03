@@ -214,6 +214,10 @@ async def complete_lesson(
 
     await db.flush()
 
+    module_class = await db.get(CohortModuleProfessor, module_professor_id)
+    if module_class is None:
+        raise ValueError("Turma do professor não encontrada")
+
     # The session declares what it actually covered. Without an informed
     # coverage this writes the happy-path row (anchor, full) -- so a client that
     # knows nothing about coverage behaves exactly as before.
@@ -227,14 +231,13 @@ async def complete_lesson(
         segments=coverage or [coverage_service.default_segment(lesson_id)],
         allowed_positions=positions,
         anchor_position=positions.get(lesson_id, 0),
+        owners=await coverage_service.owning_class_ids(
+            db, cohort_id, module_class, window
+        ),
     )
 
     from app.services.cohort import ModuleClassService
     from app.services.student_progress_service import StudentProgressService
-
-    module_class = await db.get(CohortModuleProfessor, module_professor_id)
-    if module_class is None:
-        raise ValueError("Turma do professor não encontrada")
 
     student_ids = await ModuleClassService.student_ids_of(db, module_class)
     await StudentProgressService.on_professor_complete_lesson(

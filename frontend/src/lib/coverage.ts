@@ -22,11 +22,19 @@ export interface CoverageCandidate {
   standing_pending: string;
 }
 
+/** Taught for real, described in the report, and not recordable by this class. */
+export interface CoverageNotice {
+  lesson_title: string;
+  professor_name: string;
+  covered: string;
+}
+
 export interface CoverageProposal {
   anchor_lesson_id: string;
   segments: CoverageSegment[];
   /** The window a lesson may be added from, when the AI missed one. */
   candidates: CoverageCandidate[];
+  unrecordable: CoverageNotice[];
   /** False when the AI call failed and the anchor-only default came back. */
   from_ai: boolean;
 }

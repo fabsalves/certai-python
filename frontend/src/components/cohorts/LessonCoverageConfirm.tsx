@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   COVERAGE_TEXT_MAX,
   type CoverageCandidate,
+  type CoverageNotice,
   type CoverageExtent,
   type CoverageSegment,
   extentLabel,
@@ -12,6 +13,7 @@ import {
 interface Props {
   segments: CoverageSegment[];
   candidates: CoverageCandidate[];
+  unrecordable: CoverageNotice[];
   anchorLessonId: string;
   loading: boolean;
   /** The AI proposal did not come back; the anchor-only default is in place. */
@@ -28,6 +30,7 @@ interface Props {
 export function LessonCoverageConfirm({
   segments,
   candidates,
+  unrecordable,
   anchorLessonId,
   loading,
   failed,
@@ -204,6 +207,22 @@ export function LessonCoverageConfirm({
             </li>
           ))}
         </ul>
+      )}
+
+      {unrecordable.length > 0 && (
+        <div className="coverage__blocked">
+          {unrecordable.map((item, index) => (
+            <p key={`${item.lesson_title}-${index}`} className="coverage__blocked-text">
+              O que você adiantou é da aula <strong>{item.lesson_title}</strong>
+              {item.professor_name ? `, de ${item.professor_name}` : ""}. Não dá para
+              registrar aqui, porque quem vai dar essa aula é outro professor.
+              Combine com ele para não repetir o conteúdo.
+              {item.covered.trim() && (
+                <span className="coverage__blocked-what"> Você relatou: {item.covered}</span>
+              )}
+            </p>
+          ))}
+        </div>
       )}
 
       {editing && available.length > 0 && (

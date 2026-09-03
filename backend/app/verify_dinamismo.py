@@ -476,6 +476,84 @@ async def run(with_ai: bool) -> int:
                 "pendência de outra turma não entra nesta janela",
             )
 
+        # ---------------------------------------------------------------- 5b
+        section("5b · Fronteira de módulo")
+        if second is None:
+            report.check(True, "pulado (seed sem segundo módulo)")
+        else:
+            last_of_first = first[-1]
+            # Different professors on the two modules: not recordable, but it must
+            # be surfaced instead of dropped in silence.
+            owners = await coverage_service.recordable_module_owners(
+                db, cohort.id, class_a
+            )
+            report.check(
+                second[0].module_id not in owners,
+                "professor diferente: módulo vizinho fica fora do alcance",
+                f"{len(owners)} módulo(s) no alcance",
+            )
+            blocked = await coverage_service.unrecordable_neighbours(
+                db, cohort.id, last_of_first.id, module_professor_id=class_a.id
+            )
+            report.check(
+                any(item[0].id == second[0].id for item in blocked),
+                "a aula do outro professor é reportada como fora do alcance",
+                f"{[(l.title, name) for l, name in blocked]}",
+            )
+
+            # Same professor on both modules: it is an ordinary deviation, and the
+            # row belongs to the class that owns the lesson.
+            other_class = classes[second[0].module_id]
+            original_professor = other_class.professor_id
+            other_class.professor_id = class_a.professor_id
+            await db.commit()
+            try:
+                owners = await coverage_service.recordable_module_owners(
+                    db, cohort.id, class_a
+                )
+                report.check(
+                    owners.get(second[0].module_id) == other_class.id,
+                    "mesmo professor: o módulo vizinho entra, sob a turma dona dele",
+                )
+                window = await coverage_service.candidate_window(
+                    db, cohort.id, last_of_first.id, module_professor_id=class_a.id
+                )
+                report.check(
+                    second[0].id in {item.id for item in window},
+                    "a janela alcança a primeira aula do módulo seguinte",
+                    f"{[item.title for item in window]}",
+                )
+                report.check(
+                    not await coverage_service.unrecordable_neighbours(
+                        db, cohort.id, last_of_first.id, module_professor_id=class_a.id
+                    ),
+                    "nada fora do alcance quando é o mesmo professor",
+                )
+
+                # A pendency left in the previous module is recorded under that
+                # module's class. Anchored two lessons into the next module -- so
+                # the plain neighbourhood cannot reach back that far -- the window
+                # must still include it: a pendency does not expire at a boundary.
+                owed = await coverage_service.current_pendings(
+                    db,
+                    cohort_id=cohort.id,
+                    module_professor_id=class_a.id,
+                    lesson_ids=[item.id for item in first],
+                )
+                anchored_next = await coverage_service.candidate_window(
+                    db, cohort.id, second[1].id, module_professor_id=other_class.id
+                )
+                reached = {item.id for item in anchored_next}
+                report.check(
+                    bool(owed) and all(lesson_id in reached for lesson_id in owed),
+                    "pendência do módulo anterior alcançada de dentro do seguinte",
+                    f"deve={[first[i].title for i in range(len(first)) if first[i].id in owed]} "
+                    f"janela={[item.title for item in anchored_next]}",
+                )
+            finally:
+                other_class.professor_id = original_professor
+                await db.commit()
+
         # ---------------------------------------------------------------- 6
         section("6 · Guardas")
         target = first[2] if second is None else second[1]

@@ -38,9 +38,11 @@ from app.models.assessment import (
 )
 from app.models.cohort import Cohort, CohortModuleProfessor
 from app.models.track import Lesson
+from app.models.user import User
 from app.schemas import (
     COVERAGE_TEXT_MAX,
     CoverageCandidateOut,
+    CoverageNoticeOut,
     CoverageProposalOut,
     CoverageSegmentIn,
     CoverageSegmentOut,
@@ -83,8 +85,14 @@ PROPOSAL_SYSTEM_PROMPT = (
     "- Se a aula tinha pendência anterior e o relato indica que ela foi fechada "
     'agora, use extent "full" e pending vazio.\n\n'
     "Seja descritivo e neutro — nunca avaliativo sobre o professor.\n\n"
+    "Pode haver uma seção de aulas de OUTRO PROFESSOR. Elas não podem entrar em "
+    '"segments". Se o relato indicar que o professor avançou no conteúdo de uma '
+    'delas, liste em "fora_do_alcance" com o que foi dado, para que ele saiba que '
+    "não foi registrado. Se o relato não indicar nada disso, devolva uma lista "
+    "vazia.\n\n"
     'Responda SOMENTE com um JSON: {"segments": [{"lesson_id": "...", '
-    '"extent": "full"|"partial", "covered": "...", "pending": "..."}]}'
+    '"extent": "full"|"partial", "covered": "...", "pending": "..."}], '
+    '"fora_do_alcance": [{"lesson_id": "...", "covered": "..."}]}'
 )
 
 
@@ -93,6 +101,118 @@ def _clip(value: object) -> str:
     if not isinstance(value, str):
         return ""
     return value.strip()[:COVERAGE_TEXT_MAX]
+
+
+async def recordable_module_owners(
+    db: AsyncSession, cohort_id: uuid.UUID, module_class: CohortModuleProfessor
+) -> dict[uuid.UUID, uuid.UUID]:
+    """module_id -> the class that owns it, for every module this class may report on.
+
+    Always its own module. Plus any other module of the cohort whose class is a
+    single class taught by **the same professor**, and only when the anchor's own
+    module is also a single class -- because then the audience is the whole cohort
+    on both sides and the teacher is the same person, so a segment there is
+    unambiguous.
+
+    That condition is what makes teaching ahead across a module boundary
+    recordable: it is an ordinary deviation when the same professor carries on
+    into their next module, and it stops being one the moment a second professor
+    or a split roster is involved. Then the audiences differ, the other professor
+    will teach that lesson themselves, and nobody can say on their behalf what
+    their class received -- see `unrecordable_neighbours`.
+
+    A segment always lands under the class that owns the lesson, never under the
+    session's anchor class: the owner is who will later close it and whose
+    students read it in their context.
+    """
+    classes = (
+        await db.scalars(
+            select(CohortModuleProfessor).where(
+                CohortModuleProfessor.cohort_id == cohort_id
+            )
+        )
+    ).all()
+
+    by_module: dict[uuid.UUID, list[CohortModuleProfessor]] = {}
+    for item in classes:
+        by_module.setdefault(item.module_id, []).append(item)
+
+    owners = {module_class.module_id: module_class.id}
+    if len(by_module.get(module_class.module_id, [])) > 1:
+        # The anchor class is one of several in its module, so it teaches a
+        # subset of the cohort. Nothing outside its own module is unambiguous.
+        return owners
+
+    for module_id, items in by_module.items():
+        if module_id == module_class.module_id or len(items) != 1:
+            continue
+        if items[0].professor_id == module_class.professor_id:
+            owners[module_id] = items[0].id
+    return owners
+
+
+async def unrecordable_neighbours(
+    db: AsyncSession,
+    cohort_id: uuid.UUID,
+    anchor_lesson_id: uuid.UUID,
+    *,
+    module_professor_id: uuid.UUID,
+) -> list[tuple[Lesson, str]]:
+    """Lessons right after the anchor that this class cannot report on.
+
+    A professor really does finish their last lesson and carry on into the next
+    module. When that module is someone else's, the content was taught but cannot
+    be recorded here -- and the professor has to be told, instead of the segment
+    being dropped in silence.
+    """
+    cohort = await db.get(Cohort, cohort_id)
+    module_class = await db.get(CohortModuleProfessor, module_professor_id)
+    if cohort is None or module_class is None:
+        return []
+
+    owners = await recordable_module_owners(db, cohort_id, module_class)
+    ordered = await ordered_active_lessons(db, cohort.track_id)
+    lesson_ids = [lesson.id for lesson in ordered]
+    try:
+        index = lesson_ids.index(anchor_lesson_id)
+    except ValueError:
+        return []
+
+    out: list[tuple[Lesson, str]] = []
+    for lesson in ordered[index + 1 : index + 1 + LESSONS_AFTER_ANCHOR]:
+        if lesson.module_id in owners:
+            continue
+        names = (
+            await db.scalars(
+                select(User.name)
+                .join(
+                    CohortModuleProfessor,
+                    CohortModuleProfessor.professor_id == User.id,
+                )
+                .where(
+                    CohortModuleProfessor.cohort_id == cohort_id,
+                    CohortModuleProfessor.module_id == lesson.module_id,
+                )
+                .order_by(User.name)
+            )
+        ).all()
+        out.append((lesson, ", ".join(names)))
+    return out
+
+
+async def owning_class_ids(
+    db: AsyncSession,
+    cohort_id: uuid.UUID,
+    module_class: CohortModuleProfessor,
+    lessons: list[Lesson],
+) -> dict[uuid.UUID, uuid.UUID]:
+    """lesson_id -> the class a coverage row for it must belong to."""
+    owners = await recordable_module_owners(db, cohort_id, module_class)
+    return {
+        lesson.id: owners[lesson.module_id]
+        for lesson in lessons
+        if lesson.module_id in owners
+    }
 
 
 async def candidate_window(
@@ -108,12 +228,9 @@ async def candidate_window(
     class something: a pendency does not expire when the class moves on, so it
     stays closable however many lessons later the professor gets back to it.
 
-    Bounded to the class's own module -- the same boundary
-    `MidJoinService.next_open_lesson_id` uses to pick what a class may close. A
-    professor never declares coverage over a lesson they do not teach, so a
-    deviation is always recorded against the class that lived it. Teaching ahead
-    across a module boundary is therefore not expressible here: that is a change
-    of plan between two professors, not one class's deviation.
+    Bounded to the modules this class may report on (see
+    `recordable_module_owners`), which is its own plus any other taught by the
+    same professor to the whole cohort.
 
     Reads the single track sequence everything else reads
     (`ordered_active_lessons`), so the window can never disagree with progression,
@@ -123,10 +240,11 @@ async def candidate_window(
     module_class = await db.get(CohortModuleProfessor, module_professor_id)
     if cohort is None or module_class is None:
         return []
+    owners = await recordable_module_owners(db, cohort_id, module_class)
     ordered = [
         lesson
         for lesson in await ordered_active_lessons(db, cohort.track_id)
-        if lesson.module_id == module_class.module_id
+        if lesson.module_id in owners
     ]
     lesson_ids = [lesson.id for lesson in ordered]
     try:
@@ -141,13 +259,21 @@ async def candidate_window(
         )
     )
     if index > 0:
-        pendings = await current_pendings(
-            db,
-            cohort_id=cohort_id,
-            module_professor_id=module_professor_id,
-            lesson_ids=lesson_ids[:index],
-        )
-        chosen |= {lesson_ids.index(lesson_id) for lesson_id in pendings}
+        # Per owning class: with the window spanning two modules, an earlier
+        # lesson's pendency is recorded under the class that owns it, not under
+        # the anchor's. Querying only the anchor's class would lose a pendency
+        # left behind in the previous module -- and a pendency does not expire.
+        earlier_by_owner: dict[uuid.UUID, list[uuid.UUID]] = {}
+        for lesson in ordered[:index]:
+            earlier_by_owner.setdefault(owners[lesson.module_id], []).append(lesson.id)
+        for owner_id, ids in earlier_by_owner.items():
+            pendings = await current_pendings(
+                db,
+                cohort_id=cohort_id,
+                module_professor_id=owner_id,
+                lesson_ids=ids,
+            )
+            chosen |= {lesson_ids.index(lesson_id) for lesson_id in pendings}
 
     return [ordered[position] for position in sorted(chosen)]
 
@@ -403,12 +529,18 @@ async def persist_coverage(
     segments: list[CoverageSegmentIn],
     allowed_positions: dict[uuid.UUID, int],
     anchor_position: int,
+    owners: dict[uuid.UUID, uuid.UUID] | None = None,
 ) -> list[LessonCoverage]:
     """Write the confirmed coverage of a session.
 
     `allowed_positions` is the validated candidate window: a segment outside it
     is dropped rather than trusted, so neither a model nor a crafted request can
     write coverage against an arbitrary lesson.
+
+    `owners` maps each candidate lesson to the class a row for it must belong to.
+    That is the anchor's own class for its module, and the other module's class
+    when the same professor carries on into it -- the owner is who will later
+    close the lesson and whose students read it.
     """
     # A lone segment on the anchor, fully covered, owing nothing, says only "the
     # plan was followed". The proposal fills `covered` with a description so the
@@ -431,7 +563,9 @@ async def persist_coverage(
                 note_id=note.id,
                 cohort_id=note.cohort_id,
                 lesson_id=segment.lesson_id,
-                module_professor_id=note.module_professor_id,
+                module_professor_id=(owners or {}).get(
+                    segment.lesson_id, note.module_professor_id
+                ),
                 kind=kind_for(anchor_position, position),
                 extent=CoverageExtent(segment.extent),
                 covered=segment.covered,
@@ -562,6 +696,16 @@ async def propose_coverage(
         f"## Relato do professor\n{transcript.strip()[:TRANSCRIPT_MAX_CHARS]}\n\n"
         f"## Aulas candidatas (em ordem na trilha)\n{window_block}"
     )
+    # Read-only: the model may point at these to warn, never to record.
+    blocked = await unrecordable_neighbours(
+        db, cohort_id, anchor_lesson_id, module_professor_id=module_professor_id
+    )
+    if blocked:
+        user_content += "\n\n## Aulas de OUTRO PROFESSOR (não registráveis)\n" + "\n\n".join(
+            f"### {lesson.title}\nlesson_id: {lesson.id}\nprofessor: {name}\n"
+            f"conteúdo planejado:\n{lesson.content.strip() or '(sem conteúdo cadastrado)'}"
+            for lesson, name in blocked
+        )
 
     try:
         client = get_openai()
@@ -628,11 +772,34 @@ async def propose_coverage(
             )
         )
 
+    blocked_by_id = {lesson.id: (lesson, name) for lesson, name in blocked}
+    notices: list[CoverageNoticeOut] = []
+    raw_blocked = payload.get("fora_do_alcance") if isinstance(payload, dict) else None
+    for item in raw_blocked if isinstance(raw_blocked, list) else []:
+        if not isinstance(item, dict):
+            continue
+        try:
+            lesson_id = uuid.UUID(str(item.get("lesson_id", "")))
+        except ValueError:
+            continue
+        found = blocked_by_id.pop(lesson_id, None)
+        if found is None:
+            continue
+        lesson, name = found
+        notices.append(
+            CoverageNoticeOut(
+                lesson_title=lesson.title,
+                professor_name=name,
+                covered=_clip(item.get("covered")),
+            )
+        )
+
     segments.sort(key=lambda item: positions[item.lesson_id])
     return CoverageProposalOut(
         anchor_lesson_id=anchor_lesson_id,
         segments=segments,
         candidates=candidates,
+        unrecordable=notices,
         from_ai=True,
     )
 

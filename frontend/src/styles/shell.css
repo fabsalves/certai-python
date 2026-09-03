@@ -3592,6 +3592,22 @@ html.modal-scroll-lock body {
   color: var(--text-muted);
 }
 
+.coverage__blocked {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.coverage__blocked-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--accent);
+}
+
+.coverage__blocked-what {
+  color: var(--text-muted);
+}
+
 .coverage__add {
   display: flex;
   align-items: center;

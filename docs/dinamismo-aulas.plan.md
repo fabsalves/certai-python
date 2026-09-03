@@ -342,18 +342,30 @@ roteamento inbound (`bin/send-message`) e turma com dois professores no mesmo m�
 
 Dois pontos que o plano não previa e a verificação expôs. Ambos apertam o desenho — não o alargam.
 
-### A janela é limitada ao módulo da própria turma
+### A janela alcança o módulo vizinho quando é o mesmo professor
 
 O plano falava de "vizinhança da âncora" na trilha. Só que a vizinhança atravessa a fronteira
 de módulo, e cada módulo tem sua própria `CohortModuleProfessor`. Sem o corte, um professor
 poderia declarar cobertura sobre uma aula que **não ensina** — e a linha apareceria no painel
 sob a turma dele, que é dado falso.
 
-`candidate_window` passou a filtrar pelo módulo da turma âncora — o mesmo corte que
-`MidJoinService.next_open_lesson_id` já usa para decidir o que uma turma pode encerrar. Efeito
-colateral aceito e documentado: **adiantar através de uma fronteira de módulo não é
-expressável**. Isso é correto, não uma limitação: adiantar para dentro do módulo de outro
-professor não é desvio de uma turma, é mudança de plano entre dois professores.
+A primeira tentativa foi filtrar pelo módulo da turma âncora. Só que isso descartou o cenário
+inteiro, quando o problema real era outro: **sob qual turma a linha fica**. E o professor de
+fato termina a última aula do módulo e emenda no seguinte — o evento é real.
+
+`recordable_module_owners` resolve pela audiência. O módulo vizinho entra quando ele e o da
+âncora têm **uma turma só, do mesmo professor**: aí a audiência é a turma inteira nos dois lados,
+o professor é a mesma pessoa, e a linha é inequívoca. Ela fica sob **a turma dona da aula**, que
+é quem vai encerrá-la depois e cujos alunos leem aquele contexto.
+
+Quando há segundo professor ou roster dividido, as audiências divergem e ninguém pode declarar
+em nome do outro o que a turma dele recebeu. Aí não registra — mas `unrecordable_neighbours`
+entrega a aula e o nome do professor para a tela avisar. O pior não era o bloqueio, era o
+silêncio: a IA identificava o adiantamento e o segmento era descartado sem ninguém ver.
+
+Consequência na busca de pendência: com a janela atravessando módulos, a pendência de uma aula
+anterior está sob a turma dona dela, não sob a âncora. `candidate_window` passou a consultar
+**por turma dona**, senão a regra "pendência não expira" morreria na fronteira.
 
 ### Uma pendência não expira quando a turma anda
 
@@ -397,7 +409,7 @@ a Fase 7 os verifica como regressão.
 
 ## Resultado
 
-**`bin/verify-dinamismo` — 28/28 verificações; com `--with-ai`, 31/31.**
+**`bin/verify-dinamismo` — 34/34 verificações; com `--with-ai`, 37/37.**
 
 ```
 1 · Caminho feliz (regressão)      4/4   cobertura default, bundle idêntico ao pré-mudança
@@ -407,6 +419,8 @@ a Fase 7 os verifica como regressão.
 4 · Pendência resolvida            4/4   resolve sem UPDATE, histórico e evidência rastreados
 5 · Aula adiantada                 7/7   excedente guardado, aula seguinte não liberada,
                                          conteúdo planejado dela continua fora do bundle
+5b · Fronteira de módulo           6/6   mesmo professor registra sob a turma dona;
+                                         outro professor é avisado, não descartado
 6 · Guardas                        2/2   segmento fora da janela descartado, âncora garantida
 7 · Proposta pela IA               3/3   segmentação derivada do relato, dentro da janela
 ```

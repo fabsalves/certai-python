@@ -15,7 +15,7 @@ commit).
 ```bash
 bin/db-reset && bin/verify-dinamismo
 ```
-**28/28** — os três cenários do doc de produto + caminho feliz. Com `--with-ai`: 31/31, e a IA lê
+**34/34** — os três cenários do doc de produto, caminho feliz e fronteira de módulo. Com `--with-ai`: 37/37, e a IA lê
 um relato de verdade.
 
 ```bash
@@ -111,8 +111,10 @@ seguida para confirmar que a Lira **não cobra o pendente**.
 3. **Sem relato não há proposta** — a cobertura só é sugerida quando há texto.
 4. **Se a IA falhar**, aviso discreto e a cobertura cai em "aula do dia, completa". O
    encerramento nunca fica bloqueado.
-5. **Adiantar para dentro do módulo de outro professor não é registrável** — isso não é desvio de
-   uma turma, é mudança de plano entre dois professores.
+5. **Adiantar para o módulo seguinte depende de quem dá aquela aula.** Se é o mesmo professor,
+   registra normalmente e a cobertura fica sob a turma dona da aula. Se é outro professor, não
+   registra, mas a tela avisa qual aula é e de quem, para os dois combinarem. O que não acontece
+   mais é o relato descrever o adiantamento e o registro sumir sem ninguém ver.
 
 ## Logins do seed
 

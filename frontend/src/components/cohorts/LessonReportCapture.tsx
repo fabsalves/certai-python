@@ -12,6 +12,7 @@ import { AudioProcessStatus, AudioWaveform } from "../ui/AudioProcessStatus";
 import { LessonCoverageConfirm } from "./LessonCoverageConfirm";
 import {
   type CoverageCandidate,
+  type CoverageNotice,
   type CoverageSegment,
   coverageProposePath,
   proposeCoverage,
@@ -64,6 +65,7 @@ export function LessonReportCapture({
   const transcribedRef = useRef<Blob | File | null>(null);
   const [segments, setSegments] = useState<CoverageSegment[]>([]);
   const [candidates, setCandidates] = useState<CoverageCandidate[]>([]);
+  const [unrecordable, setUnrecordable] = useState<CoverageNotice[]>([]);
   const [proposing, setProposing] = useState(false);
   const [proposalFailed, setProposalFailed] = useState(false);
   // The report the current proposal was derived from -- so editing the text
@@ -79,6 +81,7 @@ export function LessonReportCapture({
     transcribedRef.current = null;
     setSegments([]);
     setCandidates([]);
+    setUnrecordable([]);
     setProposalFailed(false);
     proposedForRef.current = null;
   }, [cohortId, lessonId, reset]);
@@ -113,6 +116,7 @@ export function LessonReportCapture({
     if (!text) {
       setSegments([]);
       setCandidates([]);
+      setUnrecordable([]);
       setProposalFailed(false);
       proposedForRef.current = null;
       return;
@@ -131,6 +135,7 @@ export function LessonReportCapture({
         if (!active) return;
         setSegments(proposal.segments);
         setCandidates(proposal.candidates);
+        setUnrecordable(proposal.unrecordable);
         setProposalFailed(!proposal.from_ai);
         proposedForRef.current = text;
       } catch {
@@ -138,6 +143,7 @@ export function LessonReportCapture({
         // Never blocks the closing: the anchor-only default stands.
         setSegments([]);
         setCandidates([]);
+        setUnrecordable([]);
         setProposalFailed(true);
         proposedForRef.current = text;
       } finally {
@@ -221,6 +227,7 @@ export function LessonReportCapture({
         setAttachment(null);
         setSegments([]);
         setCandidates([]);
+        setUnrecordable([]);
         setProposalFailed(false);
         proposedForRef.current = null;
         onCompleted();
@@ -353,6 +360,7 @@ export function LessonReportCapture({
           <LessonCoverageConfirm
             segments={segments}
             candidates={candidates}
+            unrecordable={unrecordable}
             anchorLessonId={lessonId}
             loading={proposing}
             failed={proposalFailed}

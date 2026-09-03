@@ -453,6 +453,19 @@ class CoverageCandidateOut(BaseModel):
     standing_pending: str = ""
 
 
+class CoverageNoticeOut(BaseModel):
+    """Content the report describes that this class cannot record.
+
+    A professor does finish their last lesson and carry on into the next module.
+    When that module is another professor's, the content was taught but there is
+    no honest place to record it here -- so it is surfaced instead of dropped.
+    """
+
+    lesson_title: str = ""
+    professor_name: str = ""
+    covered: str = Field(default="", max_length=COVERAGE_TEXT_MAX)
+
+
 class CoverageProposalOut(BaseModel):
     """What the AI derived from the report, for the professor to confirm."""
 
@@ -460,6 +473,8 @@ class CoverageProposalOut(BaseModel):
     segments: list[CoverageSegmentOut] = []
     # The window the professor may add a lesson from, when the AI missed one.
     candidates: list[CoverageCandidateOut] = []
+    # Described in the report, taught for real, and not recordable by this class.
+    unrecordable: list[CoverageNoticeOut] = []
     # False when the AI call failed: the client falls back to the anchor-only
     # default and the professor can still close the lesson.
     from_ai: bool = True
